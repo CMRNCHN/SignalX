@@ -70,6 +70,10 @@ web_modules/
 .env.*
 !.env.example
 
+# Test config files
+config.test.json
+config.local.json
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
