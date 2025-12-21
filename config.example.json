@@ -1,0 +1,33 @@
+{
+  "app": {
+    "name": "SignalX",
+    "version": "0.1.0",
+    "environment": "development"
+  },
+  "logging": {
+    "level": "info",
+    "file": "./logs/signalx.log",
+    "console": true
+  },
+  "modules": {
+    "messaging": {
+      "enabled": true,
+      "config": {
+        "maxMessageSize": 1048576,
+        "encryptionEnabled": true
+      }
+    },
+    "routing": {
+      "enabled": true,
+      "config": {
+        "maxRoutes": 1000
+      }
+    },
+    "permissions": {
+      "enabled": true,
+      "config": {
+        "defaultDeny": true
+      }
+    }
+  }
+}
