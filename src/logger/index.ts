@@ -1,5 +1,4 @@
 import * as fs from 'fs';
-import * as path from 'path';
 import { Logger, LoggingConfig } from '../core/types';
 import { formatTimestamp } from '../core/utils';
 
@@ -15,17 +14,27 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 export class SimpleLogger implements Logger {
   private config: LoggingConfig;
   private moduleName: string;
+  private writeStream?: fs.WriteStream;
 
   constructor(config: LoggingConfig, moduleName = 'app') {
     this.config = config;
     this.moduleName = moduleName;
     this.ensureLogDirectory();
+    this.initializeWriteStream();
   }
 
   private ensureLogDirectory(): void {
-    const logDir = path.dirname(this.config.file);
-    if (!fs.existsSync(logDir)) {
+    const logDir = this.config.file.substring(0, this.config.file.lastIndexOf('/'));
+    if (logDir && !fs.existsSync(logDir)) {
       fs.mkdirSync(logDir, { recursive: true });
+    }
+  }
+
+  private initializeWriteStream(): void {
+    try {
+      this.writeStream = fs.createWriteStream(this.config.file, { flags: 'a' });
+    } catch (error) {
+      console.error('Failed to initialize log file stream:', error);
     }
   }
 
@@ -51,10 +60,13 @@ export class SimpleLogger implements Logger {
       logFn(formattedMessage);
     }
 
-    try {
-      fs.appendFileSync(this.config.file, formattedMessage + '\n');
-    } catch (error) {
-      console.error('Failed to write to log file:', error);
+    // Use async write stream for better performance
+    if (this.writeStream) {
+      this.writeStream.write(formattedMessage + '\n', (err) => {
+        if (err) {
+          console.error('Failed to write to log file:', err);
+        }
+      });
     }
   }
 
@@ -72,6 +84,12 @@ export class SimpleLogger implements Logger {
 
   error(message: string, ...args: unknown[]): void {
     this.writeLog('error', message, args);
+  }
+
+  close(): void {
+    if (this.writeStream) {
+      this.writeStream.end();
+    }
   }
 }
 

@@ -10,6 +10,20 @@ export function validateConfig(config: unknown): boolean {
   if (!config || typeof config !== 'object') {
     return false;
   }
+
+  const cfg = config as Record<string, unknown>;
+
+  // Validate required top-level properties
+  if (!cfg.app || typeof cfg.app !== 'object') {
+    return false;
+  }
+  if (!cfg.logging || typeof cfg.logging !== 'object') {
+    return false;
+  }
+  if (!cfg.modules || typeof cfg.modules !== 'object') {
+    return false;
+  }
+
   return true;
 }
 
