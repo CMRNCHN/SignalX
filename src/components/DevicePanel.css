@@ -1,0 +1,49 @@
+.device-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.sessions-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.session-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #2B3138;
+  font-size: 0.85rem;
+}
+
+.session-row:last-child {
+  border-bottom: none;
+}
+
+.session-name {
+  color: #E5E7EB;
+}
+
+.session-status {
+  border-radius: 12px;
+  padding: 4px 8px;
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+.status-active {
+  background-color: #A9E8D9;
+  color: #1A1C1F;
+}
+
+.status-idle {
+  background-color: #FFE8A3;
+  color: #1A1C1F;
+}
+
+.status-offline {
+  background-color: #FFB1A8;
+  color: #1A1C1F;
+}
