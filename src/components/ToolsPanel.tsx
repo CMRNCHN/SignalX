@@ -495,6 +495,10 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = (props) => {
         </div>
       </Card>
 
+      <Card title="Automation Rules" defaultOpen={false}>
+        <RulesSection selectedThreadId={selectedThreadId} />
+      </Card>
+
       <Card title="Advanced" defaultOpen={false}>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ fontSize: 12, color: "#9ca3af" }}>
@@ -538,3 +542,192 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = (props) => {
     </div>
   );
 };
+
+function RulesSection({ selectedThreadId }: { selectedThreadId: string | null }) {
+  const [rules, setRules] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [newRuleDsl, setNewRuleDsl] = useState("");
+  const [activeAccount, setActiveAccount] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    loadRules();
+  }, [activeAccount]);
+
+  const loadRules = async () => {
+    if (!activeAccount) {
+      try {
+        const accountRes = await invoke<any>("get_active_account");
+        if (accountRes.success && accountRes.data?.account_id) {
+          setActiveAccount(accountRes.data.account_id);
+        }
+      } catch {
+        // No active account
+      }
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await invoke<any>("rules_list", { accountId: activeAccount });
+      if (response.success) {
+        setRules(response.data || []);
+      }
+    } catch (err) {
+      console.error("Failed to load rules:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggle = async (ruleId: string, enabled: boolean) => {
+    try {
+      await invoke("rules_toggle", { id: ruleId, enabled: !enabled });
+      loadRules();
+    } catch (err) {
+      console.error("Failed to toggle rule:", err);
+    }
+  };
+
+  const handleCreate = async () => {
+    if (!activeAccount || !newRuleDsl.trim()) return;
+    try {
+      await invoke<any>("rules_upsert", {
+        accountId: activeAccount,
+        id: null,
+        name: "New Rule",
+        dsl: newRuleDsl,
+      });
+      setNewRuleDsl("");
+      loadRules();
+    } catch (err) {
+      console.error("Failed to create rule:", err);
+    }
+  };
+
+  const handleTest = async () => {
+    if (!activeAccount || !selectedThreadId) return;
+    // TODO: Get message body and from from selected thread
+    try {
+      const response = await invoke<any>("rules_run_once", {
+        accountId: activeAccount,
+        threadId: selectedThreadId,
+        messageBody: "test message",
+        messageFrom: "+1234567890",
+      });
+      if (response.success) {
+        alert(`Rules executed: ${JSON.stringify(response.data)}`);
+      }
+    } catch (err) {
+      console.error("Failed to test rules:", err);
+    }
+  };
+
+  if (!activeAccount) {
+    return <div style={{ fontSize: 12, color: "#9ca3af" }}>No active account</div>;
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", gap: 8 }}>
+        <textarea
+          value={newRuleDsl}
+          onChange={(e) => setNewRuleDsl(e.target.value)}
+          placeholder='rule "Auto-Thanks"\nwhen message_in contains "thanks"\nthen draft "You'\''re welcome"'
+          style={{
+            flex: 1,
+            padding: 10,
+            borderRadius: 8,
+            border: "1px solid #374151",
+            background: "#111827",
+            color: "#e5e7eb",
+            fontFamily: "monospace",
+            fontSize: 12,
+            minHeight: 80,
+          }}
+        />
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          onClick={handleCreate}
+          disabled={!newRuleDsl.trim()}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 8,
+            border: "1px solid #374151",
+            background: "#111827",
+            color: "#e5e7eb",
+            cursor: "pointer",
+            fontSize: 12,
+          }}
+        >
+          Create Rule
+        </button>
+        <button
+          onClick={handleTest}
+          disabled={!selectedThreadId}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 8,
+            border: "1px solid #374151",
+            background: "#111827",
+            color: "#e5e7eb",
+            cursor: "pointer",
+            fontSize: 12,
+          }}
+        >
+          Run Test
+        </button>
+      </div>
+      {loading ? (
+        <div style={{ fontSize: 12, color: "#9ca3af" }}>Loading rules...</div>
+      ) : rules.length === 0 ? (
+        <div style={{ fontSize: 12, color: "#9ca3af" }}>No rules defined</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {rules.map((rule) => (
+            <div
+              key={rule.id}
+              style={{
+                padding: 10,
+                border: "1px solid #374151",
+                borderRadius: 8,
+                background: "#111827",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <span style={{ fontWeight: 600, color: "#e5e7eb" }}>{rule.name}</span>
+                <button
+                  onClick={() => handleToggle(rule.id, rule.enabled)}
+                  style={{
+                    padding: "4px 8px",
+                    borderRadius: 6,
+                    border: "1px solid #374151",
+                    background: rule.enabled ? "#10b981" : "#374151",
+                    color: "#ffffff",
+                    cursor: "pointer",
+                    fontSize: 11,
+                  }}
+                >
+                  {rule.enabled ? "ON" : "OFF"}
+                </button>
+              </div>
+              {rule.dsl && (
+                <pre
+                  style={{
+                    fontSize: 11,
+                    color: "#9ca3af",
+                    margin: 0,
+                    whiteSpace: "pre-wrap",
+                    fontFamily: "monospace",
+                  }}
+                >
+                  {rule.dsl}
+                </pre>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

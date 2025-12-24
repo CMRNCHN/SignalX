@@ -90,10 +90,10 @@ SignalX supports per-account **contact** and **group** metadata, including first
 
    Or use the launcher:
    ```bash
-   ./SignalX-Dev.command
+   ./scripts/dev/SignalX-Dev.command
    ```
 
-   For production builds, see [BUILD.md](./BUILD.md).
+   For production builds, see [docs/BUILD.md](./docs/BUILD.md).
 
 ## Integrating Signal CLI (Back‑End)
 

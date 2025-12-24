@@ -48,6 +48,11 @@ AVAILABLE_FEATURES = {
     "ui.modal.diagnostics": True,
     "ai.drafting": True,
     "ai.send_auto": False,
+    "storage.sqlite": True,
+    "auth.enabled": False,  # OFF in dev, ON in prod
+    "automation.rules": False,
+    "automation.send_enabled": False,
+    "headless.enabled": True,
 }
 
 # Preset definitions. "minimal" enables only the features that are True by default.

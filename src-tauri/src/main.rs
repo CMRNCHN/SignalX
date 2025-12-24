@@ -1,5 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod storage;
+mod auth;
+mod rules;
+mod features;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
@@ -2058,6 +2063,9 @@ struct AppState {
   outbox_store: OutboxStore,
   outbox_send_locks: Arc<Mutex<HashMap<String, Arc<AsyncMutex<()>>>>>, // account_id -> send mutex
   outbox_workers: Arc<Mutex<HashSet<String>>>, // account_id set
+  storage: Option<Arc<storage::Storage>>,
+  auth_manager: Option<Arc<auth::AuthManager>>,
+  rules_engine: Option<Arc<rules::RulesEngine>>,
 }
 
 fn now_ms() -> i64 {
@@ -3639,6 +3647,152 @@ fn ensure_outbox_worker(app: tauri::AppHandle, state: AppState, account_id: Stri
   });
 }
 
+// --------------------
+// Auth commands
+// --------------------
+#[tauri::command]
+fn auth_login(state: tauri::State<AppState>, username: String, password: String) -> Value {
+  if let Some(ref auth) = state.auth_manager {
+    match auth.login(&username, &password) {
+      Ok(session) => ok_t(session),
+      Err(e) => err(e),
+    }
+  } else {
+    err("Auth not enabled".to_string())
+  }
+}
+
+#[tauri::command]
+fn auth_get_session(state: tauri::State<AppState>, token: String) -> Value {
+  if let Some(ref auth) = state.auth_manager {
+    match auth.get_session(&token) {
+      Some(session) => ok_t(session),
+      None => err("Invalid or expired session".to_string()),
+    }
+  } else {
+    err("Auth not enabled".to_string())
+  }
+}
+
+#[tauri::command]
+fn auth_logout(state: tauri::State<AppState>, token: String) -> Value {
+  if let Some(ref auth) = state.auth_manager {
+    auth.logout(&token);
+    ok(json!(true))
+  } else {
+    err("Auth not enabled".to_string())
+  }
+}
+
+// --------------------
+// Rules commands
+// --------------------
+#[tauri::command]
+fn rules_list(state: tauri::State<AppState>, accountId: String) -> Value {
+  let account_id = accountId;
+  if let Some(ref storage) = state.storage {
+    match storage.list_rules(&account_id) {
+      Ok(rules) => {
+        let result: Vec<Value> = rules
+          .into_iter()
+          .map(|(id, name, enabled, dsl, compiled_json)| {
+            json!({
+              "id": id,
+              "name": name,
+              "enabled": enabled,
+              "dsl": dsl,
+              "compiled_json": compiled_json
+            })
+          })
+          .collect();
+        ok_t(result)
+      }
+      Err(e) => err(format!("Failed to list rules: {}", e)),
+    }
+  } else {
+    err("Storage not available".to_string())
+  }
+}
+
+#[tauri::command]
+fn rules_upsert(
+  state: tauri::State<AppState>,
+  accountId: String,
+  id: Option<String>,
+  name: String,
+  dsl: String,
+) -> Value {
+  let account_id = accountId;
+  if let Some(ref storage) = state.storage {
+    if let Some(ref engine) = state.rules_engine {
+      let rule_id = id.unwrap_or_else(|| Uuid::new_v4().to_string());
+      
+      // Compile DSL
+      match engine.compile_rule(&dsl) {
+        Ok(compiled) => {
+          let compiled_str = serde_json::to_string(&compiled)
+            .map_err(|e| format!("Serialization error: {}", e))?;
+          
+          match storage.upsert_rule(&rule_id, &account_id, &name, false, Some(&dsl), Some(&compiled_str)) {
+            Ok(_) => ok(json!({ "id": rule_id })),
+            Err(e) => err(format!("Failed to save rule: {}", e)),
+          }
+        }
+        Err(e) => err(format!("Failed to compile rule: {}", e)),
+      }
+    } else {
+      err("Rules engine not available".to_string())
+    }
+  } else {
+    err("Storage not available".to_string())
+  }
+}
+
+#[tauri::command]
+fn rules_toggle(state: tauri::State<AppState>, id: String, enabled: bool) -> Value {
+  if let Some(ref storage) = state.storage {
+    match storage.toggle_rule(&id, enabled) {
+      Ok(_) => ok(json!(true)),
+      Err(e) => err(format!("Failed to toggle rule: {}", e)),
+    }
+  } else {
+    err("Storage not available".to_string())
+  }
+}
+
+#[tauri::command]
+fn rules_run_once(
+  state: tauri::State<AppState>,
+  accountId: String,
+  threadId: String,
+  messageBody: String,
+  messageFrom: String,
+) -> Value {
+  let account_id = accountId;
+  let thread_id = threadId;
+  let message_body = messageBody;
+  let message_from = messageFrom;
+  if let Some(ref engine) = state.rules_engine {
+    let send_enabled = features::is_feature_enabled("automation.send_enabled");
+    match engine.run_rules_for_message(&account_id, &message_body, &message_from, &thread_id, send_enabled) {
+      Ok(actions) => {
+        let result: Vec<Value> = actions
+          .into_iter()
+          .map(|a| match a {
+            rules::Action::Draft(text) => json!({ "type": "draft", "text": text }),
+            rules::Action::Send(text) => json!({ "type": "send", "text": text }),
+            rules::Action::LabelContact(label, value) => json!({ "type": "label_contact", "label": label, "value": value }),
+          })
+          .collect();
+        ok_t(result)
+      }
+      Err(e) => err(format!("Failed to run rules: {}", e)),
+    }
+  } else {
+    err("Rules engine not available".to_string())
+  }
+}
+
 fn run_agent_mode(state: AppState) {
   eprintln!("Starting SignalX agent mode (headless) – generating drafts only");
   if !ai_enabled() {
@@ -3686,6 +3840,52 @@ fn main() {
   let cli_path = get_signal_cli_path();
   let cli_info = probe_signal_cli(&cli_path);
 
+  // Initialize storage if feature enabled
+  let storage = if features::is_feature_enabled("storage.sqlite") {
+    let db_path = app_data_dir.join("signalx.db");
+    match storage::Storage::new(db_path) {
+      Ok(s) => {
+        eprintln!("SQLite storage initialized");
+        Some(Arc::new(s))
+      }
+      Err(e) => {
+        eprintln!("Failed to initialize storage: {}", e);
+        None
+      }
+    }
+  } else {
+    None
+  };
+
+  // Initialize auth if feature enabled
+  let auth_manager = if features::is_feature_enabled("auth.enabled") {
+    if let Some(ref st) = storage {
+      let am = Arc::new(auth::AuthManager::new(st.clone()));
+      // Ensure admin exists on first run
+      if let Err(e) = am.ensure_admin_exists() {
+        eprintln!("Warning: Failed to ensure admin exists: {}", e);
+      }
+      Some(am)
+    } else {
+      eprintln!("Warning: Auth enabled but storage not available");
+      None
+    }
+  } else {
+    None
+  };
+
+  // Initialize rules engine if feature enabled
+  let rules_engine = if features::is_feature_enabled("automation.rules") {
+    if let Some(ref st) = storage {
+      Some(Arc::new(rules::RulesEngine::new(st.clone())))
+    } else {
+      eprintln!("Warning: Rules enabled but storage not available");
+      None
+    }
+  } else {
+    None
+  };
+
   let state = AppState {
     env_path: env_path.clone(),
     app_data_dir: app_data_dir.clone(),
@@ -3703,6 +3903,9 @@ fn main() {
     outbox_store: OutboxStore::new(outbox_dir.clone()),
     outbox_send_locks: Arc::new(Mutex::new(HashMap::new())),
     outbox_workers: Arc::new(Mutex::new(HashSet::new())),
+    storage,
+    auth_manager,
+    rules_engine,
   };
 
   if should_run_agent_mode() {
@@ -3786,7 +3989,14 @@ fn main() {
       draft_reply,
       export_thread,
       open_path,
-      send_message
+      send_message,
+      auth_login,
+      auth_get_session,
+      auth_logout,
+      rules_list,
+      rules_upsert,
+      rules_toggle,
+      rules_run_once
       // Removed legacy outbox commands
     ])
     .run(tauri::generate_context!())

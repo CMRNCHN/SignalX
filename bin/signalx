@@ -16,8 +16,20 @@ case "$1" in
     MESSAGE="$*"
     "$CLI" --config "$CONFIG" send -m "$MESSAGE" "$RECIPIENT"
     ;;
+  headless)
+    shift
+    # Run headless binary if available, otherwise show help
+    if [ -f "src-tauri/target/release/signalx-headless" ]; then
+      ./src-tauri/target/release/signalx-headless "$@"
+    elif [ -f "src-tauri/target/debug/signalx-headless" ]; then
+      ./src-tauri/target/debug/signalx-headless "$@"
+    else
+      echo "Headless binary not found. Build with: cargo build --bin signalx-headless"
+      exit 1
+    fi
+    ;;
   *)
-    echo "signalx {accounts|threads|send}"
+    echo "signalx {accounts|threads|send|headless}"
     exit 1
     ;;
 esac

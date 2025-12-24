@@ -51,4 +51,8 @@ SignalX-Cursor-Bundle.zip
 .env
 .env.local
 .env.*.local
+.signalx.env
+
+# Log files
+run-dev.command.log
 
