@@ -56,14 +56,21 @@
 - ✅ Input modes (Normal and Editing)
 - ✅ Thread selection with visual feedback
 
+### TUI Backend Integration ✅
+- ✅ Load real threads from disk (ThreadState JSON)
+- ✅ Display thread participants and previews
+- ✅ Load actual messages for selected thread
+- ✅ Implement real message sending via Signal CLI
+- ✅ Status messages and error handling
+- ✅ Thread navigation and message display
+
 ### TUI Next Steps ⚪
-- ⚪ Connect to backend (load real threads from Signal)
-- ⚪ Load actual messages for selected thread
-- ⚪ Implement real message sending
-- ⚪ Add real-time message updates
-- ⚪ Error handling and status messages
+- ⚪ Add real-time message updates (watch file changes)
 - ⚪ Help screen (press `?`)
 - ⚪ Search interface
+- ⚪ Better error messages and retry logic
+- ⚪ Message timestamps formatting
+- ⚪ Scroll through long message lists
 
 ---
 

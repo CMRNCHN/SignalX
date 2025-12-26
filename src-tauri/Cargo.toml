@@ -33,7 +33,7 @@ tauri = { version = "2.9.5", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-single-instance = "2"
 dotenv = "0.15"
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "fs", "macros"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "fs", "macros", "process"] }
 chrono = { version = "0.4", features = ["clock"] }
 dirs-next = "2"
 base64 = "0.22"

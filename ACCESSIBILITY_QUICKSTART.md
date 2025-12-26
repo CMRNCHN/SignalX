@@ -42,6 +42,7 @@ At the top of your app:
 ## 3. Replace Modals (2 minutes)
 
 **Before:**
+
 ```tsx
 {isOpen && (
   <div className="modal-overlay">
@@ -55,6 +56,7 @@ At the top of your app:
 ```
 
 **After:**
+
 ```tsx
 <AccessibleModal isOpen={isOpen} onClose={onClose} title="Title">
   {children}
@@ -98,6 +100,7 @@ useAnnounceLoading(isLoading, 'Loading...', 'Loaded successfully');
 ## Common Patterns
 
 ### Announcing Changes
+
 ```tsx
 import { announce } from './utils/announcer';
 
@@ -108,6 +111,7 @@ const handleSave = async () => {
 ```
 
 ### Accessible Buttons
+
 ```tsx
 // Icon buttons need labels
 <button aria-label="Close" onClick={onClose}>
@@ -125,6 +129,7 @@ const handleSave = async () => {
 ```
 
 ### Search Results
+
 ```tsx
 import { useAnnounceCount } from './utils/a11yHooks';
 
@@ -132,6 +137,7 @@ useAnnounceCount(results.length, 'result', 'results');
 ```
 
 ### Loading States
+
 ```tsx
 import { useAnnounceLoading } from './utils/a11yHooks';
 
@@ -139,6 +145,7 @@ useAnnounceLoading(isLoading, 'Loading data', 'Data loaded');
 ```
 
 ### Keyboard Shortcuts
+
 ```tsx
 import { useEscapeKey } from './utils/a11yHooks';
 
@@ -171,4 +178,3 @@ useEscapeKey(() => setIsOpen(false));
 ---
 
 **Remember**: Accessibility is not a feature, it's a requirement. These tools make it easier to build an inclusive app for everyone.
-

@@ -122,9 +122,11 @@ fn draw_input(f: &mut Frame, app: &TuiApp, area: Rect) {
     let (msg, style) = match app.input_mode {
         InputMode::Normal => (
             vec![
+                Span::styled(&app.status_message, Style::default().fg(Color::Cyan)),
+                Span::raw(" | "),
                 Span::raw("Press "),
                 Span::styled("i", Style::default().fg(Color::Yellow)),
-                Span::raw(" to compose message, "),
+                Span::raw(" to compose, "),
                 Span::styled("q", Style::default().fg(Color::Yellow)),
                 Span::raw(" to quit"),
             ],

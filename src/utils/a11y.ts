@@ -8,6 +8,21 @@ export type { Tab } from '../components/AccessibleTabs';
 export { default as Toast } from '../components/Toast';
 export { default as ErrorBoundary } from '../components/ErrorBoundary';
 
+// Form Components
+export {
+  FormField,
+  TextInput,
+  TextArea,
+  Checkbox,
+  RadioGroup,
+  Select,
+} from '../components/AccessibleForm';
+
+// Additional Components
+export { AccessibleMenu, type MenuItem } from '../components/AccessibleMenu';
+export { Tooltip } from '../components/AccessibleTooltip';
+export { Accordion, type AccordionItem } from '../components/AccessibleAccordion';
+
 // Accessibility utilities
 export {
   generateId,
@@ -47,6 +62,40 @@ export {
   useLiveAnnouncer,
 } from './announcer';
 
-// Re-export types
-export type { default as React } from 'react';
+// Accessibility Hooks
+export {
+  useAnnounceOnMount,
+  useAnnounceLoading,
+  useAnnounceCount,
+  useFocusOnCondition,
+  useFocusTrap,
+  useRovingTabIndex,
+  useEscapeKey,
+  useAnnounceNavigation,
+  useFocusError,
+  useAnnounceListChanges,
+} from './a11yHooks';
+
+// Keyboard Shortcuts Manager
+export {
+  getShortcutsManager,
+  registerShortcut,
+  unregisterShortcut,
+  useKeyboardShortcut,
+  useShortcutsManager,
+  registerDefaultShortcuts,
+  KeyboardShortcutsHelp,
+  type KeyboardShortcut,
+} from './keyboardShortcuts';
+
+// Accessibility Testing (development only)
+export {
+  checkA11y,
+  logA11yIssues,
+  testKeyboardNav,
+  checkContrast,
+  enableA11yChecking,
+  generateA11yReport,
+  type A11yIssue,
+} from './a11yTesting';
 
