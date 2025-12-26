@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+src-tauri/target/
+
+# Generated files
+src-tauri/gen/
+
+# Config files that should not be formatted
+*.json
+*.toml
+*.lock
+
+# Rust files (handled by rustfmt)
+*.rs
+
+# Documentation
+*.md
+
+# Scripts
+scripts/
+bin/
+
+
+

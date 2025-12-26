@@ -204,3 +204,78 @@ For the business version of SignalX, you may wish to connect to an inventory or 
 - **Implement cross‑platform installers** via Tauri’s bundler (DMG/EXE/DEB/AppImage, etc.).
 
 Feel free to adapt and expand this scaffold to suit your exact requirements.  The aesthetic and layout have been designed for clarity and productivity; the architecture is flexible enough to support both personal and business use cases.
+
+## ♿ Accessibility
+
+SignalX is built with accessibility as a first-class feature, following WCAG 2.1 AA standards:
+
+### 🌟 Features
+- **Full keyboard navigation** - Navigate the entire app without a mouse
+- **Screen reader support** - Proper ARIA attributes and live announcements
+- **Focus management** - Visible focus indicators and logical tab order
+- **Motion preferences** - Respects `prefers-reduced-motion` settings
+- **High contrast** - Compatible with high contrast modes
+
+### 📦 Components
+- **SkipLink** - Skip navigation for keyboard users
+- **AccessibleModal** - Modal with focus trap and keyboard support
+- **AccessibleTabs** - WAI-ARIA compliant tabs component
+- **Toast** - Accessible notifications with live regions
+- **ErrorBoundary** - Error handling with ARIA alerts
+
+### 🔧 Utilities
+- **Keyboard navigation** - Arrow keys, Home/End, Escape handling
+- **Live announcements** - Screen reader announcements for dynamic changes
+- **Focus management** - Focus trapping, roving tabindex
+- **Accessibility hooks** - React hooks for common a11y patterns
+
+### 📚 Documentation
+- **[ACCESSIBILITY_QUICKSTART.md](ACCESSIBILITY_QUICKSTART.md)** - Get started in 5 minutes (⭐ start here!)
+- **[ACCESSIBILITY.md](ACCESSIBILITY.md)** - Complete accessibility guide
+- **[PANEL_ACCESSIBILITY.md](PANEL_ACCESSIBILITY.md)** - Panel-specific enhancements
+- **[ACCESSIBILITY_SUMMARY.md](ACCESSIBILITY_SUMMARY.md)** - Implementation summary
+
+### ✅ Testing
+All accessibility features include comprehensive test coverage. Test the live showcase:
+```tsx
+import A11yShowcase from './components/A11yShowcase';
+// Renders an interactive demo of all accessibility features
+```
+
+---
+
+## 📚 Complete Documentation
+
+This project has comprehensive documentation to guide you from setup to production:
+
+### 🚀 Getting Started
+- **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** - One-page overview of everything (⭐ start here!)
+- **[docs/QUICKSTART.md](docs/QUICKSTART.md)** - Get the app running in 15 minutes
+- **[docs/BUILD.md](docs/BUILD.md)** - Production build instructions
+
+### 🗺️ Planning & Development
+- **[PRODUCT_ROADMAP.md](PRODUCT_ROADMAP.md)** - Complete feature roadmap and architecture
+- **[IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md)** - Step-by-step development guide (⭐ developer bible)
+- **[DEVELOPMENT_TIMELINE.md](DEVELOPMENT_TIMELINE.md)** - Visual timeline and milestones
+- **[docs/NEXT_STEPS.md](docs/NEXT_STEPS.md)** - Immediate action items and testing
+
+### ♿ Accessibility
+- **[ACCESSIBILITY_QUICKSTART.md](ACCESSIBILITY_QUICKSTART.md)** - 5-minute accessibility guide (⭐ quick wins!)
+- **[ACCESSIBILITY.md](ACCESSIBILITY.md)** - Complete accessibility documentation
+- **[PANEL_ACCESSIBILITY.md](PANEL_ACCESSIBILITY.md)** - Panel enhancement guide
+- **[ACCESSIBILITY_SUMMARY.md](ACCESSIBILITY_SUMMARY.md)** - Implementation summary
+
+### 📖 Reference
+- **[DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)** - Master index to all docs
+- **[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)** - File organization and structure
+- **[docs/STATUS.md](docs/STATUS.md)** - Current implementation status
+- **[docs/VISION_ASSESSMENT.md](docs/VISION_ASSESSMENT.md)** - Vision vs reality analysis
+
+### 👥 For Your Role
+- **Product Manager:** Read QUICK_REFERENCE → PRODUCT_ROADMAP → STATUS
+- **New Developer:** Read README → QUICKSTART → IMPLEMENTATION_GUIDE
+- **Accessibility Developer:** Read ACCESSIBILITY_QUICKSTART → ACCESSIBILITY → test with keyboard & screen reader
+- **QA/Tester:** Read QUICKSTART → NEXT_STEPS → ACCESSIBILITY (testing checklists)
+- **Tech Lead:** Read PRODUCT_ROADMAP → PROJECT_STRUCTURE → packages
+
+See **[DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)** for the complete guide to all documentation.

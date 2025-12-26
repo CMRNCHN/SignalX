@@ -26,6 +26,8 @@ const Toast: React.FC<ToastProps> = ({ message, type = 'info', duration = 3000, 
 
   return (
     <div
+      role="alert"
+      aria-live="polite"
       style={{
         position: 'fixed',
         bottom: '24px',

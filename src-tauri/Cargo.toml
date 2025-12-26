@@ -18,6 +18,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 name = "signalx-headless"
 path = "src/bin/headless.rs"
 
+[[bin]]
+name = "signalx-tui"
+path = "src/bin/tui.rs"
+
 [build-dependencies]
 tauri-build = { version = "2.5.3", features = [] }
 
@@ -29,7 +33,7 @@ tauri = { version = "2.9.5", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-single-instance = "2"
 dotenv = "0.15"
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "fs"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "fs", "macros"] }
 chrono = { version = "0.4", features = ["clock"] }
 dirs-next = "2"
 base64 = "0.22"
@@ -37,3 +41,5 @@ uuid = { version = "1.11", features = ["v4", "serde"] }
 rusqlite = { version = "0.31", features = ["bundled", "chrono", "serde_json"] }
 argon2 = "0.5"
 rand = "0.8"
+ratatui = "0.29.0"
+crossterm = "0.29.0"

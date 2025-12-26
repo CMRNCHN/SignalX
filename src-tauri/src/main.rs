@@ -284,13 +284,14 @@ impl OutboxStore {
     self.dir.join(format!("{}.json", account_id))
   }
 
-  fn account_save_lock(&self, account_id: &str) -> Arc<Mutex<()>> {
-    let mut m = self.save_mutexes.lock().unwrap();
-    m.entry(account_id.to_string()).or_insert_with(|| Arc::new(Mutex::new(()))).clone()
+  fn account_save_lock(&self, account_id: &str) -> Result<Arc<Mutex<()>>, String> {
+    let mut m = self.save_mutexes.lock().map_err(|e| format!("Save mutexes poisoned: {}", e))?;
+    Ok(m.entry(account_id.to_string()).or_insert_with(|| Arc::new(Mutex::new(()))).clone())
   }
 
   async fn ensure_loaded_async(&self, account_id: &str) -> Result<(), String> {
-    if self.data.lock().unwrap().contains_key(account_id) {
+    let data_guard = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
+    if data_guard.contains_key(account_id) {
       return Ok(());
     }
     let account_id_s = account_id.to_string();
@@ -317,7 +318,8 @@ impl OutboxStore {
     .await
     .map_err(|e| format!("outbox load join error: {}", e))??;
 
-    self.data.lock().unwrap().insert(account_id_s, loaded);
+    let mut data_guard = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
+    data_guard.insert(account_id_s, loaded);
     Ok(())
   }
 
@@ -327,18 +329,18 @@ impl OutboxStore {
 
   async fn save_account_atomic_async(&self, account_id: &str) -> Result<(), String> {
     self.ensure_loaded_async(account_id).await?;
-    let save_lock = self.account_save_lock(account_id);
+    let save_lock = self.account_save_lock(account_id)?;
     let path = self.path_for(account_id);
     let dir = self.dir.clone();
     let snapshot = {
-      let d = self.data.lock().unwrap();
+      let d = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
       let data = d.get(account_id).cloned().unwrap_or_else(OutboxData::v1);
       serde_json::to_string_pretty(&data).map_err(|e| format!("outbox serialize error: {}", e))?
     };
 
     let save_lock2 = save_lock.clone();
-    tokio::task::spawn_blocking(move || {
-      let _guard = save_lock2.lock().unwrap();
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+      let _guard = save_lock2.lock().map_err(|e| format!("Save lock poisoned: {}", e))?
       let _ = std::fs::create_dir_all(&dir);
       let tmp_path = path.with_extension("json.tmp");
       std::fs::write(&tmp_path, snapshot.as_bytes()).map_err(|e| format!("outbox write failed: {}", e))?;
@@ -355,7 +357,7 @@ impl OutboxStore {
 
   fn list(&self, account_id: &str, thread_id: Option<&str>) -> Result<Vec<OutboxItem>, String> {
     self.ensure_loaded(account_id)?;
-    let d = self.data.lock().unwrap();
+    let d = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
     let data = d.get(account_id).cloned().unwrap_or_else(OutboxData::v1);
     let mut items = data.items;
     if let Some(tid) = thread_id {
@@ -367,7 +369,7 @@ impl OutboxStore {
 
   fn summary(&self, account_id: &str) -> Result<OutboxSummary, String> {
     self.ensure_loaded(account_id)?;
-    let d = self.data.lock().unwrap();
+    let d = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
     let data = d.get(account_id).cloned().unwrap_or_else(OutboxData::v1);
     let mut s = OutboxSummary::empty();
     for it in data.items.iter() {
@@ -383,7 +385,7 @@ impl OutboxStore {
 
   async fn list_async(&self, account_id: &str, thread_id: Option<&str>) -> Result<Vec<OutboxItem>, String> {
     self.ensure_loaded_async(account_id).await?;
-    let d = self.data.lock().unwrap();
+    let d = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
     let data = d.get(account_id).cloned().unwrap_or_else(OutboxData::v1);
     let mut items = data.items;
     if let Some(tid) = thread_id {
@@ -395,7 +397,7 @@ impl OutboxStore {
 
   async fn summary_async(&self, account_id: &str) -> Result<OutboxSummary, String> {
     self.ensure_loaded_async(account_id).await?;
-    let d = self.data.lock().unwrap();
+    let d = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
     let data = d.get(account_id).cloned().unwrap_or_else(OutboxData::v1);
     let mut s = OutboxSummary::empty();
     for it in data.items.iter() {
@@ -412,7 +414,7 @@ impl OutboxStore {
   fn add_item(&self, item: OutboxItem) -> Result<OutboxItem, String> {
     self.ensure_loaded(&item.account_id)?;
     {
-      let mut d = self.data.lock().unwrap();
+      let mut d = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
       let data = d.entry(item.account_id.clone()).or_insert_with(OutboxData::v1);
       data.items.push(item.clone());
       data.items.sort_by_key(|i| i.created_at);
@@ -424,7 +426,7 @@ impl OutboxStore {
   async fn add_item_async(&self, item: OutboxItem) -> Result<OutboxItem, String> {
     self.ensure_loaded_async(&item.account_id).await?;
     {
-      let mut d = self.data.lock().unwrap();
+      let mut d = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
       let data = d.entry(item.account_id.clone()).or_insert_with(OutboxData::v1);
       data.items.push(item.clone());
       data.items.sort_by_key(|i| i.created_at);
@@ -436,7 +438,7 @@ impl OutboxStore {
   fn update_item(&self, account_id: &str, updated: OutboxItem) -> Result<OutboxItem, String> {
     self.ensure_loaded(account_id)?;
     {
-      let mut d = self.data.lock().unwrap();
+      let mut d = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
       let data = d.entry(account_id.to_string()).or_insert_with(OutboxData::v1);
       if let Some(existing) = data.items.iter_mut().find(|i| i.id == updated.id) {
         *existing = updated.clone();
@@ -451,7 +453,7 @@ impl OutboxStore {
   async fn update_item_async(&self, account_id: &str, updated: OutboxItem) -> Result<OutboxItem, String> {
     self.ensure_loaded_async(account_id).await?;
     {
-      let mut d = self.data.lock().unwrap();
+      let mut d = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
       let data = d.entry(account_id.to_string()).or_insert_with(OutboxData::v1);
       if let Some(existing) = data.items.iter_mut().find(|i| i.id == updated.id) {
         *existing = updated.clone();
