@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { ErrorBoundary } from "./components/feedback";
+import { OnboardingProvider } from "./hooks/useOnboarding";
 import { enableA11yChecking } from "./utils/a11yTesting";
 import { getAnnouncer } from "./utils/announcer";
 import { registerGlobalErrorHandlers } from "./utils/logger";
@@ -45,6 +46,8 @@ const handleError = (error: Error, errorInfo: React.ErrorInfo) => {
 
 root.render(
   <ErrorBoundary level="page" onError={handleError}>
-    <App />
+    <OnboardingProvider>
+      <App />
+    </OnboardingProvider>
   </ErrorBoundary>
 );

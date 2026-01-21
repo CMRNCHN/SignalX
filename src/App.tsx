@@ -14,6 +14,9 @@ import { usePlugins, usePluginThreadSelection } from "./hooks/usePlugins";
 import { Input, Button, Select, Spinner, Checkbox } from "./components/primitives";
 import { OutboxStatus } from "./components/OutboxStatus";
 import { useBackendEvents } from "./hooks/useBackendEvents";
+import { OnboardingTour } from "./components/OnboardingTour";
+import { useOnboarding } from "./hooks/useOnboarding";
+import { FeatureHint } from "./components/FeatureHint";
 
 type ApiResponse<T> =
   | { success: true; data: T }
@@ -808,6 +811,7 @@ export default function App() {
   });
   const [draftHistory, setDraftHistory] = useState<PendingReply[]>([]);
   const [showWelcome, setShowWelcome] = useState(true);
+  const { isActive: isOnboardingActive, nextStep: onboardingNextStep } = useOnboarding();
   const [searchSender, setSearchSender] = useState("");
   const [searchAfter, setSearchAfter] = useState("");
   const [searchBefore, setSearchBefore] = useState("");
@@ -3700,6 +3704,12 @@ export default function App() {
               setActiveAccount(welcomeAccount);
               setShowWelcome(false);
               addLog(`Activated account ${welcomeAccount} from welcome`);
+              
+              // Start onboarding tour after welcome
+              if (isOnboardingActive) {
+                onboardingNextStep(); // Move from account-select to next step
+              }
+              
               await refreshThreads();
               await refreshAliases();
               await refreshContactMeta();
@@ -3718,8 +3728,19 @@ export default function App() {
       {/* Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       
+      {/* Onboarding Tour */}
+      <OnboardingTour />
+      
       {/* Outbox Status - Real-time message queue feedback */}
-      <OutboxStatus show={true} />
+      <FeatureHint
+        id="outbox-status"
+        title="📤 Message Status"
+        description="Watch your messages here! See when they're queued, sending, or sent successfully."
+        position="left"
+        delay={2000}
+      >
+        <OutboxStatus show={true} />
+      </FeatureHint>
     </div>
   );
 }
