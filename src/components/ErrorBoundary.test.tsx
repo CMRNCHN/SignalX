@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import ErrorBoundary from './ErrorBoundary';
+import { ErrorBoundary } from './feedback';
 
 const ErrorComponent = () => {
   throw new Error('Test error');

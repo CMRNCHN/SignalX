@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from "react";
+import { Input, Button } from "./primitives";
 
 export function NewMessageModal({
   open,
@@ -55,7 +56,7 @@ export function NewMessageModal({
         <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 8 }}>
           Enter a phone number (E.164 recommended, e.g. +12025550123).
         </div>
-        <input
+        <Input
           ref={inputRef}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -64,46 +65,15 @@ export function NewMessageModal({
             if (e.key === "Escape") onCancel();
             if (e.key === "Enter") onCreate();
           }}
-          style={{
-            width: "100%",
-            padding: 10,
-            borderRadius: 10,
-            border: "1px solid #374151",
-            background: "#111827",
-            color: "#e5e7eb",
-          }}
+          fullWidth
         />
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
-          <button
-            onClick={onCancel}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: "1px solid #374151",
-              background: "transparent",
-              color: "#9ca3af",
-              cursor: "pointer",
-              fontSize: 12,
-              fontWeight: 800,
-            }}
-          >
+          <Button variant="ghost" size="sm" onClick={onCancel}>
             Cancel
-          </button>
-          <button
-            onClick={onCreate}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: "1px solid #374151",
-              background: "#111827",
-              color: "#e5e7eb",
-              cursor: "pointer",
-              fontSize: 12,
-              fontWeight: 900,
-            }}
-          >
+          </Button>
+          <Button variant="primary" size="sm" onClick={onCreate}>
             Start
-          </button>
+          </Button>
         </div>
       </div>
     </div>

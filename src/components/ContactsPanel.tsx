@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../utils/tauri';
 import './ContactsPanel.css';
 
 interface Contact {
@@ -23,40 +23,39 @@ const ContactsPanel: React.FC<ContactsPanelProps> = ({ onSelectContact, selected
     setLoading(true);
     setError(null);
     try {
-      const response = await invoke<any>('list_contacts');
-      if (response.success) {
-        // Parse the contacts from the response
-        let parsedContacts: Contact[] = [];
-        
-        if (Array.isArray(response.data)) {
-          parsedContacts = response.data.map((item: any) => ({
-            number: item.number || item.phoneNumber || '',
-            name: item.name || item.displayName || undefined,
-            uuid: item.uuid || undefined,
-          }));
-        } else if (typeof response.data === 'string') {
-          // Try to parse as JSON string
-          try {
-            const parsed = JSON.parse(response.data);
-            if (Array.isArray(parsed)) {
-              parsedContacts = parsed.map((item: any) => ({
-                number: item.number || item.phoneNumber || '',
-                name: item.name || item.displayName || undefined,
-                uuid: item.uuid || undefined,
-              }));
-            }
-          } catch {
-            // If parsing fails, treat as error
-            setError('Failed to parse contacts data');
-          }
+      // Use list_contact_meta which is the proper command
+      const response = await invoke<any>('list_contact_meta');
+      
+      // Handle both wrapped response format and direct array
+      let contactData: any[] = [];
+      if (response && typeof response === 'object') {
+        if (response.success && Array.isArray(response.data)) {
+          contactData = response.data;
+        } else if (Array.isArray(response)) {
+          contactData = response;
+        } else if (Array.isArray(response.data)) {
+          contactData = response.data;
         }
-        
-        setContacts(parsedContacts);
-      } else {
-        setError(response.error || 'Failed to load contacts');
       }
-    } catch (e) {
-      setError(String(e));
+      
+      // Map ContactMeta to Contact format
+      // ContactMeta has: contact_id, display_name, alias, categories, favorite, muted, etc.
+      const parsedContacts: Contact[] = contactData.map((item: any) => {
+        const contactId = item.contact_id || item.number || '';
+        const displayName = item.display_name || item.alias || contactId;
+        
+        return {
+          number: contactId,
+          name: displayName !== contactId ? displayName : undefined,
+          uuid: item.uuid || undefined,
+        };
+      });
+      
+      setContacts(parsedContacts);
+    } catch (e: any) {
+      const errorMsg = e?.message || String(e);
+      setError(`Failed to load contacts: ${errorMsg}`);
+      console.error('ContactsPanel loadContacts error:', e);
     } finally {
       setLoading(false);
     }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../utils/tauri';
+import { Input, Badge, Button } from './primitives';
 import './ThreadsPanel.css';
 
 interface Thread {
@@ -25,50 +26,45 @@ const ThreadsPanel: React.FC<ThreadsPanelProps> = ({ onSelectThread, selectedThr
     setLoading(true);
     setError(null);
     try {
-      const response = await invoke<any>('signal_list_threads');
-      if (response.success) {
-        // Parse the threads from the response
-        let parsedThreads: Thread[] = [];
-        
-        if (Array.isArray(response.data)) {
-          parsedThreads = response.data.map((item: any, idx: number) => {
-            const threadId = item.id || item.threadId || item.number || `thread-${idx}`;
-            const name = item.name || item.displayName || item.number || threadId;
-            return {
-              id: threadId,
-              name: name,
-              lastMessage: item.lastMessage || item.preview || undefined,
-              timestamp: item.timestamp || item.lastMessageTimestamp || undefined,
-              unreadCount: item.unreadCount || 0,
-            };
-          });
-        } else if (typeof response.data === 'string') {
-          try {
-            const parsed = JSON.parse(response.data);
-            if (Array.isArray(parsed)) {
-              parsedThreads = parsed.map((item: any, idx: number) => {
-                const threadId = item.id || item.threadId || item.number || `thread-${idx}`;
-                const name = item.name || item.displayName || item.number || threadId;
-                return {
-                  id: threadId,
-                  name: name,
-                  lastMessage: item.lastMessage || item.preview || undefined,
-                  timestamp: item.timestamp || item.lastMessageTimestamp || undefined,
-                  unreadCount: item.unreadCount || 0,
-                };
-              });
-            }
-          } catch {
-            setError('Failed to parse threads data');
-          }
+      // Use get_threads command which returns ThreadSummary[]
+      const response = await invoke<any>('get_threads');
+      
+      // Handle both wrapped response format and direct array
+      let threadData: any[] = [];
+      if (response && typeof response === 'object') {
+        if (response.success && Array.isArray(response.data)) {
+          threadData = response.data;
+        } else if (Array.isArray(response)) {
+          threadData = response;
+        } else if (Array.isArray(response.data)) {
+          threadData = response.data;
         }
-        
-        setThreads(parsedThreads);
-      } else {
-        setError(response.error || 'Failed to load threads');
       }
-    } catch (e) {
-      setError(String(e));
+      
+      // Map ThreadSummary to Thread format
+      const parsedThreads: Thread[] = threadData.map((item: any) => {
+        // ThreadSummary has: id, participants, last_message_timestamp, unread_count, message_count
+        const threadId = item.id || String(item.thread_id || '');
+        // Use first participant as name, or join all participants
+        const participants = item.participants || [];
+        const name = participants.length > 0 
+          ? (participants.length === 1 ? participants[0] : `${participants[0]} +${participants.length - 1}`)
+          : threadId;
+        
+        return {
+          id: threadId,
+          name: name,
+          lastMessage: undefined, // ThreadSummary doesn't include last message content
+          timestamp: item.last_message_timestamp || item.timestamp,
+          unreadCount: item.unread_count || item.unreadCount || 0,
+        };
+      });
+      
+      setThreads(parsedThreads);
+    } catch (e: any) {
+      const errorMsg = e?.message || String(e);
+      setError(`Failed to load threads: ${errorMsg}`);
+      console.error('ThreadsPanel loadThreads error:', e);
     } finally {
       setLoading(false);
     }
@@ -106,22 +102,24 @@ const ThreadsPanel: React.FC<ThreadsPanelProps> = ({ onSelectThread, selectedThr
     <div className="threads-panel panel">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
         <h2>Threads</h2>
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={loading ? '⟳' : '↻'}
+          iconPosition="left"
           onClick={loadThreads}
           disabled={loading}
-          className="refresh-button"
-          title="Refresh threads"
-        >
-          {loading ? '⟳' : '↻'}
-        </button>
+          aria-label="Refresh threads"
+        />
       </div>
 
       <div className="threads-search">
-        <input
+        <Input
           type="text"
           placeholder="Search threads..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
+          fullWidth
         />
       </div>
 
@@ -157,7 +155,9 @@ const ThreadsPanel: React.FC<ThreadsPanelProps> = ({ onSelectThread, selectedThr
                 )}
               </div>
               {thread.unreadCount && thread.unreadCount > 0 && (
-                <div className="thread-unread">{thread.unreadCount}</div>
+                <Badge variant="error" size="sm">
+                  {thread.unreadCount > 99 ? '99+' : thread.unreadCount}
+                </Badge>
               )}
             </div>
           ))

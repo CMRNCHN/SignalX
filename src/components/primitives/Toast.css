@@ -1,0 +1,63 @@
+.sx-toast {
+  min-width: 300px;
+  max-width: 500px;
+  padding: var(--spacing-md);
+  border-radius: var(--border-radius-md);
+  box-shadow: var(--shadow-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-primary);
+  animation: sx-toast-slide-in 0.3s ease-out;
+}
+
+.sx-toast__content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.sx-toast__message {
+  flex: 1;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+}
+
+.sx-toast__close {
+  flex-shrink: 0;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+}
+
+.sx-toast--success {
+  border-color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 10%, var(--color-surface));
+}
+
+.sx-toast--error {
+  border-color: var(--color-error);
+  background: color-mix(in srgb, var(--color-error) 10%, var(--color-surface));
+}
+
+.sx-toast--warning {
+  border-color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 10%, var(--color-surface));
+}
+
+.sx-toast--info {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
+}
+
+@keyframes sx-toast-slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}

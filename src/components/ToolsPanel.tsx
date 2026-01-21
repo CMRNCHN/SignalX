@@ -1,4 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { RuleManagementPanel } from "./automation";
+import { PluginManagementPanel } from "./plugins";
+import { Button, Modal, Textarea } from "./primitives";
 
 export type PendingReply = {
   message_id: string;
@@ -134,6 +137,8 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = (props) => {
   } = props;
 
   const [threadSearch, setThreadSearch] = useState("");
+  const [ruleManagementOpen, setRuleManagementOpen] = useState(false);
+  const [pluginManagementOpen, setPluginManagementOpen] = useState(false);
 
   // UI prefs (stored locally)
   const [uiDensity, setUiDensity] = useState<string>(
@@ -496,7 +501,28 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = (props) => {
       </Card>
 
       <Card title="Automation Rules" defaultOpen={false}>
-        <RulesSection selectedThreadId={selectedThreadId} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <Button
+            variant="primary"
+            size="sm"
+            fullWidth
+            onClick={() => setRuleManagementOpen(true)}
+          >
+            Manage Rules
+          </Button>
+          <RulesSection selectedThreadId={selectedThreadId} />
+        </div>
+      </Card>
+
+      <Card title="Plugins" defaultOpen={false}>
+        <Button
+          variant="primary"
+          size="sm"
+          fullWidth
+          onClick={() => setPluginManagementOpen(true)}
+        >
+          Manage Plugins
+        </Button>
       </Card>
 
       <Card title="Advanced" defaultOpen={false}>
@@ -539,6 +565,28 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = (props) => {
           </div>
         </div>
       </Card>
+
+      <Modal
+        open={ruleManagementOpen}
+        onClose={() => setRuleManagementOpen(false)}
+        title="Automation Rules"
+        size="xl"
+      >
+        <div style={{ height: "70vh", display: "flex", flexDirection: "column" }}>
+          <RuleManagementPanel onClose={() => setRuleManagementOpen(false)} />
+        </div>
+      </Modal>
+
+      <Modal
+        open={pluginManagementOpen}
+        onClose={() => setPluginManagementOpen(false)}
+        title="Plugin Management"
+        size="xl"
+      >
+        <div style={{ height: "70vh", display: "flex", flexDirection: "column" }}>
+          <PluginManagementPanel onClose={() => setPluginManagementOpen(false)} />
+        </div>
+      </Modal>
     </div>
   );
 };
@@ -606,13 +654,20 @@ function RulesSection({ selectedThreadId }: { selectedThreadId: string | null })
 
   const handleTest = async () => {
     if (!activeAccount || !selectedThreadId) return;
-    // TODO: Get message body and from from selected thread
+    // Get the last message from the selected thread for testing
     try {
+      const messages = await invoke<Message[]>("get_thread_messages", {
+        threadId: selectedThreadId,
+      });
+      const lastMessage = messages && messages.length > 0 
+        ? messages[messages.length - 1]
+        : null;
+      
       const response = await invoke<any>("rules_run_once", {
         accountId: activeAccount,
         threadId: selectedThreadId,
-        messageBody: "test message",
-        messageFrom: "+1234567890",
+        messageBody: lastMessage?.content || "test message",
+        messageFrom: lastMessage?.sender || "+1234567890",
       });
       if (response.success) {
         alert(`Rules executed: ${JSON.stringify(response.data)}`);
@@ -629,54 +684,36 @@ function RulesSection({ selectedThreadId }: { selectedThreadId: string | null })
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", gap: 8 }}>
-        <textarea
+        <Textarea
           value={newRuleDsl}
           onChange={(e) => setNewRuleDsl(e.target.value)}
-          placeholder='rule "Auto-Thanks"\nwhen message_in contains "thanks"\nthen draft "You'\''re welcome"'
+          placeholder='rule "Auto-Thanks"&#10;when message_in contains "thanks"&#10;then draft "You are welcome"'
           style={{
             flex: 1,
-            padding: 10,
-            borderRadius: 8,
-            border: "1px solid #374151",
-            background: "#111827",
-            color: "#e5e7eb",
             fontFamily: "monospace",
             fontSize: 12,
             minHeight: 80,
           }}
+          fullWidth
         />
       </div>
       <div style={{ display: "flex", gap: 8 }}>
-        <button
+        <Button
           onClick={handleCreate}
           disabled={!newRuleDsl.trim()}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 8,
-            border: "1px solid #374151",
-            background: "#111827",
-            color: "#e5e7eb",
-            cursor: "pointer",
-            fontSize: 12,
-          }}
+          variant="secondary"
+          size="sm"
         >
           Create Rule
-        </button>
-        <button
+        </Button>
+        <Button
           onClick={handleTest}
           disabled={!selectedThreadId}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 8,
-            border: "1px solid #374151",
-            background: "#111827",
-            color: "#e5e7eb",
-            cursor: "pointer",
-            fontSize: 12,
-          }}
+          variant="secondary"
+          size="sm"
         >
           Run Test
-        </button>
+        </Button>
       </div>
       {loading ? (
         <div style={{ fontSize: 12, color: "#9ca3af" }}>Loading rules...</div>

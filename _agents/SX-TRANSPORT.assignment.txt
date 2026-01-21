@@ -1,0 +1,4 @@
+Harden Signal-CLI + outbox:
+- Ensure all sends go through outbox with retry/backoff and idempotency keys.
+- Ensure receive loop persists events to SQLite and emits stable events.
+- Ensure failures are visible via events/logs.

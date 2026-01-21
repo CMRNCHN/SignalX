@@ -1,0 +1,9 @@
+==== signalx-docs ====
+MISSING_WORKTREE /Users/cameroncohen/Developer/_active/misc/apps/signalx/.worktrees/signalx-docs
+
+==== signalx-tui ====
+MISSING_WORKTREE /Users/cameroncohen/Developer/_active/misc/apps/signalx/.worktrees/signalx-tui
+
+==== signalx-ai ====
+MISSING_WORKTREE /Users/cameroncohen/Developer/_active/misc/apps/signalx/.worktrees/signalx-ai
+

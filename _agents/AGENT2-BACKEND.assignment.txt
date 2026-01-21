@@ -1,0 +1,28 @@
+Agent 2: Backend Core & Rust Specialist - Stage 3: Integration & Polish
+
+INTEGRATION TASKS:
+1. Integrate error handling system throughout backend:
+   - Replace all error returns with AppError types from error.rs
+   - Use result_to_json helper for consistent API responses
+   - Add proper error context and user-friendly messages
+
+2. Enhance API stability:
+   - Review all Tauri commands for consistency
+   - Ensure all commands use proper error handling
+   - Add input validation where missing
+
+3. Improve data persistence:
+   - Ensure all data operations use Storage layer
+   - Add transaction support where needed
+   - Implement proper backup/recovery
+
+4. Event system enhancement:
+   - Ensure all state changes emit events
+   - Add event types for all major operations
+   - Document event payloads
+
+DELIVERABLES:
+- All backend errors use AppError system
+- All commands have proper error handling
+- Event system fully documented
+- Data persistence is robust and tested

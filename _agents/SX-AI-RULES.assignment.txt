@@ -1,0 +1,5 @@
+Rules + AI pipeline:
+- Rules trigger on MessageReceived.
+- AI generates DraftReady only (no direct send).
+- Add confidence gating and enforce draft-only invariant in backend.
+- Emit structured events for drafts and rule decisions.

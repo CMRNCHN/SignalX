@@ -1,79 +1,84 @@
-import React, { useEffect } from 'react';
+import React, { useEffect } from "react";
+import { ErrorMessage } from "./ErrorMessage";
+import { Button } from "./primitives";
+import "./Toast.css";
 
-interface ToastProps {
+export type ToastType = "error" | "success" | "info" | "warning";
+
+export interface Toast {
+  id: string;
+  type: ToastType;
   message: string;
-  type?: 'success' | 'error' | 'info';
   duration?: number;
-  onClose: () => void;
 }
 
-const Toast: React.FC<ToastProps> = ({ message, type = 'info', duration = 3000, onClose }) => {
+interface ToastProps {
+  toast: Toast;
+  onDismiss: (id: string) => void;
+}
+
+export const ToastComponent: React.FC<ToastProps> = ({ toast, onDismiss }) => {
   useEffect(() => {
-    const timer = setTimeout(() => {
-      onClose();
-    }, duration);
+    if (toast.duration && toast.duration > 0) {
+      const timer = setTimeout(() => {
+        onDismiss(toast.id);
+      }, toast.duration);
+      return () => clearTimeout(timer);
+    }
+  }, [toast.id, toast.duration, onDismiss]);
 
-    return () => clearTimeout(timer);
-  }, [duration, onClose]);
-
-  const colors = {
-    success: { bg: '#A9E8D9', text: '#1A1C1F' },
-    error: { bg: '#FFB1A8', text: '#1A1C1F' },
-    info: { bg: '#A8D0FF', text: '#1A1C1F' },
+  const handleDismiss = () => {
+    onDismiss(toast.id);
   };
 
-  const color = colors[type];
+  if (toast.type === "error") {
+    return <ErrorMessage error={toast.message} onDismiss={handleDismiss} variant="toast" />;
+  }
+
+  const typeClass = `toast-${toast.type}`;
+  const icon = {
+    success: "✓",
+    info: "ℹ️",
+    warning: "⚠️",
+    error: "⚠️",
+  }[toast.type];
 
   return (
-    <div
-      role="alert"
-      aria-live="polite"
-      style={{
-        position: 'fixed',
-        bottom: '24px',
-        right: '24px',
-        backgroundColor: color.bg,
-        color: color.text,
-        padding: '12px 16px',
-        borderRadius: '8px',
-        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-        zIndex: 10000,
-        maxWidth: '300px',
-        animation: 'slideIn 0.3s ease-out',
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: '0.9rem' }}>{message}</span>
-        <button
-          onClick={onClose}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: color.text,
-            cursor: 'pointer',
-            marginLeft: '12px',
-            fontSize: '1.2rem',
-            opacity: 0.7,
-          }}
+    <div className={`toast ${typeClass}`} role="alert">
+      <div className="toast-content">
+        <span className="toast-icon" aria-hidden="true">
+          {icon}
+        </span>
+        <span className="toast-message">{toast.message}</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleDismiss}
+          className="toast-dismiss"
+          aria-label="Dismiss notification"
         >
           ×
-        </button>
+        </Button>
       </div>
-      <style>{`
-        @keyframes slideIn {
-          from {
-            transform: translateX(100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
-        }
-      `}</style>
     </div>
   );
 };
 
-export default Toast;
+interface ToastContainerProps {
+  toasts: Toast[];
+  onDismiss: (id: string) => void;
+}
 
+export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, onDismiss }) => {
+  if (toasts.length === 0) return null;
+
+  return (
+    <div className="toast-container" aria-live="polite" aria-atomic="true">
+      {toasts.map((toast) => (
+        <ToastComponent key={toast.id} toast={toast} onDismiss={onDismiss} />
+      ))}
+    </div>
+  );
+};
+
+export default ToastContainer;

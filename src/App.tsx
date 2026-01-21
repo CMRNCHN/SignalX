@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { invoke, listen, isTauriAvailable } from "./utils/tauri";
 import "./App.css";
 import { ToolsPanel } from "./components/ToolsPanel";
 import { SettingsModal } from "./components/SettingsModal";
 import { NewMessageModal } from "./components/NewMessageModal";
+import SkipLink from "./components/SkipLink";
+import { ToastContainer } from "./components/Toast";
+import { useToast } from "./hooks/useToast";
+import { logWithScope } from "./utils/logger";
+import { getUserFriendlyMessage } from "./utils/errorHandler";
+import { useAutomation } from "./hooks/useAutomation";
+import { usePlugins, usePluginThreadSelection } from "./hooks/usePlugins";
+import { Input, Button, Select, Spinner, Checkbox } from "./components/primitives";
+import { OutboxStatus } from "./components/OutboxStatus";
+import { useBackendEvents } from "./hooks/useBackendEvents";
 
 type ApiResponse<T> =
   | { success: true; data: T }
@@ -590,27 +599,23 @@ function WelcomeOverlay({
                   </div>
                 )}
               </div>
-              <button
+              <Button
                 onClick={onEnter}
                 disabled={!canEnter}
+                variant="primary"
+                size="lg"
                 style={{
-                  padding: "12px 16px",
-                  borderRadius: 12,
-                  border: "1px solid #38bdf8",
+                  minWidth: 140,
                   background: !canEnter
-                    ? "#1f2937"
+                    ? undefined
                     : "linear-gradient(135deg, #0ea5e9, #22d3ee)",
-                  color: !canEnter ? "#9ca3af" : "#0b0d10",
-                  fontWeight: 700,
-                  cursor: !canEnter ? "not-allowed" : "pointer",
                   boxShadow: !canEnter
                     ? "none"
                     : "0 10px 30px rgba(14,165,233,0.35)",
-                  minWidth: 140,
                 }}
               >
                 Enter
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -628,11 +633,21 @@ function fmtTime(ts: number) {
 }
 
 export default function App() {
-  const [log, setLog] = useState<string[]>([]);
-  const addLog = (msg: string) => {
-    const t = new Date().toLocaleTimeString();
-    setLog((prev) => [...prev.slice(-199), `[${t}] ${msg}`]);
-  };
+  const { toasts, dismissToast, showError, showSuccess, showInfo } = useToast();
+  const log = logWithScope("App");
+  const addLog = (msg: string) => log("info", msg);
+  const [tauriAvailable, setTauriAvailable] = useState(isTauriAvailable());
+
+  useEffect(() => {
+    if (tauriAvailable) return;
+    const timer = window.setInterval(() => {
+      if (isTauriAvailable()) {
+        setTauriAvailable(true);
+        addLog("Tauri became available");
+      }
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, [tauriAvailable]);
 
   const [accounts, setAccounts] = useState<string[]>([]);
   const [activeAccount, setActiveAccount] = useState<string | null>(null);
@@ -645,6 +660,48 @@ export default function App() {
   const [composerText, setComposerText] = useState("");
   const [sending, setSending] = useState(false);
 
+  // Initialize plugins
+  usePlugins();
+  
+  // Notify plugins when thread selection changes
+  usePluginThreadSelection(selectedThreadId);
+
+  // Initialize automation
+  useAutomation((draft) => {
+    // When automation generates a draft, show it in the UI
+    if (selectedThreadId && draft.threadId === selectedThreadId) {
+      setComposerText(draft.content);
+      showInfo(`Automation draft ready (confidence: ${(draft.confidence * 100).toFixed(0)}%)`);
+    }
+  });
+
+  // Backend event listeners - Real-time updates from Rust backend
+  useBackendEvents({
+    onMessageSent: (event) => {
+      log.info('Message sent successfully', event);
+      addLog(`✓ Message sent to ${event.recipient}`);
+    },
+    onOutboxSendFailed: (event) => {
+      log.warn('Message send failed', event);
+      if (event.retry_count >= event.max_retries) {
+        addLog(`✗ Message failed: ${event.error}`);
+      }
+    },
+    onOutboxMovedToDLQ: (event) => {
+      log.error('Message moved to DLQ', event);
+      addLog(`⚠ Message failed permanently: ${event.reason}`);
+    },
+    onThreadsUpdated: async (threads) => {
+      log.info('Threads updated from event', threads.length);
+      setThreads(threads);
+    },
+    onMessageReceived: async (message) => {
+      log.info('New message received', message);
+      await refreshThreads();
+      addLog('📨 New message received');
+    },
+  });
+
   const [aliases, setAliases] = useState<AliasMap>({});
   const [aliasNumber, setAliasNumber] = useState("");
   const [aliasValue, setAliasValue] = useState("");
@@ -655,6 +712,53 @@ export default function App() {
   const [groupMeta, setGroupMeta] = useState<Record<string, GroupMeta>>({});
   const [groupCategories, setGroupCategories] = useState<string[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Feature flags
+  const [features, setFeatures] = useState<Record<string, boolean>>({});
+  const fe = (key: string, def: boolean) => (features[key] ?? def);
+
+  useEffect(() => {
+    if (!tauriAvailable) {
+      const devAccount = localStorage.getItem("signalx.dev.account");
+      if (devAccount) {
+        setAccounts([devAccount]);
+        setActiveAccount(devAccount);
+        addLog("Tauri unavailable; using dev account fallback");
+      } else {
+        setAccounts([]);
+        setActiveAccount(null);
+        addLog("Tauri unavailable; skipping backend boot");
+      }
+      return;
+    }
+    let unlisten: null | (() => void) = null;
+    (async () => {
+      try {
+        const res: any = await invoke("get_feature_flags");
+        const flags = (res?.ok?.flags ?? res?.flags ?? {}) as Record<string, boolean>;
+        setFeatures(flags);
+      } catch (err) {
+        console.warn('Failed to load feature flags:', err);
+      }
+      try {
+        const u = await listen<any>("features-updated", (e) => {
+          const flags = (e?.payload?.flags ?? {}) as Record<string, boolean>;
+          setFeatures(flags);
+        });
+        unlisten = u;
+      } catch (err) {
+        console.warn('Failed to set up feature flags listener:', err);
+      }
+    })();
+    return () => {
+      try { 
+        if (unlisten) unlisten(); 
+      } catch (err) {
+        console.warn('Failed to cleanup feature flags listener:', err);
+      }
+    };
+  }, []);
+
   const [settingsContactId, setSettingsContactId] = useState<string | null>(null);
   const [settingsGroupId, setSettingsGroupId] = useState<string | null>(null);
   const [newMessageOpen, setNewMessageOpen] = useState(false);
@@ -703,14 +807,13 @@ export default function App() {
     failed: 0,
   });
   const [draftHistory, setDraftHistory] = useState<PendingReply[]>([]);
-  const [toast, setToast] = useState<string | null>(null);
   const [showWelcome, setShowWelcome] = useState(true);
   const [searchSender, setSearchSender] = useState("");
   const [searchAfter, setSearchAfter] = useState("");
   const [searchBefore, setSearchBefore] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(340);
   const [dragging, setDragging] = useState<"sidebar" | "tools" | null>(null);
-  const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
+  const [, setDiagnostics] = useState<Diagnostics | null>(null);
   const [receiveState, setReceiveState] = useState<ReceiveLoopState | null>(
     null
   );
@@ -1403,6 +1506,7 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (!tauriAvailable) return;
     boot();
     // listeners
     (async () => {
@@ -1410,43 +1514,90 @@ export default function App() {
         const u1 = await listen<Message>("message-received", async (event) => {
           const msg = event.payload;
           addLog(`event message-received: ${msg.thread_id} ${msg.id}`);
-          // If currently viewing this thread, reload its messages for canonical backend state
+          
           const cur = selectedThreadIdRef.current;
+          
+          // If currently viewing this thread, reload its messages immediately for real-time display
           if (cur && msg.thread_id === cur) {
+            // Add message optimistically for immediate UI update
+            setMessages((prev) => {
+              // Check if message already exists (avoid duplicates)
+              const exists = prev.some((m) => m.id === msg.id);
+              if (exists) return prev;
+              return [...prev, msg];
+            });
+            // Then reload from backend for canonical state
             await loadThreadMessages(cur);
+          } else {
+            // For background threads, just refresh thread list to update unread counts
+            // This is more efficient than loading all messages
+            await refreshThreads();
+            
+            // Show notification for messages in other threads
+            if (msg.sender && msg.content) {
+              const senderName = msg.sender;
+              const preview = msg.content.length > 50 
+                ? msg.content.substring(0, 50) + "..." 
+                : msg.content;
+              showInfo(`New message from ${senderName}: ${preview}`);
+            }
           }
-          await refreshThreads();
         });
         const u2 = await listen<Message>("message-sent", async (event) => {
           const msg = event.payload;
           addLog(`event message-sent: ${msg.thread_id} ${msg.id}`);
           const cur = selectedThreadIdRef.current;
+          
+          // Remove any optimistic messages for this thread
+          setMessages((prev) => prev.filter((m) => !m.id.startsWith("temp-")));
+          
           if (cur && msg.thread_id === cur) {
+            // Reload messages to get the real message from backend
             await loadThreadMessages(cur);
+          } else {
+            // Still refresh threads to update unread counts, etc.
+            await refreshThreads();
           }
-          await refreshThreads();
         });
         const u3 = await listen<AccountChangedPayload>(
           "account-changed",
           async (event) => {
           const { account_id } = event.payload;
           addLog(`event account-changed: ${account_id}`);
+          
+          // Clean up all state related to the previous account
           setActiveAccount(account_id);
           setSelectedThreadId(null);
           setMessages([]);
-            setPendingReplies([]);
-            setDraftHistory([]);
-            setOutboxItems([]);
-            setExportMenuOpen(false);
-          await refreshThreads();
-          await refreshAliases();
-            await refreshContactMeta();
-            await refreshCategories();
-            await refreshGroupMeta();
-            await refreshGroupCategories();
-          await refreshOutboxSummary();
-          await refreshDiagnostics();
-          await refreshReceiveLoopState();
+          setPendingReplies([]);
+          setDraftHistory([]);
+          setOutboxItems([]);
+          setExportMenuOpen(false);
+          setComposerText(""); // Clear composer
+          setSearchResults([]); // Clear search results
+          setContactPhotoUrls({}); // Clear photo cache
+          
+          // Update refs immediately for consistency
+          selectedThreadIdRef.current = null;
+          activeAccountRef.current = account_id;
+          
+          // Refresh all data for the new account
+          try {
+            await Promise.all([
+              refreshThreads(),
+              refreshAliases(),
+              refreshContactMeta(),
+              refreshCategories(),
+              refreshGroupMeta(),
+              refreshGroupCategories(),
+              refreshOutboxSummary(),
+              refreshDiagnostics(),
+              refreshReceiveLoopState(),
+            ]);
+          } catch (e: any) {
+            addLog(`Error refreshing data after account change: ${e?.message || e}`);
+            // Continue even if some refreshes fail
+          }
           }
         );
         const u4 = await listen<any>("outbox-updated", async (event) => {
@@ -1627,13 +1778,32 @@ export default function App() {
   };
 
   const sendMessage = async () => {
-    if (!selectedThreadId) return;
+    if (!selectedThreadId) {
+      showError("Please select a conversation first");
+      return;
+    }
     const text = composerText.trim();
-    if (!text) return;
+    if (!text) {
+      showError("Message cannot be empty");
+      return;
+    }
 
+    // Optimistic UI update: add message to UI immediately
+    const optimisticMessage: Message = {
+      id: `temp-${Date.now()}`,
+      thread_id: selectedThreadId,
+      timestamp: Date.now(),
+      sender: activeAccountRef.current || "",
+      recipient: null,
+      content: text,
+      direction: "Outgoing",
+    };
+    setMessages((prev) => [...prev, optimisticMessage]);
+    setComposerText("");
     setSending(true);
+
     try {
-      await unwrap<any>(
+      const result = await unwrap<any>(
         invoke("queue_outgoing_message", {
           threadId: selectedThreadId,
           recipient: "",
@@ -1641,10 +1811,36 @@ export default function App() {
         }),
         "queue_outgoing_message"
       );
-      setComposerText("");
+      
+      // Refresh outbox to show queued message
+      await refreshOutbox(selectedThreadId);
+      await refreshOutboxSummary();
+      
+      showSuccess("Message queued for sending");
       addLog("Queued message for send");
+      
+      // The message-sent event will update the UI with the real message
+      // Remove optimistic message when real one arrives
     } catch (e: any) {
-      addLog(String(e?.message || e));
+      // Remove optimistic message on error
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticMessage.id));
+      
+      const errorMsg = getUserFriendlyMessage(e);
+      
+      // Enhanced error handling for specific error types
+      if (errorMsg.toLowerCase().includes("thread_id") || errorMsg.toLowerCase().includes("thread")) {
+        showError("Invalid conversation. Please select a valid conversation.");
+      } else if (errorMsg.toLowerCase().includes("account") || errorMsg.toLowerCase().includes("active")) {
+        showError("No active account. Please select an account first.");
+      } else if (errorMsg.toLowerCase().includes("network") || errorMsg.toLowerCase().includes("connection")) {
+        showError("Network error. Message will be retried automatically.");
+      } else {
+        showError(`Failed to send message: ${errorMsg}`);
+      }
+      
+      addLog(`Send error: ${errorMsg}`);
+      // Restore text to composer on error
+      setComposerText(text);
     } finally {
       setSending(false);
     }
@@ -1700,8 +1896,13 @@ export default function App() {
         "search_messages"
       );
       setSearchResults(res || []);
+      if (res && res.length === 0) {
+        showInfo("No messages found");
+      }
     } catch (e: any) {
-      addLog(String(e?.message || e));
+      const errorMsg = getUserFriendlyMessage(e);
+      showError(`Search failed: ${errorMsg}`);
+      addLog(`Search error: ${errorMsg}`);
     } finally {
       setSearching(false);
     }
@@ -1786,12 +1987,11 @@ export default function App() {
       );
       setExportResult(result);
       addLog(`Exported ${result.message_count} messages to ${result.path}`);
-      setToast(
+      showSuccess(
         `Exported ${
           result.message_count
         } messages (${result.format.toUpperCase()}) to ${result.path}`
       );
-      window.setTimeout(() => setToast(null), 5500);
     } catch (e: any) {
       addLog(String(e?.message || e));
     } finally {
@@ -2004,8 +2204,14 @@ export default function App() {
         overflow: "hidden",
       }}
     >
+      {/* Accessibility: Skip Navigation Links */}
+      <SkipLink href="#sidebar">Skip to sidebar</SkipLink>
+      <SkipLink href="#main-content">Skip to main content</SkipLink>
+      <SkipLink href="#message-composer">Skip to message composer</SkipLink>
+
       {/* Sidebar */}
       <div
+        id="sidebar"
         style={{
           width: sidebarWidth,
           minWidth: 240,
@@ -2067,40 +2273,25 @@ export default function App() {
               alignItems: "center",
             }}
           >
-            <select
+            <Select
               value={activeAccount || ""}
               onChange={(e) => onAccountChange(e.target.value)}
-              style={{
-                flex: 1,
-                padding: 8,
-                borderRadius: 8,
-                border: "1px solid #374151",
-                background: "#111827",
-                color: "#e5e7eb",
-              }}
-            >
-              <option value="" disabled>
-                Select account…
-              </option>
-              {accounts.map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
-            </select>
-            <button
+              options={[
+                { value: "", label: "Select account…", disabled: true },
+                ...accounts.map((a) => ({ value: a, label: a })),
+              ]}
+              fullWidth
+              size="sm"
+            />
+            <Button
               onClick={() => boot()}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 8,
-                border: "1px solid #374151",
-                background: "#111827",
-                color: "#e5e7eb",
-                cursor: "pointer",
-              }}
+              variant="secondary"
+              size="sm"
+              icon="↻"
+              iconPosition="left"
             >
-              ↻
-            </button>
+              Boot
+            </Button>
           </div>
 
           {/* Navigation tabs */}
@@ -2117,7 +2308,7 @@ export default function App() {
               }}
             >
               {(["contacts", "groups", "threads"] as const).map((t) => (
-                <button
+                <Button
                   key={t}
                   onClick={() => {
                     setNavTab(t);
@@ -2125,61 +2316,38 @@ export default function App() {
                     setContactFieldOpen(false);
                     setGroupFieldOpen(false);
                   }}
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: 8,
-                    border: "none",
-                    background: navTab === t ? "#111827" : "transparent",
-                    color: navTab === t ? "#e5e7eb" : "#9ca3af",
-                    cursor: "pointer",
-                    fontSize: 12,
-                    fontWeight: 700,
-                  }}
+                  variant={navTab === t ? "secondary" : "ghost"}
+                  size="sm"
                 >
                   {t === "contacts"
                     ? "Contacts"
                     : t === "groups"
                     ? "Groups"
                     : "Threads"}
-                </button>
+                </Button>
               ))}
             </div>
 
             {navTab === "contacts" || navTab === "groups" ? (
               <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-                <input
+                <Input
                   value={peopleQuery}
                   onChange={(e) => setPeopleQuery(e.target.value)}
                   placeholder="Search people & groups"
-                  style={{
-                    flex: 1,
-                    padding: 10,
-                    borderRadius: 8,
-                    border: "1px solid #374151",
-                    background: "#111827",
-                    color: "#e5e7eb",
-                  }}
+                  fullWidth
                 />
                 {navTab === "contacts" ? (
-                  <button
+                  <Button
                     onClick={() => {
                       setNewMessageNumber("");
                       setNewMessageOpen(true);
                     }}
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: 8,
-                      border: "1px solid #374151",
-                      background: "#111827",
-                      color: "#e5e7eb",
-                      cursor: "pointer",
-                      fontSize: 12,
-                      fontWeight: 900,
-                    }}
+                    variant="secondary"
+                    size="sm"
                     title="New message"
                   >
                     New
-                  </button>
+                  </Button>
                 ) : null}
               </div>
             ) : (
@@ -2202,61 +2370,37 @@ export default function App() {
             {navTab === "contacts" ? (
               <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <select
+                  <Select
                     value={contactsSort}
                     onChange={(e) => setContactsSort(e.target.value as any)}
-                    style={{
-                      flex: 1,
-                      padding: 8,
-                      borderRadius: 8,
-                      border: "1px solid #374151",
-                      background: "#0b0d10",
-                      color: "#e5e7eb",
-                      fontSize: 12,
-                    }}
-                  >
-                    <option value="smart">Sort: Favorites/Unread/Last (default)</option>
-                    <option value="name">Sort: Name A–Z</option>
-                  </select>
-                  <select
+                    options={[
+                      { value: "smart", label: "Sort: Favorites/Unread/Last (default)" },
+                      { value: "name", label: "Sort: Name A–Z" },
+                    ]}
+                    size="sm"
+                    fullWidth
+                  />
+                  <Select
                     value={filterCategory}
                     onChange={(e) => setFilterCategory(e.target.value)}
-                    style={{
-                      flex: 1,
-                      padding: 8,
-                      borderRadius: 8,
-                      border: "1px solid #374151",
-                      background: "#0b0d10",
-                      color: "#e5e7eb",
-                      fontSize: 12,
-                    }}
-                  >
-                    <option value="">Category</option>
-                    {categories.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                  <button
+                    options={[
+                      { value: "", label: "Category" },
+                      ...categories.map((c) => ({ value: c, label: c })),
+                    ]}
+                    size="sm"
+                    fullWidth
+                  />
+                  <Button
                     onClick={() => setContactFieldOpen((v) => !v)}
-                    style={{
-                      padding: 8,
-                      borderRadius: 8,
-                      border: "1px solid #374151",
-                      background: contactFieldKey.trim() || contactFieldValue.trim() ? "#111827" : "#0b0d10",
-                      color: "#e5e7eb",
-                      fontSize: 12,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                    }}
+                    variant={contactFieldKey.trim() || contactFieldValue.trim() ? "secondary" : "ghost"}
+                    size="sm"
                     title="Filter by custom field"
                   >
                     Field
                     {contactFieldKey.trim() || contactFieldValue.trim()
                       ? `: ${contactFieldKey.trim() || "Any"}${contactFieldValue.trim() ? ` contains "${contactFieldValue.trim()}"` : ""}`
                       : ""}
-                  </button>
+                  </Button>
                 </div>
                 {contactFieldOpen ? (
                   <div
@@ -2271,140 +2415,102 @@ export default function App() {
                       alignItems: "center",
                     }}
                   >
-                    <select
+                    <Select
                       value={contactFieldKey}
                       onChange={(e) => setContactFieldKey(e.target.value)}
-                      style={{
-                        padding: 8,
-                        borderRadius: 8,
-                        border: "1px solid #374151",
-                        background: "#111827",
-                        color: "#e5e7eb",
-                        fontSize: 12,
-                      }}
-                    >
-                      <option value="">Any field</option>
-                      {contactFieldKeys.map((k) => (
-                        <option key={k} value={k}>
-                          {k}
-                        </option>
-                      ))}
-                    </select>
-                    <input
+                      options={[
+                        { value: "", label: "Any field" },
+                        ...contactFieldKeys.map((k) => ({ value: k, label: k })),
+                      ]}
+                      size="sm"
+                    />
+                    <Input
                       value={contactFieldValue}
                       onChange={(e) => setContactFieldValue(e.target.value)}
                       placeholder="Value contains…"
-                      style={{
-                        padding: 8,
-                        borderRadius: 8,
-                        border: "1px solid #374151",
-                        background: "#111827",
-                        color: "#e5e7eb",
-                        fontSize: 12,
-                      }}
+                      size="sm"
                     />
-                    <button
+                    <Button
                       onClick={() => {
                         setContactFieldKey("");
                         setContactFieldValue("");
                         setContactFieldOpen(false);
                       }}
-                      style={{
-                        padding: "8px 10px",
-                        borderRadius: 8,
-                        border: "1px solid #374151",
-                        background: "#0b0d10",
-                        color: "#9ca3af",
-                        fontSize: 12,
-                        cursor: "pointer",
-                      }}
+                      variant="ghost"
+                      size="sm"
                       title="Clear field filter"
                     >
                       Clear
-                    </button>
+                    </Button>
                   </div>
                 ) : null}
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 12, color: "#e5e7eb" }}>
-                  <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <input type="checkbox" checked={filterFavoritesOnly} onChange={(e) => setFilterFavoritesOnly(e.target.checked)} />
-                    Favorites
-                  </label>
-                  <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <input type="checkbox" checked={filterUnreadOnly} onChange={(e) => setFilterUnreadOnly(e.target.checked)} />
-                    Unread
-                  </label>
-                  <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <input type="checkbox" checked={filterHasPhoto} onChange={(e) => setFilterHasPhoto(e.target.checked)} />
-                    Has photo
-                  </label>
-                  <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <input type="checkbox" checked={filterHasAppleLink} onChange={(e) => setFilterHasAppleLink(e.target.checked)} />
-                    Apple linked
-                  </label>
-                  <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <input type="checkbox" checked={filterShowMuted} onChange={(e) => setFilterShowMuted(e.target.checked)} />
-                    Show muted
-                  </label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 12 }}>
+                  <Checkbox
+                    checked={filterFavoritesOnly}
+                    onChange={(e) => setFilterFavoritesOnly(e.target.checked)}
+                    label="Favorites"
+                    size="sm"
+                  />
+                  <Checkbox
+                    checked={filterUnreadOnly}
+                    onChange={(e) => setFilterUnreadOnly(e.target.checked)}
+                    label="Unread"
+                    size="sm"
+                  />
+                  <Checkbox
+                    checked={filterHasPhoto}
+                    onChange={(e) => setFilterHasPhoto(e.target.checked)}
+                    label="Has photo"
+                    size="sm"
+                  />
+                  <Checkbox
+                    checked={filterHasAppleLink}
+                    onChange={(e) => setFilterHasAppleLink(e.target.checked)}
+                    label="Apple linked"
+                    size="sm"
+                  />
+                  <Checkbox
+                    checked={filterShowMuted}
+                    onChange={(e) => setFilterShowMuted(e.target.checked)}
+                    label="Show muted"
+                    size="sm"
+                  />
                 </div>
               </div>
             ) : navTab === "groups" ? (
               <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <select
+                  <Select
                     value={groupsSort}
                     onChange={(e) => setGroupsSort(e.target.value as any)}
-                    style={{
-                      flex: 1,
-                      padding: 8,
-                      borderRadius: 8,
-                      border: "1px solid #374151",
-                      background: "#0b0d10",
-                      color: "#e5e7eb",
-                      fontSize: 12,
-                    }}
-                  >
-                    <option value="smart">Sort: Favorites/Unread/Last (default)</option>
-                    <option value="name">Sort: Name A–Z</option>
-                  </select>
-                  <select
+                    options={[
+                      { value: "smart", label: "Sort: Favorites/Unread/Last (default)" },
+                      { value: "name", label: "Sort: Name A–Z" },
+                    ]}
+                    size="sm"
+                    fullWidth
+                  />
+                  <Select
                     value={groupFilterCategory}
                     onChange={(e) => setGroupFilterCategory(e.target.value)}
-                    style={{
-                      flex: 1,
-                      padding: 8,
-                      borderRadius: 8,
-                      border: "1px solid #374151",
-                      background: "#0b0d10",
-                      color: "#e5e7eb",
-                      fontSize: 12,
-                    }}
-                  >
-                    <option value="">Category</option>
-                    {groupCategories.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                  <button
+                    options={[
+                      { value: "", label: "Category" },
+                      ...groupCategories.map((c) => ({ value: c, label: c })),
+                    ]}
+                    size="sm"
+                    fullWidth
+                  />
+                  <Button
                     onClick={() => setGroupFieldOpen((v) => !v)}
-                    style={{
-                      padding: 8,
-                      borderRadius: 8,
-                      border: "1px solid #374151",
-                      background: groupFieldKey.trim() || groupFieldValue.trim() ? "#111827" : "#0b0d10",
-                      color: "#e5e7eb",
-                      fontSize: 12,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                    }}
+                    variant={groupFieldKey.trim() || groupFieldValue.trim() ? "secondary" : "ghost"}
+                    size="sm"
                     title="Filter by custom field"
                   >
                     Field
                     {groupFieldKey.trim() || groupFieldValue.trim()
                       ? `: ${groupFieldKey.trim() || "Any"}${groupFieldValue.trim() ? ` contains "${groupFieldValue.trim()}"` : ""}`
                       : ""}
-                  </button>
+                  </Button>
                 </div>
                 {groupFieldOpen ? (
                   <div
@@ -2419,72 +2525,54 @@ export default function App() {
                       alignItems: "center",
                     }}
                   >
-                    <select
+                    <Select
                       value={groupFieldKey}
                       onChange={(e) => setGroupFieldKey(e.target.value)}
-                      style={{
-                        padding: 8,
-                        borderRadius: 8,
-                        border: "1px solid #374151",
-                        background: "#111827",
-                        color: "#e5e7eb",
-                        fontSize: 12,
-                      }}
-                    >
-                      <option value="">Any field</option>
-                      {groupFieldKeys.map((k) => (
-                        <option key={k} value={k}>
-                          {k}
-                        </option>
-                      ))}
-                    </select>
-                    <input
+                      options={[
+                        { value: "", label: "Any field" },
+                        ...groupFieldKeys.map((k) => ({ value: k, label: k })),
+                      ]}
+                      size="sm"
+                    />
+                    <Input
                       value={groupFieldValue}
                       onChange={(e) => setGroupFieldValue(e.target.value)}
                       placeholder="Value contains…"
-                      style={{
-                        padding: 8,
-                        borderRadius: 8,
-                        border: "1px solid #374151",
-                        background: "#111827",
-                        color: "#e5e7eb",
-                        fontSize: 12,
-                      }}
+                      size="sm"
                     />
-                    <button
+                    <Button
                       onClick={() => {
                         setGroupFieldKey("");
                         setGroupFieldValue("");
                         setGroupFieldOpen(false);
                       }}
-                      style={{
-                        padding: "8px 10px",
-                        borderRadius: 8,
-                        border: "1px solid #374151",
-                        background: "#0b0d10",
-                        color: "#9ca3af",
-                        fontSize: 12,
-                        cursor: "pointer",
-                      }}
+                      variant="ghost"
+                      size="sm"
                       title="Clear field filter"
                     >
                       Clear
-                    </button>
+                    </Button>
                   </div>
                 ) : null}
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 12, color: "#e5e7eb" }}>
-                  <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <input type="checkbox" checked={groupFilterFavoritesOnly} onChange={(e) => setGroupFilterFavoritesOnly(e.target.checked)} />
-                    Favorites
-                  </label>
-                  <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <input type="checkbox" checked={groupFilterUnreadOnly} onChange={(e) => setGroupFilterUnreadOnly(e.target.checked)} />
-                    Unread
-                  </label>
-                  <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <input type="checkbox" checked={groupFilterShowMuted} onChange={(e) => setGroupFilterShowMuted(e.target.checked)} />
-                    Show muted
-                  </label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 12 }}>
+                  <Checkbox
+                    checked={groupFilterFavoritesOnly}
+                    onChange={(e) => setGroupFilterFavoritesOnly(e.target.checked)}
+                    label="Favorites"
+                    size="sm"
+                  />
+                  <Checkbox
+                    checked={groupFilterUnreadOnly}
+                    onChange={(e) => setGroupFilterUnreadOnly(e.target.checked)}
+                    label="Unread"
+                    size="sm"
+                  />
+                  <Checkbox
+                    checked={groupFilterShowMuted}
+                    onChange={(e) => setGroupFilterShowMuted(e.target.checked)}
+                    label="Show muted"
+                    size="sm"
+                  />
                 </div>
               </div>
             ) : null}
@@ -2499,48 +2587,28 @@ export default function App() {
                     gap: 6,
                   }}
                 >
-                  <input
+                  <Input
                     value={searchSender}
                     onChange={(e) => setSearchSender(e.target.value)}
                     placeholder="Sender"
-                    style={{
-                      padding: 8,
-                      borderRadius: 8,
-                      border: "1px solid #374151",
-                      background: "#0b0d10",
-                      color: "#e5e7eb",
-                      fontSize: 12,
-                    }}
+                    size="sm"
                   />
-                  <input
+                  <Input
                     value={searchAfter}
                     onChange={(e) => setSearchAfter(e.target.value)}
                     placeholder="After ts (ms)"
-                    style={{
-                      padding: 8,
-                      borderRadius: 8,
-                      border: "1px solid #374151",
-                      background: "#0b0d10",
-                      color: "#e5e7eb",
-                      fontSize: 12,
-                    }}
+                    size="sm"
                   />
-                  <input
+                  <Input
                     value={searchBefore}
                     onChange={(e) => setSearchBefore(e.target.value)}
                     placeholder="Before ts (ms)"
-                    style={{
-                      padding: 8,
-                      borderRadius: 8,
-                      border: "1px solid #374151",
-                      background: "#0b0d10",
-                      color: "#e5e7eb",
-                      fontSize: 12,
-                    }}
+                    size="sm"
                   />
                 </div>
             {searching ? (
-                  <div style={{ marginTop: 6, fontSize: 12, color: "#9ca3af" }}>
+                  <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#9ca3af" }}>
+                    <Spinner size="sm" />
                     Searching…
                   </div>
             ) : null}
@@ -2908,45 +2976,25 @@ export default function App() {
           {aliasesOpen ? (
             <>
           <div style={{ display: "flex", gap: 8 }}>
-            <input
+            <Input
               value={aliasNumber}
               onChange={(e) => setAliasNumber(e.target.value)}
               placeholder="+1202…"
-                  style={{
-                    flex: 1,
-                    padding: 8,
-                    borderRadius: 8,
-                    border: "1px solid #374151",
-                    background: "#111827",
-                    color: "#e5e7eb",
-                  }}
+              fullWidth
             />
-            <input
+            <Input
               value={aliasValue}
               onChange={(e) => setAliasValue(e.target.value)}
               placeholder="Alias"
-                  style={{
-                    flex: 1,
-                    padding: 8,
-                    borderRadius: 8,
-                    border: "1px solid #374151",
-                    background: "#111827",
-                    color: "#e5e7eb",
-                  }}
+              fullWidth
             />
-            <button
+            <Button
               onClick={setAlias}
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: 8,
-                    border: "1px solid #374151",
-                    background: "#111827",
-                    color: "#e5e7eb",
-                    cursor: "pointer",
-                  }}
+              variant="secondary"
+              size="sm"
             >
               Set
-            </button>
+            </Button>
           </div>
               <div
                 style={{
@@ -3142,12 +3190,13 @@ export default function App() {
             {/* Step 4: diagnostics/debug hidden; "More" menu returns in Step 5 (Developer Mode) */}
             {selectedThreadId ? (
               <div style={{ position: "relative" }}>
-                <button
+                <Button
                   onClick={() => setExportMenuOpen((v) => !v)}
                   disabled={exporting}
+                  variant="secondary"
+                  size="sm"
+                  loading={exporting}
                   style={{
-                    padding: "8px 12px",
-                    borderRadius: 8,
                     border: "1px solid #374151",
                     background: exporting ? "#374151" : "#111827",
                     color: "#e5e7eb",
@@ -3157,7 +3206,7 @@ export default function App() {
                   title="Export thread"
                 >
                   {exporting ? "Exporting…" : "Export"}
-                </button>
+                </Button>
                 {exportMenuOpen ? (
                   <div
                     style={{
@@ -3173,38 +3222,24 @@ export default function App() {
                       overflow: "hidden",
                     }}
                   >
-                    <button
+                    <Button
                       onClick={() => exportThread("txt")}
                       disabled={exporting}
-                      style={{
-                        display: "block",
-                        width: "100%",
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        background: "transparent",
-                        color: "#e5e7eb",
-                        border: "none",
-                        cursor: "pointer",
-                      }}
+                      variant="ghost"
+                      fullWidth
+                      style={{ textAlign: "left", justifyContent: "flex-start" }}
                     >
                       Text (.txt)
-                </button>
-                <button
+                    </Button>
+                <Button
                   onClick={() => exportThread("json")}
                   disabled={exporting}
-                  style={{
-                        display: "block",
-                        width: "100%",
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        background: "transparent",
-                        color: "#e5e7eb",
-                        border: "none",
-                        cursor: "pointer",
-                      }}
-                    >
-                      JSON (.json)
-                    </button>
+                  variant="ghost"
+                  fullWidth
+                  style={{ textAlign: "left", justifyContent: "flex-start" }}
+                >
+                  JSON (.json)
+                </Button>
                   </div>
                 ) : null}
               </div>
@@ -3213,7 +3248,11 @@ export default function App() {
         </div>
 
         {/* Conversation + Tools */}
-        <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+        <div
+          id="main-content"
+          tabIndex={-1}
+          style={{ flex: 1, display: "flex", minHeight: 0 }}
+        >
           <div
             style={{ flex: 1, overflow: "auto", padding: 16, minWidth: 420 }}
           >
@@ -3230,7 +3269,7 @@ export default function App() {
                 <div style={{ fontSize: 12, color: "#9ca3af" }}>
                   Draft history
                 </div>
-                <button
+                <Button
                   onClick={() => {
                     const last = draftHistory[draftHistory.length - 1];
                     if (last) {
@@ -3238,18 +3277,11 @@ export default function App() {
                       setShowWelcome(false);
                     }
                   }}
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 8,
-                    border: "1px solid #374151",
-                    background: "#111827",
-                    color: "#e5e7eb",
-                    cursor: "pointer",
-                    fontSize: 12,
-                  }}
+                  variant="secondary"
+                  size="sm"
                 >
                   Restore last draft
-                </button>
+                </Button>
               </div>
             ) : null}
             {/* Outbox items are handled via the minimal header indicator (failed only). */}
@@ -3420,7 +3452,7 @@ export default function App() {
                   overflow: "auto",
                 }}
               >
-                <ToolsPanel
+                {fe("ui.panel.tools", true) ? (<ToolsPanel
                   visible={true}
                   selectedThreadId={selectedThreadId}
                   pendingReplies={pendingReplies}
@@ -3446,7 +3478,7 @@ export default function App() {
                         block: "center",
                       });
                   }}
-                />
+                />) : null}
               </div>
             </>
           ) : null}
@@ -3454,6 +3486,8 @@ export default function App() {
 
         {/* Composer + AI */}
         <div
+          id="message-composer"
+          tabIndex={-1}
           style={{
             borderTop: "1px solid #1f2937",
             padding: 12,
@@ -3463,7 +3497,7 @@ export default function App() {
           }}
         >
           <div style={{ display: "flex", gap: 8 }}>
-            <input
+            <Input
               value={composerText}
               onChange={(e) => setComposerText(e.target.value)}
               placeholder="Type message…"
@@ -3473,36 +3507,22 @@ export default function App() {
                   sendMessage();
                 }
               }}
-              style={{
-                flex: 1,
-                padding: 10,
-                borderRadius: 10,
-                border: "1px solid #374151",
-                background: "#0b0d10",
-                color: "#e5e7eb",
-              }}
+              fullWidth
             />
-            <button
+            <Button
               onClick={sendMessage}
               disabled={!selectedThreadId || sending || !composerText.trim()}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 10,
-                border: "1px solid #374151",
-                background: sending ? "#374151" : "#111827",
-                color: "#e5e7eb",
-                cursor: sending ? "not-allowed" : "pointer",
-                minWidth: 110,
-              }}
+              variant="primary"
+              loading={sending}
             >
               {sending ? "Sending…" : "Send"}
-            </button>
+            </Button>
           </div>
         </div>
           </div>
 
       {/* Step 4: diagnostics/debug hidden; modal returns in Step 5 (Developer Mode) */}
-      <SettingsModal
+      {fe("ui.modal.settings", true) ? (<SettingsModal
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         contacts={contactsMerged
@@ -3639,7 +3659,7 @@ export default function App() {
           await refreshGroupMeta();
           await refreshGroupCategories();
         }}
-      />
+      />) : null}
       <NewMessageModal
         open={newMessageOpen}
         value={newMessageNumber}
@@ -3661,25 +3681,6 @@ export default function App() {
           }
         }}
       />
-      {toast ? (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 20,
-            right: 20,
-            padding: "12px 16px",
-            borderRadius: 12,
-            background: "#111827",
-            border: "1px solid #1f2937",
-            color: "#e5e7eb",
-            boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-            maxWidth: 420,
-            fontSize: 13,
-          }}
-        >
-          {toast}
-            </div>
-          ) : null}
       {showWelcome ? (
         <WelcomeOverlay
           accounts={accounts}
@@ -3713,6 +3714,12 @@ export default function App() {
           }}
         />
         ) : null}
+      
+      {/* Toast Notifications */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      
+      {/* Outbox Status - Real-time message queue feedback */}
+      <OutboxStatus show={true} />
     </div>
   );
 }

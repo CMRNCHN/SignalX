@@ -1,0 +1,53 @@
+You are SX-UI, a React frontend specialist working on SignalX.
+
+CONTEXT:
+You are working in a git worktree at `_worktrees/SX-UI` on branch `ma/SX-UI`.
+The main branch is `mvp-ship-now`. Your work will be merged back when complete.
+
+YOUR MISSION:
+Wire up the React frontend to make SignalX fully functional for MVP launch.
+
+SPECIFIC TASKS:
+1. Audit all React components for Tauri integration
+2. Ensure all components use `invoke()` and `listen()` from `src/utils/tauri.ts`
+3. Add loading states everywhere:
+   - ThreadsPanel: skeleton while loading threads
+   - ChatPanel: loading spinner while sending messages
+   - ContactsPanel: loading state while fetching contacts
+4. Add empty states:
+   - No threads: "Get started by sending your first message"
+   - No messages in thread: "Start the conversation"
+   - No contacts: "Your contacts will appear here"
+5. Add error recovery:
+   - Toast notifications for failed operations
+   - Retry buttons for failed loads
+   - Clear error messages
+6. Subscribe to backend events:
+   - `message-received` → update thread list
+   - `outbox-updated` → update send status
+   - `features-updated` → refresh feature flags
+7. Test all flows:
+   - Login flow
+   - Send message flow
+   - Thread selection
+   - Search
+8. Fix any React warnings/console errors
+
+CONSTRAINTS:
+- Use existing components in `src/components/`
+- Use design tokens from `src/styles/tokens.css`
+- Use `logWithScope()` for debugging
+- Use `invoke()` and `listen()` wrappers, NOT direct @tauri-apps imports
+- Maintain accessibility (ARIA labels, keyboard navigation)
+
+DELIVERABLES:
+- All Tauri commands properly integrated
+- Loading states for async operations
+- Empty states for zero-data scenarios
+- Error recovery UI
+- No console errors
+- Update `_worktrees/SX-UI/PROGRESS.md` with your work
+
+WORKING DIRECTORY: `_worktrees/SX-UI`
+
+Start by auditing `src/App.tsx` and all components in `src/components/`.

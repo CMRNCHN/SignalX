@@ -1,6 +1,9 @@
 /* Global styles for SignalX.  Defines the dark theme, base colours and
    typography used throughout the application. */
 
+/* Import design system tokens */
+@import './styles/tokens.css';
+
 /* Use a modern sans-serif font with good readability. */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 

@@ -11,36 +11,36 @@
 export const a11yColors = {
   // Background colors (dark theme optimized)
   background: {
-    primary: '#111827',    // Main background
-    secondary: '#1A1C1F',  // Card/panel background
-    tertiary: '#1f2937',   // Hover states
-    elevated: '#374151',   // Elevated elements
+    primary: '#111827', // Main background
+    secondary: '#1A1C1F', // Card/panel background
+    tertiary: '#1f2937', // Hover states
+    elevated: '#374151', // Elevated elements
   },
 
   // Text colors (WCAG AA compliant on dark backgrounds)
   text: {
-    primary: '#E0E0E0',      // High contrast - 12.6:1
-    secondary: '#9CA3AF',    // Medium contrast - 7.1:1
-    tertiary: '#6B7280',     // Low contrast - 4.5:1 (minimum)
-    disabled: '#4B5563',     // Disabled state
-    inverse: '#1A1C1F',      // Text on light backgrounds
+    primary: '#E0E0E0', // High contrast - 12.6:1
+    secondary: '#9CA3AF', // Medium contrast - 7.1:1
+    tertiary: '#6B7280', // Low contrast - 4.5:1 (minimum)
+    disabled: '#4B5563', // Disabled state
+    inverse: '#1A1C1F', // Text on light backgrounds
   },
 
   // Interactive colors
   interactive: {
-    primary: '#3b82f6',      // Primary actions
+    primary: '#3b82f6', // Primary actions
     primaryHover: '#2563eb', // Primary hover
-    primaryActive: '#1d4ed8',// Primary active
-    secondary: '#8b5cf6',    // Secondary actions
-    success: '#10b981',      // Success states
-    warning: '#f59e0b',      // Warning states
-    error: '#ef4444',        // Error states
-    info: '#3b82f6',         // Info states
+    primaryActive: '#1d4ed8', // Primary active
+    secondary: '#8b5cf6', // Secondary actions
+    success: '#10b981', // Success states
+    warning: '#f59e0b', // Warning states
+    error: '#ef4444', // Error states
+    info: '#3b82f6', // Info states
   },
 
   // Focus indicators (must be visible)
   focus: {
-    outline: '#3b82f6',      // Focus outline color
+    outline: '#3b82f6', // Focus outline color
     ring: 'rgba(59, 130, 246, 0.5)', // Focus ring
   },
 
@@ -83,14 +83,14 @@ export const a11yColors = {
  */
 export const a11ySpacing = {
   // Base unit: 4px
-  xs: '4px',    // 0.25rem
-  sm: '8px',    // 0.5rem
-  md: '12px',   // 0.75rem
-  lg: '16px',   // 1rem
-  xl: '24px',   // 1.5rem
-  '2xl': '32px',  // 2rem
-  '3xl': '48px',  // 3rem
-  '4xl': '64px',  // 4rem
+  xs: '4px', // 0.25rem
+  sm: '8px', // 0.5rem
+  md: '12px', // 0.75rem
+  lg: '16px', // 1rem
+  xl: '24px', // 1.5rem
+  '2xl': '32px', // 2rem
+  '3xl': '48px', // 3rem
+  '4xl': '64px', // 4rem
 
   // Touch targets (minimum 44x44px)
   touchTarget: {
@@ -120,13 +120,13 @@ export const a11yTypography = {
 
   // Font sizes (scalable with user preferences)
   fontSize: {
-    xs: '0.75rem',    // 12px
-    sm: '0.875rem',   // 14px
-    base: '1rem',     // 16px (minimum for body)
-    lg: '1.125rem',   // 18px
-    xl: '1.25rem',    // 20px
-    '2xl': '1.5rem',  // 24px
-    '3xl': '1.875rem',// 30px
+    xs: '0.75rem', // 12px
+    sm: '0.875rem', // 14px
+    base: '1rem', // 16px (minimum for body)
+    lg: '1.125rem', // 18px
+    xl: '1.25rem', // 20px
+    '2xl': '1.5rem', // 24px
+    '3xl': '1.875rem', // 30px
     '4xl': '2.25rem', // 36px
   },
 
@@ -141,7 +141,7 @@ export const a11yTypography = {
   // Line heights (minimum 1.5 for body text)
   lineHeight: {
     tight: 1.25,
-    normal: 1.5,    // WCAG recommendation
+    normal: 1.5, // WCAG recommendation
     relaxed: 1.75,
     loose: 2,
   },
@@ -242,13 +242,13 @@ export const createA11yStyles = (styles: React.CSSProperties): React.CSSProperti
     color: styles.color || a11yColors.text.primary,
     fontSize: styles.fontSize || a11yTypography.fontSize.base,
     lineHeight: styles.lineHeight || a11yTypography.lineHeight.normal,
-    
+
     // Ensure interactive elements are focusable
     ...(styles.cursor === 'pointer' && {
       outline: 'none',
       transition: `all ${a11yAnimation.duration.normal} ${a11yAnimation.easing.easeInOut}`,
     }),
-    
+
     ...styles,
   };
 };
@@ -264,7 +264,9 @@ export const getFocusStyles = (): React.CSSProperties => ({
 /**
  * Generate button styles (accessible by default)
  */
-export const getButtonStyles = (variant: 'primary' | 'secondary' | 'ghost' = 'primary'): React.CSSProperties => {
+export const getButtonStyles = (
+  variant: 'primary' | 'secondary' | 'ghost' = 'primary'
+): React.CSSProperties => {
   const base: React.CSSProperties = {
     padding: a11ySpacing.buttonPadding,
     fontSize: a11yTypography.fontSize.base,
@@ -327,10 +329,8 @@ export const meetsContrastRequirement = (
 ): boolean => {
   // This is a simplified check - in production, use a proper contrast calculation library
   // For now, we return true if using our predefined color combinations
-  const minRatio = level === 'AAA' 
-    ? (largeText ? 4.5 : 7) 
-    : (largeText ? 3 : 4.5);
-  
+  const minRatio = level === 'AAA' ? (largeText ? 4.5 : 7) : largeText ? 3 : 4.5;
+
   // In a real implementation, calculate the actual contrast ratio
   // For now, trust our predefined colors
   return true;
@@ -372,5 +372,3 @@ export const generateCSSVariables = (): string => {
 }
   `.trim();
 };
-
-

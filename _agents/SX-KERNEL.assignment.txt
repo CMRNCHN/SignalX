@@ -1,0 +1,4 @@
+Refactor Rust backend:
+- Split src-tauri/src/main.rs into api/, services/, runtime/, and app/state.rs.
+- Preserve all existing Tauri command names.
+- Ensure cargo build/test passes.

@@ -29,7 +29,7 @@ impl Storage {
                 created_at INTEGER NOT NULL
             )",
             [],
-        )?;
+        ).map_err(|e| format!("Failed to create accounts table: {}", e))?;
 
         // Threads
         conn.execute(
@@ -42,7 +42,7 @@ impl Storage {
                 FOREIGN KEY (account_id) REFERENCES accounts(id)
             )",
             [],
-        )?;
+        ).map_err(|e| format!("Failed to create threads table: {}", e))?;
 
         // Messages
         conn.execute(
@@ -59,7 +59,7 @@ impl Storage {
                 FOREIGN KEY (account_id) REFERENCES accounts(id)
             )",
             [],
-        )?;
+        ).map_err(|e| format!("Failed to create messages table: {}", e))?;
 
         // Contacts
         conn.execute(
@@ -72,7 +72,7 @@ impl Storage {
                 FOREIGN KEY (account_id) REFERENCES accounts(id)
             )",
             [],
-        )?;
+        ).map_err(|e| format!("Failed to create contacts table: {}", e))?;
 
         // Rules
         conn.execute(
@@ -88,7 +88,7 @@ impl Storage {
                 FOREIGN KEY (account_id) REFERENCES accounts(id)
             )",
             [],
-        )?;
+        ).map_err(|e| format!("Failed to create rules table: {}", e))?;
 
         // Sessions/Users (for auth)
         conn.execute(
@@ -100,7 +100,7 @@ impl Storage {
                 created_at INTEGER NOT NULL
             )",
             [],
-        )?;
+        ).map_err(|e| format!("Failed to create users table: {}", e))?;
 
         // Audit log
         conn.execute(
@@ -115,16 +115,16 @@ impl Storage {
                 FOREIGN KEY (user_id) REFERENCES users(user_id)
             )",
             [],
-        )?;
+        ).map_err(|e| format!("Failed to create audit_log table: {}", e))?;
 
         // Indexes
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_threads_account ON threads(account_id)", [])?;
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id)", [])?;
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_ts ON messages(ts)", [])?;
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_contacts_account ON contacts(account_id)", [])?;
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_rules_account ON rules(account_id)", [])?;
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id)", [])?;
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts)", [])?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_threads_account ON threads(account_id)", []).map_err(|e| format!("Index error: {}", e))?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id)", []).map_err(|e| format!("Index error: {}", e))?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_ts ON messages(ts)", []).map_err(|e| format!("Index error: {}", e))?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_contacts_account ON contacts(account_id)", []).map_err(|e| format!("Index error: {}", e))?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_rules_account ON rules(account_id)", []).map_err(|e| format!("Index error: {}", e))?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id)", []).map_err(|e| format!("Index error: {}", e))?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts)", []).map_err(|e| format!("Index error: {}", e))?;
 
         Ok(())
     }

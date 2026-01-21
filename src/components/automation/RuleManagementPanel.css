@@ -1,0 +1,142 @@
+.rule-management-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: var(--spacing-lg);
+  gap: var(--spacing-lg);
+}
+
+.rule-management-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: var(--spacing-md);
+  border-bottom: 1px solid var(--color-border-primary);
+}
+
+.rule-management-header h2 {
+  margin: 0;
+  color: var(--color-text-primary);
+}
+
+.rule-management-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-lg);
+  flex: 1;
+  min-height: 0;
+}
+
+.rule-list-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  overflow: hidden;
+}
+
+.rule-list-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.rule-templates {
+  width: 100%;
+}
+
+.rule-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.rule-empty {
+  padding: var(--spacing-xl);
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.rule-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.rule-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.rule-id {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.rule-item-actions {
+  display: flex;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+}
+
+.rule-editor-section {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.rule-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  height: 100%;
+}
+
+.rule-editor h3 {
+  margin: 0;
+  color: var(--color-text-primary);
+}
+
+.rule-editor-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  flex: 1;
+}
+
+.rule-editor-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-top: auto;
+}
+
+.rule-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.rule-details p {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+.rule-details strong {
+  color: var(--color-text-primary);
+}
+
+.rule-details-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+}
+
+.rule-editor-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--color-text-secondary);
+}

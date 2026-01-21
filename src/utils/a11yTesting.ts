@@ -18,20 +18,21 @@ export const checkA11y = (container: HTMLElement = document.body): A11yIssue[] =
 
   // Check images for alt text
   const images = container.querySelectorAll('img');
-  images.forEach((img) => {
+  images.forEach(img => {
     if (!img.hasAttribute('alt')) {
       issues.push({
         severity: 'error',
         element: img,
         message: 'Image missing alt attribute',
-        suggestion: 'Add alt="" for decorative images or descriptive alt text for meaningful images',
+        suggestion:
+          'Add alt="" for decorative images or descriptive alt text for meaningful images',
       });
     }
   });
 
   // Check buttons for accessible names
   const buttons = container.querySelectorAll('button');
-  buttons.forEach((button) => {
+  buttons.forEach(button => {
     const hasText = button.textContent?.trim();
     const hasAriaLabel = button.hasAttribute('aria-label');
     const hasAriaLabelledby = button.hasAttribute('aria-labelledby');
@@ -49,7 +50,7 @@ export const checkA11y = (container: HTMLElement = document.body): A11yIssue[] =
 
   // Check form inputs for labels
   const inputs = container.querySelectorAll('input, textarea, select');
-  inputs.forEach((input) => {
+  inputs.forEach(input => {
     if (input.getAttribute('type') === 'hidden') return;
 
     const id = input.getAttribute('id');
@@ -69,7 +70,7 @@ export const checkA11y = (container: HTMLElement = document.body): A11yIssue[] =
 
   // Check links for text
   const links = container.querySelectorAll('a');
-  links.forEach((link) => {
+  links.forEach(link => {
     const hasText = link.textContent?.trim();
     const hasAriaLabel = link.hasAttribute('aria-label');
     const hasAriaLabelledby = link.hasAttribute('aria-labelledby');
@@ -83,7 +84,10 @@ export const checkA11y = (container: HTMLElement = document.body): A11yIssue[] =
       });
     }
 
-    if (hasText && (hasText.toLowerCase() === 'click here' || hasText.toLowerCase() === 'read more')) {
+    if (
+      hasText &&
+      (hasText.toLowerCase() === 'click here' || hasText.toLowerCase() === 'read more')
+    ) {
       issues.push({
         severity: 'warning',
         element: link,
@@ -95,7 +99,7 @@ export const checkA11y = (container: HTMLElement = document.body): A11yIssue[] =
 
   // Check for duplicate IDs
   const ids = new Map<string, HTMLElement[]>();
-  container.querySelectorAll('[id]').forEach((element) => {
+  container.querySelectorAll('[id]').forEach(element => {
     const id = element.getAttribute('id');
     if (id) {
       if (!ids.has(id)) {
@@ -107,7 +111,7 @@ export const checkA11y = (container: HTMLElement = document.body): A11yIssue[] =
 
   ids.forEach((elements, id) => {
     if (elements.length > 1) {
-      elements.forEach((element) => {
+      elements.forEach(element => {
         issues.push({
           severity: 'error',
           element,
@@ -134,7 +138,7 @@ export const checkA11y = (container: HTMLElement = document.body): A11yIssue[] =
     'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
   );
 
-  focusableElements.forEach((element) => {
+  focusableElements.forEach(element => {
     const tabIndex = element.getAttribute('tabindex');
     if (tabIndex && parseInt(tabIndex) > 0) {
       issues.push({
@@ -160,15 +164,18 @@ export const logA11yIssues = (container?: HTMLElement): void => {
     return;
   }
 
-  const errors = issues.filter((i) => i.severity === 'error');
-  const warnings = issues.filter((i) => i.severity === 'warning');
-  const info = issues.filter((i) => i.severity === 'info');
+  const errors = issues.filter(i => i.severity === 'error');
+  const warnings = issues.filter(i => i.severity === 'warning');
+  const info = issues.filter(i => i.severity === 'info');
 
-  console.group(`%c⚠️ Found ${issues.length} accessibility issues`, 'font-weight: bold; font-size: 14px');
+  console.group(
+    `%c⚠️ Found ${issues.length} accessibility issues`,
+    'font-weight: bold; font-size: 14px'
+  );
 
   if (errors.length > 0) {
     console.group(`%c❌ ${errors.length} Errors`, 'color: #ef4444; font-weight: bold');
-    errors.forEach((issue) => {
+    errors.forEach(issue => {
       console.group(issue.message);
       console.log('Element:', issue.element);
       if (issue.suggestion) {
@@ -181,7 +188,7 @@ export const logA11yIssues = (container?: HTMLElement): void => {
 
   if (warnings.length > 0) {
     console.group(`%c⚠️ ${warnings.length} Warnings`, 'color: #f59e0b; font-weight: bold');
-    warnings.forEach((issue) => {
+    warnings.forEach(issue => {
       console.group(issue.message);
       console.log('Element:', issue.element);
       if (issue.suggestion) {
@@ -194,7 +201,7 @@ export const logA11yIssues = (container?: HTMLElement): void => {
 
   if (info.length > 0) {
     console.group(`%cℹ️ ${info.length} Info`, 'color: #3b82f6; font-weight: bold');
-    info.forEach((issue) => {
+    info.forEach(issue => {
       console.group(issue.message);
       console.log('Element:', issue.element);
       if (issue.suggestion) {
@@ -227,9 +234,7 @@ export const testKeyboardNav = (): void => {
     // Check if element is visible
     const style = window.getComputedStyle(element);
     const isVisible =
-      style.display !== 'none' &&
-      style.visibility !== 'hidden' &&
-      element.offsetParent !== null;
+      style.display !== 'none' && style.visibility !== 'hidden' && element.offsetParent !== null;
 
     if (!isVisible && element.tabIndex >= 0) {
       issues.push(`Element ${index + 1} is focusable but not visible: ${element.tagName}`);
@@ -248,7 +253,7 @@ export const testKeyboardNav = (): void => {
     console.log('%c✓ No keyboard navigation issues found!', 'color: #10b981; font-weight: bold');
   } else {
     console.group(`%c⚠️ Found ${issues.length} issues`, 'color: #f59e0b; font-weight: bold');
-    issues.forEach((issue) => console.log(issue));
+    issues.forEach(issue => console.log(issue));
     console.groupEnd();
   }
 
@@ -281,7 +286,10 @@ export const enableA11yChecking = (): void => {
     return;
   }
 
-  console.log('%c🔍 Accessibility Checker Enabled', 'color: #3b82f6; font-weight: bold; font-size: 16px');
+  console.log(
+    '%c🔍 Accessibility Checker Enabled',
+    'color: #3b82f6; font-weight: bold; font-size: 16px'
+  );
   console.log('Run these commands in console:');
   console.log('  window.checkA11y() - Check for accessibility issues');
   console.log('  window.testKeyboardNav() - Test keyboard navigation');
@@ -304,8 +312,8 @@ export const enableA11yChecking = (): void => {
  */
 export const generateA11yReport = (container?: HTMLElement): string => {
   const issues = checkA11y(container);
-  const errors = issues.filter((i) => i.severity === 'error');
-  const warnings = issues.filter((i) => i.severity === 'warning');
+  const errors = issues.filter(i => i.severity === 'error');
+  const warnings = issues.filter(i => i.severity === 'warning');
 
   let report = '# Accessibility Report\n\n';
   report += `Generated: ${new Date().toLocaleString()}\n\n`;
@@ -340,4 +348,3 @@ export const generateA11yReport = (container?: HTMLElement): string => {
 
   return report;
 };
-

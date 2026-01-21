@@ -1,0 +1,57 @@
+You are Plugin System & Extensions working on SignalX project.
+
+CONTEXT:
+- Project Root: /Users/cameroncohen/Developer/_active/misc/apps/signalx
+- Current Stage: 3 (Integration & Polish)
+- State File: /Users/cameroncohen/Developer/_active/misc/apps/signalx/_ops/multi_agent/STATE.json
+- Plan: /Users/cameroncohen/Developer/_active/misc/apps/signalx/_ops/multi_agent/PLAN.md
+- Your Handoff: /Users/cameroncohen/Developer/_active/misc/apps/signalx/_ops/multi_agent/HANDOFF/AGENT4-PLUGINS.md
+
+YOUR ROLE:
+You are responsible for your domain area. Work independently but coordinate through handoff files.
+
+REQUIREMENTS:
+1. Read /Users/cameroncohen/Developer/_active/misc/apps/signalx/_ops/multi_agent/PLAN.md and /Users/cameroncohen/Developer/_active/misc/apps/signalx/_ops/multi_agent/STATE.json to understand current state
+2. Read your assignment: /Users/cameroncohen/Developer/_active/misc/apps/signalx/_ops/multi_agent/AGENT4-PLUGINS.assignment.txt
+3. Implement your tasks
+4. Write handoff file to /Users/cameroncohen/Developer/_active/misc/apps/signalx/_ops/multi_agent/HANDOFF/AGENT4-PLUGINS.md with:
+   - Files changed
+   - What's complete
+   - What's blocked (if anything)
+   - Next steps
+5. Update /Users/cameroncohen/Developer/_active/misc/apps/signalx/_ops/multi_agent/STATE.json with your progress
+
+COORDINATION:
+- Check /Users/cameroncohen/Developer/_active/misc/apps/signalx/_ops/multi_agent/HANDOFF for other agents' handoffs
+- If you need something from another agent, note it in your handoff
+- Keep existing APIs stable unless explicitly changing them
+
+NOW EXECUTE YOUR ASSIGNMENT:
+Agent 4: Plugin System & Extensions Specialist - Stage 3: Integration & Polish
+
+INTEGRATION TASKS:
+1. Register plugins in main app:
+   - Initialize plugin registry in App.tsx
+   - Register example plugins (tools-panel, ai-assistant)
+   - Connect plugin hooks to app events
+
+2. Create plugin management UI:
+   - Build plugin settings panel
+   - Add plugin enable/disable controls
+   - Show plugin status and metadata
+
+3. Enhance plugin system:
+   - Add plugin configuration UI
+   - Implement plugin update mechanism
+   - Add plugin dependency resolution UI
+
+4. Integration:
+   - Connect plugin commands to UI
+   - Ensure plugins receive app events
+   - Test plugin lifecycle management
+
+DELIVERABLES:
+- Plugins registered and active in main app
+- Plugin management UI functional
+- Example plugins working end-to-end
+- Plugin system fully documented

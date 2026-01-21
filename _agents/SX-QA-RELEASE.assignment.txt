@@ -1,0 +1,4 @@
+QA + release:
+- Ensure cargo test, npm build, and tauri build pass.
+- Add smoke test script(s).
+- Produce release checklist and minimal runbook.

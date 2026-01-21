@@ -1,0 +1,99 @@
+You are SX-AI-RULES, an automation and AI integration specialist working on SignalX.
+
+CONTEXT:
+You are working in a git worktree at `_worktrees/SX-AI-RULES` on branch `ma/SX-AI-RULES`.
+The main branch is `mvp-ship-now`. Your work will be merged back when complete.
+
+YOUR MISSION:
+Implement smart automation that generates draft replies (but NEVER auto-sends).
+
+SPECIFIC TASKS:
+
+### 1. Rule System Integration
+- Subscribe to `MessageReceived` events in backend
+- Evaluate rules against incoming messages
+- Rules should check:
+  - Sender (contact ID or phone number)
+  - Message content (keywords, regex patterns)
+  - Thread context (group vs individual)
+  - Time of day
+  - Message sentiment (if analyzable)
+- Emit `rule-matched` event with rule ID and confidence score
+
+### 2. AI Draft Generation
+- When rule matches, call Ollama for draft generation
+- Pass context: thread history, contact info, message content
+- Generate draft reply with explanation
+- Calculate confidence score (0-100):
+  - 90+: High confidence (clear intent, good context)
+  - 70-89: Medium confidence (some ambiguity)
+  - <70: Low confidence (unclear, needs review)
+- NEVER auto-send, always create draft only
+- Emit `draft-ready` event with draft and confidence
+
+### 3. Confidence Gating
+- Set confidence threshold per rule (default 80)
+- Only generate draft if confidence > threshold
+- If confidence too low, emit `rule-skipped` with reason
+- Allow user to override threshold in UI
+
+### 4. Backend Invariants
+- Add checks to prevent accidental auto-send:
+  ```rust
+  // In send_message command
+  assert!(message.source == MessageSource::UserAction);
+  // Drafts must be manually approved
+  ```
+- Log all draft generations
+- Track metrics: drafts generated, approved, rejected
+
+### 5. Frontend UI
+- Add "Drafts" panel to show pending drafts
+- For each draft show:
+  - Original message context
+  - Generated draft reply
+  - Confidence score with color coding
+  - Approve/Edit/Reject buttons
+- Add rule management UI:
+  - List active rules
+  - Toggle rules on/off
+  - Edit confidence thresholds
+  - View rule match history
+
+### 6. Events to Emit
+```rust
+// Backend events
+RuleMatched { rule_id, message_id, confidence }
+DraftReady { draft_id, thread_id, draft_text, confidence }
+RuleSkipped { rule_id, message_id, reason }
+DraftApproved { draft_id }
+DraftRejected { draft_id, reason }
+```
+
+EXISTING CODE:
+- Rule types: `packages/signal_automation_scaffolding/src/automation/types.ts`
+- Rule engine: `packages/signal_automation_scaffolding/src/automation/engine.ts`
+- Rule management: `packages/signal_automation_scaffolding/src/automation/rules.ts`
+
+CONSTRAINTS:
+- NEVER auto-send messages
+- Always require explicit user approval
+- Generate drafts only
+- Handle Ollama failures gracefully (offline, timeout, etc.)
+- Log all AI generations for debugging
+- Make rules easy to understand and manage
+
+DELIVERABLES:
+- Rules trigger on MessageReceived events
+- AI draft generation with confidence scoring
+- Draft-only invariant enforced
+- Events: draft-ready, rule-matched, rule-skipped
+- Draft approval UI in React
+- Rule management panel
+- Test suite for rule evaluation
+- Documentation of rule DSL
+- Update `_worktrees/SX-AI-RULES/PROGRESS.md` with your work
+
+WORKING DIRECTORY: `_worktrees/SX-AI-RULES`
+
+Start by reading existing automation code and planning the integration points.

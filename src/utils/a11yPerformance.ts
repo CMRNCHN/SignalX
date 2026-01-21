@@ -39,12 +39,12 @@ class AccessibilityPerformanceMonitor {
   private setupFocusTracking(): void {
     let previousFocus: Element | null = null;
 
-    document.addEventListener('focusin', (e) => {
+    document.addEventListener('focusin', e => {
       const currentFocus = e.target as Element;
-      
+
       if (previousFocus && previousFocus !== currentFocus) {
-        const shiftTime = this.focusShiftStartTime 
-          ? performance.now() - this.focusShiftStartTime 
+        const shiftTime = this.focusShiftStartTime
+          ? performance.now() - this.focusShiftStartTime
           : 0;
 
         this.recordMetric('focus-shift', shiftTime, {
@@ -54,10 +54,10 @@ class AccessibilityPerformanceMonitor {
 
         // Warn about slow focus shifts
         if (shiftTime > 100) {
-          console.warn(
-            `Slow focus shift detected (${shiftTime.toFixed(2)}ms)`,
-            { from: previousFocus, to: currentFocus }
-          );
+          console.warn(`Slow focus shift detected (${shiftTime.toFixed(2)}ms)`, {
+            from: previousFocus,
+            to: currentFocus,
+          });
         }
       }
 
@@ -70,8 +70,8 @@ class AccessibilityPerformanceMonitor {
    * Track DOM mutations that might affect accessibility
    */
   private setupMutationTracking(): void {
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
+    const observer = new MutationObserver(mutations => {
+      mutations.forEach(mutation => {
         // Track ARIA attribute changes
         if (mutation.type === 'attributes' && mutation.attributeName?.startsWith('aria-')) {
           this.recordMetric('aria-change', 1, {
@@ -96,7 +96,13 @@ class AccessibilityPerformanceMonitor {
 
     observer.observe(document.body, {
       attributes: true,
-      attributeFilter: ['aria-live', 'aria-expanded', 'aria-selected', 'aria-checked', 'aria-hidden'],
+      attributeFilter: [
+        'aria-live',
+        'aria-expanded',
+        'aria-selected',
+        'aria-checked',
+        'aria-hidden',
+      ],
       childList: true,
       subtree: true,
     });
@@ -158,9 +164,10 @@ class AccessibilityPerformanceMonitor {
     const announcements = this.metrics.filter(m => m.name === 'announcement');
     const modals = this.metrics.filter(m => m.name === 'modal-open');
 
-    const avgFocusShift = focusShifts.length > 0
-      ? focusShifts.reduce((sum, m) => sum + m.value, 0) / focusShifts.length
-      : 0;
+    const avgFocusShift =
+      focusShifts.length > 0
+        ? focusShifts.reduce((sum, m) => sum + m.value, 0) / focusShifts.length
+        : 0;
 
     const slowFocusShifts = focusShifts.filter(m => m.value > 100);
 
@@ -181,11 +188,14 @@ class AccessibilityPerformanceMonitor {
   public logReport(): void {
     const report = this.generateReport();
 
-    console.group('%c♿ Accessibility Performance Report', 'font-weight: bold; font-size: 14px; color: #3b82f6');
-    
+    console.group(
+      '%c♿ Accessibility Performance Report',
+      'font-weight: bold; font-size: 14px; color: #3b82f6'
+    );
+
     console.log(`Focus Shifts: ${report.focusShiftCount}`);
     console.log(`Average Focus Shift Time: ${report.averageFocusShiftTime.toFixed(2)}ms`);
-    
+
     if (report.slowFocusShifts.length > 0) {
       console.warn(`Slow Focus Shifts: ${report.slowFocusShifts.length}`);
       report.slowFocusShifts.forEach(metric => {
@@ -294,5 +304,3 @@ export const useA11yMonitoring = (componentName: string) => {
 };
 
 import React from 'react';
-
-

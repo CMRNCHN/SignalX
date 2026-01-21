@@ -3,7 +3,7 @@ import SkipLink from './SkipLink';
 import AccessibleModal from './AccessibleModal';
 import AccessibleTabs, { Tab } from './AccessibleTabs';
 import Toast from './Toast';
-import ErrorBoundary from './ErrorBoundary';
+import { ErrorBoundary } from './feedback';
 import { announce, announcements } from '../utils/announcer';
 
 /**

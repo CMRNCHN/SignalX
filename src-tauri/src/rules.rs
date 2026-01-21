@@ -1,217 +1,484 @@
+/// Automation rules engine for auto-reply functionality
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::sync::Arc;
+use std::collections::HashMap;
+use chrono::{DateTime, Utc, Timelike, Weekday, Datelike};
 
+// Wrapper for Weekday to make it serializable
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WeekDay {
+    Mon,
+    Tue,
+    Wed,
+    Thu,
+    Fri,
+    Sat,
+    Sun,
+}
+
+impl From<WeekDay> for Weekday {
+    fn from(wd: WeekDay) -> Self {
+        match wd {
+            WeekDay::Mon => Weekday::Mon,
+            WeekDay::Tue => Weekday::Tue,
+            WeekDay::Wed => Weekday::Wed,
+            WeekDay::Thu => Weekday::Thu,
+            WeekDay::Fri => Weekday::Fri,
+            WeekDay::Sat => Weekday::Sat,
+            WeekDay::Sun => Weekday::Sun,
+        }
+    }
+}
+
+impl From<Weekday> for WeekDay {
+    fn from(wd: Weekday) -> Self {
+        match wd {
+            Weekday::Mon => WeekDay::Mon,
+            Weekday::Tue => WeekDay::Tue,
+            Weekday::Wed => WeekDay::Wed,
+            Weekday::Thu => WeekDay::Thu,
+            Weekday::Fri => WeekDay::Fri,
+            Weekday::Sat => WeekDay::Sat,
+            Weekday::Sun => WeekDay::Sun,
+        }
+    }
+}
+
+/// Automation rule that triggers actions based on conditions
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Rule {
+pub struct AutomationRule {
     pub id: String,
-    pub account_id: String,
     pub name: String,
     pub enabled: bool,
-    pub dsl: Option<String>,
-    pub compiled_json: Option<Value>,
+    pub trigger: Trigger,
+    pub action: Action,
+    #[serde(default)]
+    pub priority: u32,
 }
 
+/// Trigger conditions for rules
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RuleAST {
-    pub name: String,
-    pub when: Vec<Condition>,
-    pub then: Vec<Action>,
+#[serde(tag = "type")]
+pub enum Trigger {
+    /// Time-based trigger (after hours, weekends, etc.)
+    TimeRange {
+        start_hour: u32,  // 0-23
+        end_hour: u32,    // 0-23
+        #[serde(default)]
+        days: Vec<WeekDay>,  // Empty = all days
+    },
+    
+    /// Keyword-based trigger
+    Keyword {
+        keywords: Vec<String>,
+        #[serde(default)]
+        case_sensitive: bool,
+        #[serde(default)]
+        match_any: bool,  // true = OR, false = AND
+    },
+    
+    /// Sender-based trigger
+    Sender {
+        contacts: Vec<String>,  // Phone numbers or thread IDs
+        #[serde(default)]
+        groups: Vec<String>,
+    },
+    
+    /// Combined trigger (all conditions must match)
+    All {
+        conditions: Vec<Trigger>,
+    },
+    
+    /// Combined trigger (any condition can match)
+    Any {
+        conditions: Vec<Trigger>,
+    },
 }
 
+/// Action to take when rule triggers
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Condition {
-    MessageContains(String),
-    MessageFrom(String),
-    ThreadId(String),
-    // TODO: Add more conditions
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum Action {
-    Draft(String),
-    Send(String), // Only if feature flag enabled
-    LabelContact(String, String), // TODO: Implement
+    /// Generate AI reply
+    GenerateReply {
+        intent: String,
+        #[serde(default)]
+        constraints: Option<String>,
+        #[serde(default)]
+        auto_send: bool,
+        #[serde(default = "default_confidence_threshold")]
+        confidence_threshold: f32,
+    },
+    
+    /// Send a pre-defined message
+    SendMessage {
+        content: String,
+    },
+    
+    /// Mark as read but don't reply
+    MarkRead,
+    
+    /// Send notification
+    Notify {
+        #[serde(default)]
+        urgent: bool,
+    },
 }
 
-pub struct RulesEngine {
-    storage: Arc<crate::storage::Storage>,
+fn default_confidence_threshold() -> f32 {
+    80.0
 }
 
-impl RulesEngine {
-    pub fn new(storage: Arc<crate::storage::Storage>) -> Self {
-        Self { storage }
+/// Rule engine that evaluates and executes automation rules
+pub struct AutomationEngine {
+    rules: Vec<AutomationRule>,
+}
+
+impl AutomationEngine {
+    /// Create new rule engine
+    pub fn new() -> Self {
+        Self { rules: vec![] }
     }
 
-    pub fn parse_dsl(&self, dsl: &str) -> Result<RuleAST, String> {
-        // Simple line-based parser
-        // Format:
-        // rule "Name"
-        // when message_in contains "text"
-        // then draft "response"
-        
-        let lines: Vec<&str> = dsl.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
-        if lines.is_empty() {
-            return Err("Empty rule".to_string());
+    /// Load rules from storage
+    pub fn load_rules(&mut self, rules: Vec<AutomationRule>) {
+        self.rules = rules;
+        // Sort by priority (higher priority first)
+        self.rules.sort_by(|a, b| b.priority.cmp(&a.priority));
+    }
+
+    /// Add a rule
+    pub fn add_rule(&mut self, rule: AutomationRule) {
+        self.rules.push(rule);
+        self.rules.sort_by(|a, b| b.priority.cmp(&a.priority));
+    }
+
+    /// Remove a rule by ID
+    pub fn remove_rule(&mut self, rule_id: &str) -> bool {
+        if let Some(index) = self.rules.iter().position(|r| r.id == rule_id) {
+            self.rules.remove(index);
+            true
+        } else {
+            false
         }
+    }
 
-        let mut name = String::new();
-        let mut when_clauses = Vec::new();
-        let mut then_clauses = Vec::new();
-        let mut in_when = false;
-        let mut in_then = false;
+    /// Find matching rules for a message
+    pub fn find_matching_rules(
+        &self,
+        sender: &str,
+        message: &str,
+        thread_id: &str,
+    ) -> Vec<&AutomationRule> {
+        let now = Utc::now();
+        
+        self.rules
+            .iter()
+            .filter(|rule| {
+                rule.enabled && self.evaluate_trigger(&rule.trigger, sender, message, thread_id, &now)
+            })
+            .collect()
+    }
 
-        for line in lines {
-            if line.starts_with("rule ") {
-                // Extract name from: rule "Name"
-                if let Some(start) = line.find('"') {
-                    if let Some(end) = line[start + 1..].find('"') {
-                        name = line[start + 1..start + 1 + end].to_string();
-                    }
-                }
-            } else if line == "when" {
-                in_when = true;
-                in_then = false;
-            } else if line == "then" {
-                in_then = true;
-                in_when = false;
-            } else if in_when {
-                // Parse condition: message_in contains "text"
-                if line.starts_with("message_in contains ") {
-                    if let Some(start) = line.find('"') {
-                        if let Some(end) = line[start + 1..].find('"') {
-                            let text = line[start + 1..start + 1 + end].to_string();
-                            when_clauses.push(Condition::MessageContains(text));
-                        }
-                    }
-                } else if line.starts_with("message_in from ") {
-                    if let Some(start) = line.find('"') {
-                        if let Some(end) = line[start + 1..].find('"') {
-                            let from = line[start + 1..start + 1 + end].to_string();
-                            when_clauses.push(Condition::MessageFrom(from));
-                        }
-                    }
-                }
-            } else if in_then {
-                // Parse action: draft "text" or send "text"
-                if line.starts_with("draft ") {
-                    if let Some(start) = line.find('"') {
-                        if let Some(end) = line[start + 1..].find('"') {
-                            let text = line[start + 1..start + 1 + end].to_string();
-                            then_clauses.push(Action::Draft(text));
-                        }
-                    }
-                } else if line.starts_with("send ") {
-                    if let Some(start) = line.find('"') {
-                        if let Some(end) = line[start + 1..].find('"') {
-                            let text = line[start + 1..start + 1 + end].to_string();
-                            then_clauses.push(Action::Send(text));
-                        }
-                    }
-                }
+    /// Evaluate if a trigger matches current conditions
+    fn evaluate_trigger(
+        &self,
+        trigger: &Trigger,
+        sender: &str,
+        message: &str,
+        thread_id: &str,
+        now: &DateTime<Utc>,
+    ) -> bool {
+        match trigger {
+            Trigger::TimeRange { start_hour, end_hour, days } => {
+                self.check_time_range(*start_hour, *end_hour, days, now)
+            }
+            
+            Trigger::Keyword { keywords, case_sensitive, match_any } => {
+                self.check_keywords(message, keywords, *case_sensitive, *match_any)
+            }
+            
+            Trigger::Sender { contacts, groups } => {
+                self.check_sender(sender, thread_id, contacts, groups)
+            }
+            
+            Trigger::All { conditions } => {
+                conditions.iter().all(|c| {
+                    self.evaluate_trigger(c, sender, message, thread_id, now)
+                })
+            }
+            
+            Trigger::Any { conditions } => {
+                conditions.iter().any(|c| {
+                    self.evaluate_trigger(c, sender, message, thread_id, now)
+                })
+            }
+        }
+    }
+
+    /// Check if current time is within specified range
+    fn check_time_range(
+        &self,
+        start_hour: u32,
+        end_hour: u32,
+        days: &[WeekDay],
+        now: &DateTime<Utc>,
+    ) -> bool {
+        let current_hour = now.hour();
+        let current_day = now.weekday();
+
+        // Check day of week if specified
+        if !days.is_empty() {
+            let current_weekday: WeekDay = current_day.into();
+            if !days.iter().any(|d| matches!((d, &current_weekday),
+                (WeekDay::Mon, WeekDay::Mon) |
+                (WeekDay::Tue, WeekDay::Tue) |
+                (WeekDay::Wed, WeekDay::Wed) |
+                (WeekDay::Thu, WeekDay::Thu) |
+                (WeekDay::Fri, WeekDay::Fri) |
+                (WeekDay::Sat, WeekDay::Sat) |
+                (WeekDay::Sun, WeekDay::Sun)
+            )) {
+                return false;
             }
         }
 
-        if name.is_empty() {
-            return Err("Rule name is required".to_string());
-        }
-        if when_clauses.is_empty() {
-            return Err("At least one 'when' condition is required".to_string());
-        }
-        if then_clauses.is_empty() {
-            return Err("At least one 'then' action is required".to_string());
-        }
-
-        Ok(RuleAST {
-            name,
-            when: when_clauses,
-            then: then_clauses,
-        })
-    }
-
-    pub fn compile_rule(&self, dsl: &str) -> Result<Value, String> {
-        let ast = self.parse_dsl(dsl)?;
-        Ok(serde_json::to_value(&ast).map_err(|e| format!("Serialization error: {}", e))?)
-    }
-
-    pub fn evaluate_rule(&self, rule: &Rule, message_body: &str, message_from: &str, thread_id: &str) -> Result<Vec<Action>, String> {
-        if !rule.enabled {
-            return Ok(Vec::new());
-        }
-
-        let ast: RuleAST = if let Some(ref compiled) = rule.compiled_json {
-            serde_json::from_value(compiled.clone())
-                .map_err(|e| format!("Failed to parse compiled rule: {}", e))?
-        } else if let Some(ref dsl) = rule.dsl {
-            self.parse_dsl(dsl)?
+        // Check time range
+        if start_hour <= end_hour {
+            // Normal range (e.g., 9-17)
+            current_hour >= start_hour && current_hour < end_hour
         } else {
-            return Ok(Vec::new());
+            // Wraps around midnight (e.g., 18-9)
+            current_hour >= start_hour || current_hour < end_hour
+        }
+    }
+
+    /// Check if message contains keywords
+    fn check_keywords(
+        &self,
+        message: &str,
+        keywords: &[String],
+        case_sensitive: bool,
+        match_any: bool,
+    ) -> bool {
+        let msg = if case_sensitive {
+            message.to_string()
+        } else {
+            message.to_lowercase()
         };
 
-        // Check conditions
-        let mut matches = true;
-        for condition in &ast.when {
-            match condition {
-                Condition::MessageContains(text) => {
-                    if !message_body.to_lowercase().contains(&text.to_lowercase()) {
-                        matches = false;
-                        break;
-                    }
-                }
-                Condition::MessageFrom(from) => {
-                    if message_from != from {
-                        matches = false;
-                        break;
-                    }
-                }
-                Condition::ThreadId(tid) => {
-                    if thread_id != tid {
-                        matches = false;
-                        break;
-                    }
-                }
-            }
-        }
+        let keywords: Vec<String> = keywords
+            .iter()
+            .map(|k| if case_sensitive { k.clone() } else { k.to_lowercase() })
+            .collect();
 
-        if matches {
-            Ok(ast.then.clone())
+        if match_any {
+            // OR logic - any keyword matches
+            keywords.iter().any(|k| msg.contains(k))
         } else {
-            Ok(Vec::new())
+            // AND logic - all keywords must match
+            keywords.iter().all(|k| msg.contains(k))
         }
     }
 
-    pub fn run_rules_for_message(&self, account_id: &str, message_body: &str, message_from: &str, thread_id: &str, send_enabled: bool) -> Result<Vec<Action>, String> {
-        let rules = self.storage.list_rules(account_id)
-            .map_err(|e| format!("Failed to list rules: {}", e))?;
-        
-        let mut all_actions = Vec::new();
-        for (id, name, enabled, dsl, compiled_json) in rules {
-            if !enabled {
-                continue;
-            }
-
-            let rule = Rule {
-                id,
-                account_id: account_id.to_string(),
-                name,
-                enabled,
-                dsl,
-                compiled_json: compiled_json.and_then(|s| serde_json::from_str(&s).ok()),
-            };
-
-            let actions = self.evaluate_rule(&rule, message_body, message_from, thread_id)?;
-            for action in actions {
-                // Filter out Send actions if not enabled
-                if let Action::Send(_) = action {
-                    if !send_enabled {
-                        continue; // Skip send actions if feature flag is off
-                    }
-                }
-                all_actions.push(action);
-            }
+    /// Check if sender matches criteria
+    fn check_sender(
+        &self,
+        sender: &str,
+        thread_id: &str,
+        contacts: &[String],
+        groups: &[String],
+    ) -> bool {
+        // Check if sender is in contact list
+        if contacts.iter().any(|c| sender.contains(c)) {
+            return true;
         }
 
-        Ok(all_actions)
+        // Check if thread is in group list
+        if groups.iter().any(|g| thread_id.contains(g)) {
+            return true;
+        }
+
+        false
+    }
+
+    /// Get all rules
+    pub fn get_rules(&self) -> &[AutomationRule] {
+        &self.rules
+    }
+
+    /// Get enabled rules count
+    pub fn enabled_count(&self) -> usize {
+        self.rules.iter().filter(|r| r.enabled).count()
     }
 }
 
+/// Helper to create common rule templates
+pub mod templates {
+    use super::*;
+
+    /// Out of office rule (after hours)
+    pub fn out_of_office(auto_send: bool) -> AutomationRule {
+        AutomationRule {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: "Out of Office".to_string(),
+            enabled: true,
+            priority: 10,
+            trigger: Trigger::TimeRange {
+                start_hour: 18,  // 6 PM
+                end_hour: 9,     // 9 AM
+                days: vec![
+                    WeekDay::Mon,
+                    WeekDay::Tue,
+                    WeekDay::Wed,
+                    WeekDay::Thu,
+                    WeekDay::Fri,
+                ],
+            },
+            action: Action::GenerateReply {
+                intent: "acknowledge".to_string(),
+                constraints: Some("Mention you're offline and will respond tomorrow".to_string()),
+                auto_send,
+                confidence_threshold: 80.0,
+            },
+        }
+    }
+
+    /// Urgent message rule
+    pub fn urgent_message(contacts: Vec<String>) -> AutomationRule {
+        AutomationRule {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: "Urgent Messages".to_string(),
+            enabled: true,
+            priority: 100,  // High priority
+            trigger: Trigger::All {
+                conditions: vec![
+                    Trigger::Keyword {
+                        keywords: vec![
+                            "urgent".to_string(),
+                            "emergency".to_string(),
+                            "asap".to_string(),
+                            "critical".to_string(),
+                        ],
+                        case_sensitive: false,
+                        match_any: true,
+                    },
+                    Trigger::Sender {
+                        contacts,
+                        groups: vec![],
+                    },
+                ],
+            },
+            action: Action::Notify {
+                urgent: true,
+            },
+        }
+    }
+
+    /// VIP contact auto-reply
+    pub fn vip_auto_reply(contacts: Vec<String>) -> AutomationRule {
+        AutomationRule {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: "VIP Auto Reply".to_string(),
+            enabled: true,
+            priority: 50,
+            trigger: Trigger::Sender {
+                contacts,
+                groups: vec![],
+            },
+            action: Action::GenerateReply {
+                intent: "reply".to_string(),
+                constraints: Some("Be professional and timely".to_string()),
+                auto_send: false,  // Review before sending
+                confidence_threshold: 85.0,
+            },
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    #[test]
+    fn test_time_range_check() {
+        let engine = AutomationEngine::new();
+        
+        // Test 9-17 (business hours)
+        let time = Utc.with_ymd_and_hms(2024, 1, 15, 14, 0, 0).unwrap();  // 2 PM
+        assert!(engine.check_time_range(9, 17, &[], &time));
+        
+        let time = Utc.with_ymd_and_hms(2024, 1, 15, 8, 0, 0).unwrap();  // 8 AM
+        assert!(!engine.check_time_range(9, 17, &[], &time));
+        
+        // Test 18-9 (after hours)
+        let time = Utc.with_ymd_and_hms(2024, 1, 15, 20, 0, 0).unwrap();  // 8 PM
+        assert!(engine.check_time_range(18, 9, &[], &time));
+        
+        let time = Utc.with_ymd_and_hms(2024, 1, 15, 7, 0, 0).unwrap();  // 7 AM
+        assert!(engine.check_time_range(18, 9, &[], &time));
+    }
+
+    #[test]
+    fn test_keyword_matching() {
+        let engine = AutomationEngine::new();
+        
+        // Match any (OR)
+        assert!(engine.check_keywords(
+            "This is urgent!",
+            &["urgent".to_string(), "emergency".to_string()],
+            false,
+            true
+        ));
+        
+        // Match all (AND)
+        assert!(!engine.check_keywords(
+            "This is urgent!",
+            &["urgent".to_string(), "emergency".to_string()],
+            false,
+            false
+        ));
+        
+        assert!(engine.check_keywords(
+            "This is an urgent emergency!",
+            &["urgent".to_string(), "emergency".to_string()],
+            false,
+            false
+        ));
+        
+        // Case sensitive
+        assert!(!engine.check_keywords(
+            "This is URGENT!",
+            &["urgent".to_string()],
+            true,
+            true
+        ));
+    }
+
+    #[test]
+    fn test_sender_matching() {
+        let engine = AutomationEngine::new();
+        
+        assert!(engine.check_sender(
+            "+1234567890",
+            "dm:+1234567890",
+            &["+1234567890".to_string()],
+            &[]
+        ));
+        
+        assert!(!engine.check_sender(
+            "+0987654321",
+            "dm:+0987654321",
+            &["+1234567890".to_string()],
+            &[]
+        ));
+        
+        assert!(engine.check_sender(
+            "+0987654321",
+            "group:abc123",
+            &[],
+            &["group:abc123".to_string()]
+        ));
+    }
+}

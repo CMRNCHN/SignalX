@@ -73,3 +73,18 @@ pub fn is_feature_enabled(feature: &str) -> bool {
     features.get(feature).copied().unwrap_or(false)
 }
 
+pub fn save_features(flags: &std::collections::HashMap<String, bool>) -> Result<(), String> {
+    let path = get_features_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create features directory: {}", e))?;
+    }
+    
+    let json = serde_json::to_string_pretty(flags)
+        .map_err(|e| format!("Failed to serialize features: {}", e))?;
+    
+    std::fs::write(&path, json)
+        .map_err(|e| format!("Failed to write features file: {}", e))?;
+    
+    Ok(())
+}

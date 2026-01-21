@@ -1,0 +1,4 @@
+React UI wiring:
+- Threads list/view, drafts panel, approve/send flow.
+- Subscribe to backend events and call backend commands.
+- Add loading/error/empty states.

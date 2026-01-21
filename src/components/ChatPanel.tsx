@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { Button, Input, Badge } from './primitives';
 import './ChatPanel.css';
 
 export interface Message {
@@ -83,58 +84,34 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
               minWidth: 0
             }}>
               {conversations.slice(0, 5).map((conv) => (
-                <button
+                <Button
                   key={conv.recipient}
+                  variant={selectedRecipient === conv.recipient ? 'secondary' : 'ghost'}
+                  size="sm"
                   onClick={() => onSelectConversation?.(conv.recipient)}
-                  style={{
-                    fontSize: '0.75rem',
-                    padding: '4px 8px',
-                    backgroundColor: selectedRecipient === conv.recipient ? '#272C33' : '#1E2227',
-                    color: selectedRecipient === conv.recipient ? '#F3F4F6' : '#8D94A1',
-                    border: '1px solid #3E4146',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                    transition: 'all 0.2s',
-                  }}
                   title={conv.name}
+                  style={{ whiteSpace: 'nowrap' }}
                 >
                   {conv.name.length > 10 ? conv.name.substring(0, 10) + '...' : conv.name}
                   {conv.unreadCount > 0 && (
-                    <span style={{ 
-                      marginLeft: '4px',
-                      backgroundColor: '#FFB1A8',
-                      color: '#1A1C1F',
-                      borderRadius: '8px',
-                      padding: '1px 4px',
-                      fontSize: '0.65rem'
-                    }}>
+                    <Badge variant="error" size="sm" style={{ marginLeft: '4px' }}>
                       {conv.unreadCount}
-                    </span>
+                    </Badge>
                   )}
-                </button>
+                </Button>
               ))}
             </div>
           )}
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {onToggleSearch && (
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={onToggleSearch}
-              style={{
-                fontSize: '0.75rem',
-                padding: '4px 8px',
-                backgroundColor: '#2B3138',
-                color: '#8D94A1',
-                border: '1px solid #3E4146',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                transition: 'background-color 0.2s',
-              }}
               title="Search (Cmd+K)"
-            >
-              🔍
-            </button>
+              icon="🔍"
+            />
           )}
           {selectedRecipient && (
             <div style={{ 
@@ -148,7 +125,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             </div>
           )}
           {messages.length > 0 && (
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 if (confirm('Clear all messages?')) {
                   if (onClearMessages) {
@@ -159,26 +138,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
                   }
                 }
               }}
-              style={{
-                fontSize: '0.75rem',
-                padding: '4px 8px',
-                backgroundColor: '#2B3138',
-                color: '#8D94A1',
-                border: '1px solid #3E4146',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                transition: 'background-color 0.2s',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#3E4146';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#2B3138';
-              }}
               title="Clear messages"
             >
               Clear
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -259,7 +222,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         )}
       </div>
       <form className="chat-input" onSubmit={handleSubmit}>
-        <input
+        <Input
           type="text"
           placeholder={
             selectedRecipient 
@@ -269,10 +232,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           disabled={isSending}
+          fullWidth
         />
-        <button type="submit" disabled={isSending || !inputValue.trim()}>
+        <Button type="submit" variant="primary" disabled={isSending || !inputValue.trim()} loading={isSending}>
           {isSending ? "Sending..." : "Send"}
-        </button>
+        </Button>
       </form>
     </div>
   );

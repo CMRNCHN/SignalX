@@ -369,14 +369,13 @@ describe('keyboard utilities', () => {
       third.focus();
 
       const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true });
-      Object.defineProperty(event, 'preventDefault', { 
-        value: () => {}, 
-        writable: true 
+      Object.defineProperty(event, 'preventDefault', {
+        value: () => {},
+        writable: true,
       });
-      
+
       trapFocus(container, event);
       // After trapping, focus should move to first element
     });
   });
 });
-

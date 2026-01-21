@@ -60,7 +60,7 @@ describe('LiveRegionAnnouncer', () => {
 
   it('respects custom delay', () => {
     announcer.announce('Delayed message', 500);
-    
+
     vi.advanceTimersByTime(100);
     const politeRegion = document.querySelector('[aria-live="polite"]');
     expect(politeRegion?.textContent).toBe('');
@@ -98,7 +98,7 @@ describe('LiveRegionAnnouncer', () => {
 
   it('has screen-reader-only styles on live regions', () => {
     const politeRegion = document.querySelector('[aria-live="polite"]') as HTMLElement;
-    
+
     expect(politeRegion.style.position).toBe('absolute');
     expect(politeRegion.style.left).toBe('-10000px');
     expect(politeRegion.style.width).toBe('1px');
@@ -226,4 +226,3 @@ describe('Announcement templates', () => {
     expect(announcements.progressUpdate(3, 10)).toBe('Progress: 3 of 10 complete');
   });
 });
-

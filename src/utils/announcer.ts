@@ -58,11 +58,7 @@ export class LiveRegionAnnouncer {
   /**
    * Announce to a specific region
    */
-  private announceToRegion(
-    region: HTMLDivElement | null,
-    message: string,
-    delay: number
-  ): void {
+  private announceToRegion(region: HTMLDivElement | null, message: string, delay: number): void {
     if (!region) return;
 
     // Clear previous timeout
@@ -168,8 +164,7 @@ export const announcements = {
   formError: (field: string, error: string) => `${field}: ${error}`,
   itemAdded: (item: string, location: string) => `${item} added to ${location}`,
   itemRemoved: (item: string, location: string) => `${item} removed from ${location}`,
-  progressUpdate: (current: number, total: number) =>
-    `Progress: ${current} of ${total} complete`,
+  progressUpdate: (current: number, total: number) => `Progress: ${current} of ${total} complete`,
 } as const;
 
 /**
@@ -196,4 +191,3 @@ export const srOnlyStyles: React.CSSProperties = {
   height: '1px',
   overflow: 'hidden',
 };
-

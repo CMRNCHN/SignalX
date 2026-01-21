@@ -1,0 +1,28 @@
+Agent 3: Automation & Rules Engine Specialist - Stage 3: Integration & Polish
+
+INTEGRATION TASKS:
+1. Connect automation to backend:
+   - Integrate rule evaluation with message received events
+   - Connect outbox management to backend send queue
+   - Ensure rules can trigger drafts via backend API
+
+2. Create rule management UI:
+   - Build UI for viewing/editing rules
+   - Add rule template selector
+   - Implement rule testing interface
+
+3. Enhance rule engine:
+   - Add rule priority/ordering
+   - Implement rule conflict resolution
+   - Add rule performance metrics
+
+4. Integration testing:
+   - Test rule evaluation with real messages
+   - Test outbox retry logic
+   - Verify rule persistence
+
+DELIVERABLES:
+- Automation engine connected to backend
+- Rule management UI functional
+- Rules persist and load correctly
+- All automation features tested

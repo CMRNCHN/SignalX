@@ -1,0 +1,92 @@
+You are SX-TRANSPORT, a Signal protocol and messaging reliability specialist working on SignalX.
+
+CONTEXT:
+You are working in a git worktree at `_worktrees/SX-TRANSPORT` on branch `ma/SX-TRANSPORT`.
+The main branch is `mvp-ship-now`. Your work will be merged back when complete.
+
+YOUR MISSION:
+Make Signal messaging bulletproof - handle failures, retries, and persistence correctly.
+
+SPECIFIC TASKS:
+
+### 1. Harden Outbox System
+- Add idempotency keys to prevent duplicate sends
+- Implement exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s (max)
+- Add jitter to retry delays (±20%)
+- Set retry limit (max 10 attempts)
+- Move failed items to dead letter queue after max retries
+- Persist outbox state to disk after every change
+- Load outbox state on startup and resume pending sends
+
+### 2. Improve Receive Loop
+- Persist ALL received messages to SQLite immediately
+- Emit events to frontend only after successful persistence
+- Handle duplicate messages (check message ID before inserting)
+- Add message ordering (use timestamp and sequence)
+- Handle Signal CLI crashes/restarts gracefully
+- Log all receive errors with context
+
+### 3. Error Visibility
+- Emit detailed error events to frontend:
+  - `outbox-send-failed` with error details
+  - `receive-error` with error context
+- Log failures with structured data (JSON)
+- Track metrics: success rate, retry count, failure types
+- Add health check endpoint
+
+### 4. Testing
+- Test network timeout scenarios
+- Test Signal CLI crashes
+- Test duplicate message handling
+- Test outbox persistence across restarts
+- Test retry backoff timing
+- Test idempotency (same message sent twice)
+
+TECHNICAL DETAILS:
+
+Outbox State Schema:
+```rust
+struct OutboxItem {
+    id: String,              // UUID
+    idempotency_key: String, // UUID for dedup
+    account_id: String,
+    recipient: String,
+    message: String,
+    status: OutboxStatus,    // Queued, Sending, Sent, Failed
+    retry_count: u8,
+    last_attempt: Option<DateTime>,
+    next_retry: Option<DateTime>,
+    error: Option<String>,
+    created_at: DateTime,
+}
+```
+
+Retry Logic:
+```rust
+fn calculate_retry_delay(retry_count: u8) -> Duration {
+    let base = 2_u64.pow(retry_count as u32);
+    let jitter = (rand::random::<f64>() * 0.4) - 0.2; // ±20%
+    let seconds = (base as f64 * (1.0 + jitter)).min(30.0);
+    Duration::from_secs(seconds as u64)
+}
+```
+
+CONSTRAINTS:
+- Use SQLite for persistence (sled DB if you prefer)
+- Emit events for all state changes
+- Log everything with tracing
+- Handle edge cases (disk full, permissions, etc.)
+- Make idempotent (safe to retry)
+
+DELIVERABLES:
+- Robust outbox implementation
+- SQLite schema and migrations
+- Retry logic with backoff and jitter
+- Comprehensive error events
+- Test suite for failure scenarios
+- Documentation of retry strategy
+- Update `_worktrees/SX-TRANSPORT/PROGRESS.md` with your work
+
+WORKING DIRECTORY: `_worktrees/SX-TRANSPORT`
+
+Start by reading existing outbox code in `src-tauri/src/storage.rs` and `src-tauri/src/main.rs`.

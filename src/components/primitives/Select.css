@@ -1,0 +1,87 @@
+.sx-select-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.sx-select-wrapper--full-width {
+  width: 100%;
+}
+
+.sx-select-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-normal);
+}
+
+.sx-select {
+  width: 100%;
+  height: var(--input-height-md);
+  padding: 0 var(--input-padding-x);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-base);
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L6 6L11 1' stroke='%23e5e7eb' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--input-padding-x) center;
+  padding-right: calc(var(--input-padding-x) + 20px);
+}
+
+.sx-select:hover:not(:disabled) {
+  border-color: var(--color-border-secondary);
+}
+
+.sx-select:focus {
+  border-color: var(--color-border-focus);
+  box-shadow: 0 0 0 3px rgba(138, 180, 255, 0.1);
+}
+
+.sx-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: var(--color-bg-tertiary);
+}
+
+.sx-select--error {
+  border-color: var(--color-error);
+}
+
+.sx-select--error:focus {
+  border-color: var(--color-error);
+  box-shadow: 0 0 0 3px rgba(251, 113, 133, 0.1);
+}
+
+.sx-select--sm {
+  height: var(--input-height-sm);
+  padding: 0 calc(var(--input-padding-x) * 0.75);
+  padding-right: calc(var(--input-padding-x) * 0.75 + 20px);
+  font-size: var(--font-size-sm);
+}
+
+.sx-select--lg {
+  height: var(--input-height-lg);
+  padding: 0 calc(var(--input-padding-x) * 1.25);
+  padding-right: calc(var(--input-padding-x) * 1.25 + 20px);
+  font-size: var(--font-size-md);
+}
+
+.sx-select-error {
+  font-size: var(--font-size-sm);
+  color: var(--color-error);
+  line-height: var(--line-height-normal);
+}
+
+.sx-select-helper {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-tertiary);
+  line-height: var(--line-height-normal);
+}

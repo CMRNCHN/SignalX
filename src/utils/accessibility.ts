@@ -72,14 +72,10 @@ export const focusVisibleStyles = {
 /**
  * High contrast mode detection
  */
-export const prefersHighContrast = () =>
-  window.matchMedia('(prefers-contrast: high)').matches;
+export const prefersHighContrast = () => window.matchMedia('(prefers-contrast: high)').matches;
 
 /**
  * Reduced motion detection
  */
 export const prefersReducedMotion = () =>
   window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-
-

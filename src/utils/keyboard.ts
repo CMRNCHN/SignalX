@@ -23,7 +23,7 @@ export const Keys = {
  */
 export const isFocusable = (element: HTMLElement): boolean => {
   if (element.tabIndex < 0) return false;
-  
+
   const focusableSelectors = [
     'a[href]',
     'button:not([disabled])',
@@ -49,17 +49,13 @@ export const getFocusableElements = (container: HTMLElement): HTMLElement[] => {
     '[tabindex]:not([tabindex="-1"])',
   ].join(', ');
 
-  return Array.from(container.querySelectorAll<HTMLElement>(focusableSelectors)).filter(
-    element => {
-      // Filter out invisible elements
-      const style = window.getComputedStyle(element);
-      return (
-        style.display !== 'none' &&
-        style.visibility !== 'hidden' &&
-        element.offsetParent !== null
-      );
-    }
-  );
+  return Array.from(container.querySelectorAll<HTMLElement>(focusableSelectors)).filter(element => {
+    // Filter out invisible elements
+    const style = window.getComputedStyle(element);
+    return (
+      style.display !== 'none' && style.visibility !== 'hidden' && element.offsetParent !== null
+    );
+  });
 };
 
 /**
@@ -260,4 +256,3 @@ export const handleClickWithKeyboard = (
     callback();
   }
 };
-

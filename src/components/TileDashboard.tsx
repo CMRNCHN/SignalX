@@ -1,4 +1,5 @@
 import React from 'react';
+import { Card } from './primitives';
 import './TileDashboard.css';
 
 interface TileDashboardProps {
@@ -29,14 +30,17 @@ const TileDashboard: React.FC<TileDashboardProps> = ({
     <div className="tile-dashboard panel tile-dashboard">
       <div className="tiles-container">
         {tiles.map((tile, idx) => (
-          <div
+          <Card
             key={idx}
-            className="tile"
+            variant="elevated"
+            padding="md"
+            hoverable
+            interactive
             style={{ backgroundColor: tile.color }}
           >
             <span className="tile-value">{tile.value}</span>
             <span className="tile-title">{tile.title}</span>
-          </div>
+          </Card>
         ))}
       </div>
     </div>

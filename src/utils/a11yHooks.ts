@@ -18,7 +18,11 @@ export const useAnnounceOnMount = (message: string, deps: any[] = []) => {
 /**
  * Announce loading states
  */
-export const useAnnounceLoading = (isLoading: boolean, loadingMessage: string, loadedMessage: string) => {
+export const useAnnounceLoading = (
+  isLoading: boolean,
+  loadingMessage: string,
+  loadedMessage: string
+) => {
   const prevLoading = useRef(isLoading);
 
   useEffect(() => {
@@ -241,11 +245,7 @@ export const useFocusError = (errors: Record<string, any>) => {
 /**
  * Announce when items are added/removed from a list
  */
-export const useAnnounceListChanges = (
-  items: any[],
-  itemLabel: string,
-  announceBoth = false
-) => {
+export const useAnnounceListChanges = (items: any[], itemLabel: string, announceBoth = false) => {
   const prevCount = useRef(items.length);
 
   useEffect(() => {
@@ -264,4 +264,3 @@ export const useAnnounceListChanges = (
     prevCount.current = currentCount;
   }, [items.length, itemLabel, announceBoth]);
 };
-

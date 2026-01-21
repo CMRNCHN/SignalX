@@ -1,0 +1,7 @@
+{
+  "ui.panel.ai": true,
+  "ui.modal.diagnostics": true,
+  "ai.drafting": true,
+  "storage.sqlite": true,
+  "headless.enabled": true
+}

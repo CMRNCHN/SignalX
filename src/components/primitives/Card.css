@@ -1,0 +1,57 @@
+.sx-card {
+  background-color: var(--color-bg-elevated);
+  border-radius: var(--radius-lg);
+  transition: all var(--transition-base);
+}
+
+.sx-card--default {
+  border: 1px solid var(--color-border-primary);
+}
+
+.sx-card--elevated {
+  border: 1px solid var(--color-border-primary);
+  box-shadow: var(--shadow-md);
+}
+
+.sx-card--outlined {
+  border: 1px solid var(--color-border-secondary);
+  background-color: transparent;
+}
+
+.sx-card--padding-none {
+  padding: 0;
+}
+
+.sx-card--padding-sm {
+  padding: var(--spacing-3);
+}
+
+.sx-card--padding-md {
+  padding: var(--spacing-4);
+}
+
+.sx-card--padding-lg {
+  padding: var(--spacing-6);
+}
+
+.sx-card--interactive {
+  cursor: pointer;
+  user-select: none;
+}
+
+.sx-card--interactive:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+.sx-card--hoverable:hover {
+  background-color: var(--color-bg-elevated-2);
+  border-color: var(--color-border-secondary);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-lg);
+}
+
+.sx-card--interactive:active {
+  transform: translateY(0);
+  box-shadow: var(--shadow-sm);
+}

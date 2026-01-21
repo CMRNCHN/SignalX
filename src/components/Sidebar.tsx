@@ -1,4 +1,5 @@
 import React from "react";
+import { Select, Badge } from "./primitives";
 import "./Sidebar.css";
 
 type View = "messages" | "contacts" | "threads" | "ai-tools" | "settings";
@@ -44,7 +45,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           >
             Account
           </label>
-          <select
+          <Select
             id="account-select"
             value={activeAccount || ""}
             onChange={(e) => {
@@ -52,23 +53,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                 onAccountChange(e.target.value);
               }
             }}
-            style={{
-              width: "100%",
-              padding: "6px 8px",
-              backgroundColor: "#272c33",
-              border: "1px solid #3a4149",
-              borderRadius: "6px",
-              color: "#cbd2d9",
-              fontSize: "0.875rem",
-              cursor: "pointer",
-            }}
-          >
-            {accounts.map((account) => (
-              <option key={account} value={account}>
-                {account}
-              </option>
-            ))}
-          </select>
+            options={accounts.map(account => ({ value: account, label: account }))}
+            size="sm"
+            fullWidth
+          />
         </div>
       )}
       <nav className="sidebar-nav">
@@ -85,24 +73,18 @@ const Sidebar: React.FC<SidebarProps> = ({
               <span className="icon">{item.icon}</span>
               {item.label}
               {item.view === "messages" && notificationCount > 0 && (
-                <span
+                <Badge
+                  variant="error"
+                  size="sm"
                   style={{
                     position: "absolute",
                     right: "12px",
                     top: "50%",
                     transform: "translateY(-50%)",
-                    backgroundColor: "#FFB1A8",
-                    color: "#1A1C1F",
-                    borderRadius: "10px",
-                    padding: "2px 6px",
-                    fontSize: "0.7rem",
-                    fontWeight: 600,
-                    minWidth: "18px",
-                    textAlign: "center",
                   }}
                 >
                   {notificationCount > 99 ? "99+" : notificationCount}
-                </span>
+                </Badge>
               )}
             </li>
           ))}

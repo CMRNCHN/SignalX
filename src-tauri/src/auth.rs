@@ -132,13 +132,14 @@ impl AuthManager {
     }
 
     pub fn get_session(&self, token: &str) -> Option<Session> {
-        let sessions = self.sessions.lock().map_err(|e| format!("Session mutex poisoned: {}", e))?;
+        let sessions = self.sessions.lock().ok()?;
         sessions.get(token).cloned()
     }
 
     pub fn logout(&self, token: &str) {
-        let mut sessions = self.sessions.lock().map_err(|e| format!("Session mutex poisoned: {}", e))?;
-        sessions.remove(token);
+        if let Ok(mut sessions) = self.sessions.lock() {
+            sessions.remove(token);
+        }
     }
 
     pub fn ensure_admin_exists(&self) -> Result<(), String> {

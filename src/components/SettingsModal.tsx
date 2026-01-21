@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Button, Input, Textarea } from "./primitives";
 // Note: contact photos are rendered via backend byte streaming + blob URLs in App.tsx
 
 export type CustomField = {
@@ -321,90 +322,58 @@ export const SettingsModal: React.FC<SettingsModalProps> = (props) => {
       >
         <div style={{ padding: 12, borderBottom: "1px solid #1f2937", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ fontWeight: 900 }}>Settings</div>
-          <button
-            onClick={onClose}
-            style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #374151", background: "#111827", color: "#e5e7eb", cursor: "pointer", fontSize: 12 }}
-          >
+          <Button variant="secondary" size="sm" onClick={onClose}>
             Close
-          </button>
+          </Button>
         </div>
 
         <div style={{ padding: 10, borderBottom: "1px solid #1f2937", display: "flex", gap: 6 }}>
           {(["General", "Accounts", "Contacts", "Developer"] as const).map((t) => (
-            <button
+            <Button
               key={t}
+              variant={tab === t ? "secondary" : "ghost"}
+              size="sm"
               onClick={() => setTab(t)}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid #374151",
-                background: tab === t ? "#111827" : "transparent",
-                color: tab === t ? "#e5e7eb" : "#9ca3af",
-                cursor: "pointer",
-                fontSize: 12,
-                fontWeight: 800,
-              }}
             >
               {t}
-            </button>
+            </Button>
           ))}
         </div>
 
         {tab !== "Contacts" ? (
           <div style={{ padding: 14, color: "#9ca3af" }}>
-            TODO: {tab} settings.
+            {tab} settings coming soon. This section will include configuration options for {tab.toLowerCase()} management.
           </div>
         ) : (
           <div style={{ flex: 1, display: "grid", gridTemplateColumns: "360px 1fr", minHeight: 0 }}>
             {/* Left list */}
             <div style={{ borderRight: "1px solid #1f2937", padding: 12, overflow: "auto" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 10 }}>
-                <button
+                <Button
+                  variant={mode === "People" ? "secondary" : "ghost"}
+                  size="sm"
                   onClick={() => setMode("People")}
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    border: "1px solid #374151",
-                    background: mode === "People" ? "#111827" : "transparent",
-                    color: mode === "People" ? "#e5e7eb" : "#9ca3af",
-                    cursor: "pointer",
-                    fontSize: 12,
-                    fontWeight: 800,
-                  }}
                 >
                   People
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant={mode === "Groups" ? "secondary" : "ghost"}
+                  size="sm"
                   onClick={() => setMode("Groups")}
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    border: "1px solid #374151",
-                    background: mode === "Groups" ? "#111827" : "transparent",
-                    color: mode === "Groups" ? "#e5e7eb" : "#9ca3af",
-                    cursor: "pointer",
-                    fontSize: 12,
-                    fontWeight: 800,
-                  }}
                 >
                   Groups
-                </button>
+                </Button>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <input
+                <Input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder={mode === "People" ? "Search contacts…" : "Search groups…"}
-                  style={{
-                    flex: 1,
-                    padding: 10,
-                    borderRadius: 10,
-                    border: "1px solid #374151",
-                    background: "#111827",
-                    color: "#e5e7eb",
-                  }}
+                  fullWidth
                 />
-                <button
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={async () => {
                     if (mode === "Groups") {
                       const id = window.prompt("Add group (group id)", "group:");
@@ -422,20 +391,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = (props) => {
                     await onCreateContact(v);
                     onSelectContact(v);
                   }}
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: "1px solid #374151",
-                    background: "#111827",
-                    color: "#e5e7eb",
-                    cursor: "pointer",
-                    fontSize: 12,
-                    fontWeight: 800,
-                  }}
                   title="Add contact"
                 >
                   +
-                </button>
+                </Button>
               </div>
               <div style={{ marginTop: 10 }}>
                 {mode === "People" ? (
@@ -884,7 +843,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = (props) => {
                                     Delete
                                   </button>
                                 </div>
-                                <textarea
+                                <Textarea
                                   value={f.value}
                                   onChange={(e) => {
                                     const next = [...draft.custom_fields];
@@ -893,7 +852,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = (props) => {
                                     setDirty(true);
                                   }}
                                   placeholder="Value"
-                                  style={{ marginTop: 8, width: "100%", padding: 10, borderRadius: 10, border: "1px solid #374151", background: "#111827", color: "#e5e7eb", minHeight: 60 }}
+                                  style={{ marginTop: 8, minHeight: 60 }}
+                                  fullWidth
                                 />
                               </div>
                             ))}

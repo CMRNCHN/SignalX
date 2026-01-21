@@ -11,6 +11,46 @@ This repository contains the front‑end scaffold and build configuration for **
 - macOS output: `src-tauri/target/release/bundle/macos/SignalX.app` (a DMG is also produced in the same directory). The app reads/writes data under `~/Library/Application Support/SignalX/` (threads, aliases, search, exports).
 - The packaged app runs without the Vite dev server; threads/messages load from the persisted JSON state and the background receive loop stays off the UI thread.
 
+## 🤖 Automated Testing
+
+SignalX includes comprehensive automated testing that runs after every major update to ensure quality and catch regressions.
+
+### Quick Test Commands
+
+```bash
+# Full automated test suite (recommended for releases)
+npm run test:full
+
+# Quick automated tests only
+npm run test:auto
+
+# Manual testing steps
+cat docs/SIMPLE_TESTING_STEPS.md
+```
+
+### What Gets Tested
+
+The automated agent tests all 6 core functionalities:
+- ✅ **TUI Help Screen** - Terminal interface help system
+- ✅ **TUI Search** - Terminal search functionality
+- ✅ **GUI Launch** - Desktop application startup
+- ✅ **Accessibility Tools** - WCAG compliance checks
+- ✅ **Keyboard Navigation** - Tab navigation and focus management
+- ✅ **SkipLinks** - Accessibility navigation links
+
+### Quality Gates
+
+- **Pre-push Hook**: Tests run automatically on `git push`
+- **Release Checklist**: See `docs/RELEASE_CHECKLIST.md`
+- **Test Reports**: Results saved to `AUTOMATED_TEST_RESULTS.md`
+
+### Manual Testing
+
+For manual verification, follow the steps in `docs/SIMPLE_TESTING_STEPS.md` or run:
+```bash
+npm run test:manual  # If you add this script
+```
+
 ## Outbox (reliable outbound sends)
 
 SignalX queues outbound messages into a per-account **outbox** and sends them in the background with retry/backoff. This is designed to be safe across restarts: pending/failed items are persisted and will resume automatically.
@@ -255,27 +295,24 @@ This project has comprehensive documentation to guide you from setup to producti
 
 ### 🗺️ Planning & Development
 - **[PRODUCT_ROADMAP.md](PRODUCT_ROADMAP.md)** - Complete feature roadmap and architecture
-- **[IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md)** - Step-by-step development guide (⭐ developer bible)
-- **[DEVELOPMENT_TIMELINE.md](DEVELOPMENT_TIMELINE.md)** - Visual timeline and milestones
+- **[docs/IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md)** - Step-by-step development guide (⭐ developer bible)
 - **[docs/NEXT_STEPS.md](docs/NEXT_STEPS.md)** - Immediate action items and testing
 
 ### ♿ Accessibility
-- **[ACCESSIBILITY_QUICKSTART.md](ACCESSIBILITY_QUICKSTART.md)** - 5-minute accessibility guide (⭐ quick wins!)
-- **[ACCESSIBILITY.md](ACCESSIBILITY.md)** - Complete accessibility documentation
-- **[PANEL_ACCESSIBILITY.md](PANEL_ACCESSIBILITY.md)** - Panel enhancement guide
-- **[ACCESSIBILITY_SUMMARY.md](ACCESSIBILITY_SUMMARY.md)** - Implementation summary
+- **[ACCESSIBILITY.md](ACCESSIBILITY.md)** - Complete accessibility documentation (includes quick start)
 
 ### 📖 Reference
-- **[DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)** - Master index to all docs
 - **[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)** - File organization and structure
+- **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** - One-page overview of everything
 - **[docs/STATUS.md](docs/STATUS.md)** - Current implementation status
 - **[docs/VISION_ASSESSMENT.md](docs/VISION_ASSESSMENT.md)** - Vision vs reality analysis
+- **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** - End-user documentation
+- **[docs/TUI_GUIDE.md](docs/TUI_GUIDE.md)** - Terminal UI guide
 
 ### 👥 For Your Role
-- **Product Manager:** Read QUICK_REFERENCE → PRODUCT_ROADMAP → STATUS
-- **New Developer:** Read README → QUICKSTART → IMPLEMENTATION_GUIDE
-- **Accessibility Developer:** Read ACCESSIBILITY_QUICKSTART → ACCESSIBILITY → test with keyboard & screen reader
-- **QA/Tester:** Read QUICKSTART → NEXT_STEPS → ACCESSIBILITY (testing checklists)
+- **Product Manager:** Read QUICK_REFERENCE → PRODUCT_ROADMAP → docs/STATUS
+- **New Developer:** Read README → docs/QUICKSTART → docs/IMPLEMENTATION_GUIDE
+- **Accessibility Developer:** Read ACCESSIBILITY → test with keyboard & screen reader
+- **QA/Tester:** Read docs/QUICKSTART → docs/NEXT_STEPS → docs/SIMPLE_TESTING_STEPS
 - **Tech Lead:** Read PRODUCT_ROADMAP → PROJECT_STRUCTURE → packages
-
-See **[DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)** for the complete guide to all documentation.

@@ -1,0 +1,74 @@
+/* Empty State Component */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 2rem;
+  text-align: center;
+  color: var(--color-text-secondary, #9ca3af);
+}
+
+.empty-state-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+  opacity: 0.6;
+}
+
+.empty-state-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-text, #f3f4f6);
+  margin: 0 0 0.5rem 0;
+}
+
+.empty-state-message {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  max-width: 400px;
+  margin: 0 0 1.5rem 0;
+  color: var(--color-text-secondary, #9ca3af);
+}
+
+.empty-state-action {
+  padding: 0.625rem 1.25rem;
+  background: var(--color-primary, #3b82f6);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.empty-state-action:hover {
+  background: var(--color-primary-hover, #2563eb);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.empty-state-action:active {
+  transform: translateY(0);
+}
+
+.empty-state-action:focus {
+  outline: 2px solid var(--color-primary, #3b82f6);
+  outline-offset: 2px;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

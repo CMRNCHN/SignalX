@@ -1,0 +1,28 @@
+Agent 1: Frontend UI & Components Specialist - Stage 3: Integration & Polish
+
+INTEGRATION TASKS:
+1. Integrate new primitives (Button, Input, Card, Badge, Select) into existing components:
+   - Replace custom buttons in Sidebar.tsx, SettingsModal.tsx with Button component
+   - Replace input fields in NewMessageModal.tsx, SettingsModal.tsx with Input component
+   - Use Card component in TileDashboard.tsx
+   - Use Badge component for unread counts in ThreadsPanel.tsx
+
+2. Enhance existing components with design tokens:
+   - Update all components to use CSS variables from tokens.css
+   - Ensure consistent spacing, colors, typography
+   - Add proper focus states using design tokens
+
+3. Improve component composition:
+   - Create compound components where appropriate
+   - Ensure all components are accessible (ARIA, keyboard navigation)
+   - Add loading and error states using new primitives
+
+4. Documentation:
+   - Update component usage examples
+   - Add migration guide for existing components
+
+DELIVERABLES:
+- All existing components use new primitives
+- Design system fully integrated
+- Component library documentation complete
+- All components pass accessibility checks

@@ -4,6 +4,8 @@ mod storage;
 mod auth;
 mod rules;
 mod features;
+mod ai;
+mod error;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -16,6 +18,34 @@ use uuid::Uuid;
 
 use tauri::{Emitter, Manager};
 use tokio::sync::Mutex as AsyncMutex;
+
+// Stub for old rules engine (to be implemented later)
+pub struct OldRulesEngine {
+    _storage: Arc<storage::Storage>,
+}
+
+impl OldRulesEngine {
+    pub fn new(storage: Arc<storage::Storage>) -> Self {
+        Self { _storage: storage }
+    }
+    
+    pub fn compile_rule(&self, _rule_json: &str) -> Result<(), String> {
+        // Stub implementation - to be completed
+        Ok(())
+    }
+    
+    pub async fn run_rules_for_message(
+        &self,
+        _account_id: &str,
+        _message_body: &str,
+        _sender: &str,
+        _thread_id: &str,
+        _send_enabled: bool,
+    ) -> Result<Vec<rules::Action>, String> {
+        // Stub implementation - returns empty list
+        Ok(vec![])
+    }
+}
 
 const RECEIVE_TIMEOUT_SECS: &str = "2";
 const RECEIVE_MAX_MESSAGES: &str = "50";
@@ -30,6 +60,8 @@ const DEFAULT_AGENT_LAST_N: u32 = 50;
 // --------------------
 // API helpers
 // --------------------
+use error::{AppError, AppResult, result_to_json};
+
 fn ok(data: Value) -> Value {
   json!({ "success": true, "data": data })
 }
@@ -38,6 +70,11 @@ fn ok_t<T: Serialize>(data: T) -> Value {
 }
 fn err(msg: String) -> Value {
   json!({ "success": false, "error": msg })
+}
+
+// Helper to convert AppResult to JSON response
+fn app_result_to_json<T: Serialize>(result: AppResult<T>) -> Value {
+  result_to_json(result)
 }
 
 // --------------------
@@ -270,13 +307,17 @@ impl OutboxSummary {
 #[derive(Clone)]
 struct OutboxStore {
   dir: PathBuf, // {app_data_dir}/outbox
-  data: Arc<Mutex<HashMap<String, OutboxData>>>, // account_id -> data
-  save_mutexes: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>, // account_id -> mutex
+  data: Arc<AsyncMutex<HashMap<String, OutboxData>>>, // account_id -> data (async-safe)
+  save_mutexes: Arc<AsyncMutex<HashMap<String, Arc<AsyncMutex<()>>>>>, // account_id -> mutex (async-safe)
 }
 
 impl OutboxStore {
   fn new(dir: PathBuf) -> Self {
-    Self { dir, data: Arc::new(Mutex::new(HashMap::new())), save_mutexes: Arc::new(Mutex::new(HashMap::new())) }
+    Self { 
+      dir, 
+      data: Arc::new(AsyncMutex::new(HashMap::new())), 
+      save_mutexes: Arc::new(AsyncMutex::new(HashMap::new())) 
+    }
   }
 
   fn path_for(&self, account_id: &str) -> PathBuf {
@@ -284,16 +325,19 @@ impl OutboxStore {
     self.dir.join(format!("{}.json", account_id))
   }
 
-  fn account_save_lock(&self, account_id: &str) -> Result<Arc<Mutex<()>>, String> {
-    let mut m = self.save_mutexes.lock().map_err(|e| format!("Save mutexes poisoned: {}", e))?;
-    Ok(m.entry(account_id.to_string()).or_insert_with(|| Arc::new(Mutex::new(()))).clone())
+  async fn account_save_lock(&self, account_id: &str) -> Result<Arc<AsyncMutex<()>>, String> {
+    let mut m = self.save_mutexes.lock().await;
+    Ok(m.entry(account_id.to_string()).or_insert_with(|| Arc::new(AsyncMutex::new(()))).clone())
   }
 
   async fn ensure_loaded_async(&self, account_id: &str) -> Result<(), String> {
-    let data_guard = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
-    if data_guard.contains_key(account_id) {
-      return Ok(());
-    }
+    {
+      let data_guard = self.data.lock().await;
+      if data_guard.contains_key(account_id) {
+        return Ok(());
+      }
+    } // Drop lock before async work
+    
     let account_id_s = account_id.to_string();
     let dir = self.dir.clone();
     let path = self.path_for(account_id);
@@ -318,7 +362,7 @@ impl OutboxStore {
     .await
     .map_err(|e| format!("outbox load join error: {}", e))??;
 
-    let mut data_guard = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
+    let mut data_guard = self.data.lock().await;
     data_guard.insert(account_id_s, loaded);
     Ok(())
   }
@@ -329,18 +373,18 @@ impl OutboxStore {
 
   async fn save_account_atomic_async(&self, account_id: &str) -> Result<(), String> {
     self.ensure_loaded_async(account_id).await?;
-    let save_lock = self.account_save_lock(account_id)?;
+    let save_lock = self.account_save_lock(account_id).await?;
     let path = self.path_for(account_id);
     let dir = self.dir.clone();
     let snapshot = {
-      let d = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
+      let d = self.data.lock().await;
       let data = d.get(account_id).cloned().unwrap_or_else(OutboxData::v1);
       serde_json::to_string_pretty(&data).map_err(|e| format!("outbox serialize error: {}", e))?
     };
 
     let save_lock2 = save_lock.clone();
     tokio::task::spawn_blocking(move || -> Result<(), String> {
-      let _guard = save_lock2.lock().map_err(|e| format!("Save lock poisoned: {}", e))?
+      let _guard = tauri::async_runtime::block_on(save_lock2.lock());
       let _ = std::fs::create_dir_all(&dir);
       let tmp_path = path.with_extension("json.tmp");
       std::fs::write(&tmp_path, snapshot.as_bytes()).map_err(|e| format!("outbox write failed: {}", e))?;
@@ -357,7 +401,7 @@ impl OutboxStore {
 
   fn list(&self, account_id: &str, thread_id: Option<&str>) -> Result<Vec<OutboxItem>, String> {
     self.ensure_loaded(account_id)?;
-    let d = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
+    let d = tauri::async_runtime::block_on(self.data.lock());
     let data = d.get(account_id).cloned().unwrap_or_else(OutboxData::v1);
     let mut items = data.items;
     if let Some(tid) = thread_id {
@@ -369,7 +413,7 @@ impl OutboxStore {
 
   fn summary(&self, account_id: &str) -> Result<OutboxSummary, String> {
     self.ensure_loaded(account_id)?;
-    let d = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
+    let d = tauri::async_runtime::block_on(self.data.lock());
     let data = d.get(account_id).cloned().unwrap_or_else(OutboxData::v1);
     let mut s = OutboxSummary::empty();
     for it in data.items.iter() {
@@ -385,7 +429,7 @@ impl OutboxStore {
 
   async fn list_async(&self, account_id: &str, thread_id: Option<&str>) -> Result<Vec<OutboxItem>, String> {
     self.ensure_loaded_async(account_id).await?;
-    let d = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
+    let d = self.data.lock().await;
     let data = d.get(account_id).cloned().unwrap_or_else(OutboxData::v1);
     let mut items = data.items;
     if let Some(tid) = thread_id {
@@ -397,7 +441,7 @@ impl OutboxStore {
 
   async fn summary_async(&self, account_id: &str) -> Result<OutboxSummary, String> {
     self.ensure_loaded_async(account_id).await?;
-    let d = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
+    let d = self.data.lock().await;
     let data = d.get(account_id).cloned().unwrap_or_else(OutboxData::v1);
     let mut s = OutboxSummary::empty();
     for it in data.items.iter() {
@@ -414,7 +458,7 @@ impl OutboxStore {
   fn add_item(&self, item: OutboxItem) -> Result<OutboxItem, String> {
     self.ensure_loaded(&item.account_id)?;
     {
-      let mut d = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
+      let mut d = tauri::async_runtime::block_on(self.data.lock());
       let data = d.entry(item.account_id.clone()).or_insert_with(OutboxData::v1);
       data.items.push(item.clone());
       data.items.sort_by_key(|i| i.created_at);
@@ -426,7 +470,7 @@ impl OutboxStore {
   async fn add_item_async(&self, item: OutboxItem) -> Result<OutboxItem, String> {
     self.ensure_loaded_async(&item.account_id).await?;
     {
-      let mut d = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
+      let mut d = self.data.lock().await;
       let data = d.entry(item.account_id.clone()).or_insert_with(OutboxData::v1);
       data.items.push(item.clone());
       data.items.sort_by_key(|i| i.created_at);
@@ -438,7 +482,7 @@ impl OutboxStore {
   fn update_item(&self, account_id: &str, updated: OutboxItem) -> Result<OutboxItem, String> {
     self.ensure_loaded(account_id)?;
     {
-      let mut d = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
+      let mut d = tauri::async_runtime::block_on(self.data.lock());
       let data = d.entry(account_id.to_string()).or_insert_with(OutboxData::v1);
       if let Some(existing) = data.items.iter_mut().find(|i| i.id == updated.id) {
         *existing = updated.clone();
@@ -453,7 +497,7 @@ impl OutboxStore {
   async fn update_item_async(&self, account_id: &str, updated: OutboxItem) -> Result<OutboxItem, String> {
     self.ensure_loaded_async(account_id).await?;
     {
-      let mut d = self.data.lock().map_err(|e| format!("Data mutex poisoned: {}", e))?;
+      let mut d = self.data.lock().await;
       let data = d.entry(account_id.to_string()).or_insert_with(OutboxData::v1);
       if let Some(existing) = data.items.iter_mut().find(|i| i.id == updated.id) {
         *existing = updated.clone();
@@ -469,7 +513,7 @@ impl OutboxStore {
     self.ensure_loaded(account_id)?;
     let mut removed = false;
     {
-      let mut d = self.data.lock().unwrap();
+      let mut d = tauri::async_runtime::block_on(self.data.lock());
       let data = d.entry(account_id.to_string()).or_insert_with(OutboxData::v1);
       let before = data.items.len();
       data.items.retain(|i| i.id != id);
@@ -485,7 +529,7 @@ impl OutboxStore {
     self.ensure_loaded_async(account_id).await?;
     let mut removed = false;
     {
-      let mut d = self.data.lock().unwrap();
+      let mut d = self.data.lock().await;
       let data = d.entry(account_id.to_string()).or_insert_with(OutboxData::v1);
       let before = data.items.len();
       data.items.retain(|i| i.id != id);
@@ -499,7 +543,7 @@ impl OutboxStore {
 
   fn find_by_id(&self, account_id: &str, id: &str) -> Result<Option<OutboxItem>, String> {
     self.ensure_loaded(account_id)?;
-    let d = self.data.lock().unwrap();
+    let d = tauri::async_runtime::block_on(self.data.lock());
     let data = d.get(account_id).cloned().unwrap_or_else(OutboxData::v1);
     Ok(data.items.into_iter().find(|i| i.id == id))
   }
@@ -509,7 +553,7 @@ impl OutboxStore {
     let now = now_ms();
     let mut claimed: Option<OutboxItem> = None;
     {
-      let mut d = self.data.lock().unwrap();
+      let mut d = tauri::async_runtime::block_on(self.data.lock());
       let data = d.entry(account_id.to_string()).or_insert_with(OutboxData::v1);
 
       // Find the next eligible item by created_at.
@@ -553,7 +597,7 @@ impl OutboxStore {
     let now = now_ms();
     let mut claimed: Option<OutboxItem> = None;
     {
-      let mut d = self.data.lock().unwrap();
+      let mut d = self.data.lock().await;
       let data = d.entry(account_id.to_string()).or_insert_with(OutboxData::v1);
 
       // Find the next eligible item by created_at.
@@ -688,6 +732,11 @@ impl ThreadState {
         *self.last_save_error.lock().unwrap() = Some(format!("{}", e));
       }
     }
+  }
+
+  fn get_thread(&self, thread_id: &str) -> Option<ThreadData> {
+    let d = self.data.lock().unwrap();
+    d.threads.get(thread_id).cloned()
   }
 
   fn add_message(&self, msg: Message, participants: Vec<String>) {
@@ -2067,7 +2116,9 @@ struct AppState {
   outbox_workers: Arc<Mutex<HashSet<String>>>, // account_id set
   storage: Option<Arc<storage::Storage>>,
   auth_manager: Option<Arc<auth::AuthManager>>,
-  rules_engine: Option<Arc<rules::RulesEngine>>,
+  rules_engine: Option<Arc<OldRulesEngine>>,  // Old storage-based rules (keep for compatibility)
+  ai_client: Option<Arc<ai::OllamaClient>>,
+  automation_engine: Arc<Mutex<rules::AutomationEngine>>,  // New automation engine
 }
 
 fn now_ms() -> i64 {
@@ -2124,6 +2175,50 @@ fn list_accounts(state: tauri::State<AppState>) -> Value {
 }
 
 #[tauri::command]
+fn get_feature_flags() -> Value {
+  let flags = features::load_features();
+  ok_t(json!({
+    "flags": flags
+  }))
+}
+
+#[tauri::command]
+fn set_feature_flag(
+  feature: String,
+  enabled: bool,
+  app_handle: tauri::AppHandle,
+) -> Value {
+  let path = features::get_features_path();
+  let mut flags = features::load_features();
+  
+  flags.insert(feature.clone(), enabled);
+  
+  // Save to file
+  if let Some(parent) = path.parent() {
+    if let Err(e) = std::fs::create_dir_all(parent) {
+      return err(format!("Failed to create features directory: {}", e));
+    }
+  }
+  
+  let json = serde_json::to_string_pretty(&flags)
+    .map_err(|e| format!("Failed to serialize features: {}", e))?;
+  
+  if let Err(e) = std::fs::write(&path, json) {
+    return err(format!("Failed to write features file: {}", e));
+  }
+  
+  // Emit event to frontend
+  let _ = app_handle.emit("features-updated", json!({
+    "flags": flags
+  }));
+  
+  ok_t(json!({
+    "feature": feature,
+    "enabled": enabled
+  }))
+}
+
+#[tauri::command]
 fn get_active_account(state: tauri::State<AppState>) -> Value {
   ok(json!({ "account_id": state.account_manager.get_active() }))
 }
@@ -2139,7 +2234,7 @@ fn require_active_account(state: &AppState) -> Result<String, Value> {
 fn set_active_account(app: tauri::AppHandle, state: tauri::State<AppState>, account_id: String) -> Value {
   let account_id = account_id.trim().to_string();
   if account_id.is_empty() {
-    return err("account_id cannot be empty".to_string());
+    return app_result_to_json(Err(AppError::InvalidInput("account_id cannot be empty".to_string())));
   }
 
   // ensure exists/loaded
@@ -2249,7 +2344,7 @@ fn get_outbox_state_summary(state: tauri::State<AppState>) -> Value {
   };
   match state.outbox_store.summary(&account) {
     Ok(s) => ok_t(s),
-    Err(e) => err(e),
+    Err(e) => app_result_to_json(Err(AppError::Database(e))),
   }
 }
 
@@ -2262,7 +2357,7 @@ fn list_outbox(state: tauri::State<AppState>, thread_id: Option<String>) -> Valu
   let tid = thread_id.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty());
   match state.outbox_store.list(&account, tid) {
     Ok(items) => ok_t(items),
-    Err(e) => err(e),
+    Err(e) => app_result_to_json(Err(AppError::Database(e))),
   }
 }
 
@@ -2275,7 +2370,7 @@ fn queue_outgoing_message(app: tauri::AppHandle, state: tauri::State<AppState>, 
   let tid = thread_id.trim().to_string();
   let body = content.trim().to_string();
   if tid.is_empty() || body.is_empty() {
-    return err("thread_id and content are required".to_string());
+    return app_result_to_json(Err(AppError::InvalidInput("thread_id and content are required".to_string())));
   }
 
   let (_kind, derived) = recipient_from_thread_id(&tid);
@@ -2302,7 +2397,7 @@ fn queue_outgoing_message(app: tauri::AppHandle, state: tauri::State<AppState>, 
       emit_outbox_item_updated(&app, &saved);
       ok_t(saved)
     }
-    Err(e) => err(e),
+    Err(e) => app_result_to_json(Err(AppError::Database(e))),
   }
 }
 
@@ -2314,7 +2409,7 @@ fn retry_outbox_item(app: tauri::AppHandle, state: tauri::State<AppState>, id: S
   };
   let oid = id.trim();
   if oid.is_empty() {
-    return err("id required".to_string());
+    return app_result_to_json(Err(AppError::InvalidInput("id required".to_string())));
   }
   match state.outbox_store.find_by_id(&account_id, oid) {
     Ok(Some(mut item)) => {
@@ -2330,14 +2425,14 @@ fn retry_outbox_item(app: tauri::AppHandle, state: tauri::State<AppState>, id: S
             emit_outbox_item_updated(&app, &updated);
             ok_t(updated)
           }
-          Err(e) => err(e),
+          Err(e) => app_result_to_json(Err(AppError::Database(e))),
         }
       } else {
         ok_t(item)
       }
     }
     Ok(None) => err("Outbox item not found".to_string()),
-    Err(e) => err(e),
+    Err(e) => app_result_to_json(Err(AppError::Database(e))),
   }
 }
 
@@ -2349,7 +2444,7 @@ fn delete_outbox_item(app: tauri::AppHandle, state: tauri::State<AppState>, id: 
   };
   let oid = id.trim();
   if oid.is_empty() {
-    return err("id required".to_string());
+    return app_result_to_json(Err(AppError::InvalidInput("id required".to_string())));
   }
 
   // Best-effort: find thread_id before deletion (for targeted refresh)
@@ -2361,7 +2456,7 @@ fn delete_outbox_item(app: tauri::AppHandle, state: tauri::State<AppState>, id: 
       }
       ok(json!({ "deleted": deleted }))
     }
-    Err(e) => err(e),
+    Err(e) => app_result_to_json(Err(AppError::Database(e))),
   }
 }
 
@@ -2369,7 +2464,7 @@ fn delete_outbox_item(app: tauri::AppHandle, state: tauri::State<AppState>, id: 
 fn mark_pending_reply_consumed(state: tauri::State<AppState>, thread_id: String, message_id: String) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
-    None => return err("No active account".to_string()),
+    None => return app_result_to_json(Err(AppError::InvalidInput("No active account".to_string()))),
   };
   let ts = state.account_manager.get_or_create(&account);
   let ok_flag = ts.consume_pending_reply(thread_id.trim(), message_id.trim());
@@ -2408,12 +2503,12 @@ fn get_alias(state: tauri::State<AppState>, number: String) -> Value {
 fn set_alias(state: tauri::State<AppState>, number: String, alias: String) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
-    None => return err("No active account".to_string()),
+    None => return app_result_to_json(Err(AppError::InvalidInput("No active account".to_string()))),
   };
   let n = number.trim();
   let a = alias.trim();
   if n.is_empty() || a.is_empty() {
-    return err("number and alias required".to_string());
+    return app_result_to_json(Err(AppError::InvalidInput("number and alias required".to_string())));
   }
   state.alias_manager.set_alias(&account, n, a);
   ok(json!(true))
@@ -2448,7 +2543,7 @@ fn set_contact_meta(app: tauri::AppHandle, state: tauri::State<AppState>, contac
   };
   let cid = contact_id.trim();
   if cid.is_empty() {
-    return err("contact_id cannot be empty".to_string());
+    return app_result_to_json(Err(AppError::InvalidInput("contact_id cannot be empty".to_string())));
   }
   match state.contact_store.upsert_patch(&account_id, cid, patch) {
     Ok(m) => {
@@ -2469,7 +2564,7 @@ fn set_contact_meta(app: tauri::AppHandle, state: tauri::State<AppState>, contac
       );
       ok_t(m)
     }
-    Err(e) => err(e),
+    Err(e) => app_result_to_json(Err(AppError::Database(e))),
   }
 }
 
@@ -2481,7 +2576,7 @@ fn delete_contact_meta(app: tauri::AppHandle, state: tauri::State<AppState>, con
   };
   let cid = contact_id.trim();
   if cid.is_empty() {
-    return err("contact_id cannot be empty".to_string());
+    return app_result_to_json(Err(AppError::InvalidInput("contact_id cannot be empty".to_string())));
   }
   match state.contact_store.delete(&account_id, cid) {
     Ok(changed) => {
@@ -2496,7 +2591,7 @@ fn delete_contact_meta(app: tauri::AppHandle, state: tauri::State<AppState>, con
       }
       ok(json!(changed))
     }
-    Err(e) => err(e),
+    Err(e) => app_result_to_json(Err(AppError::Database(e))),
   }
 }
 
@@ -2517,7 +2612,7 @@ fn set_contact_photo(app: tauri::AppHandle, state: tauri::State<AppState>, conta
   };
   let cid = contact_id.trim();
   if cid.is_empty() {
-    return err("contact_id cannot be empty".to_string());
+    return app_result_to_json(Err(AppError::InvalidInput("contact_id cannot be empty".to_string())));
   }
   match state
     .contact_store
@@ -2534,7 +2629,7 @@ fn set_contact_photo(app: tauri::AppHandle, state: tauri::State<AppState>, conta
       );
       ok_t(m)
     }
-    Err(e) => err(e),
+    Err(e) => app_result_to_json(Err(AppError::Database(e))),
   }
 }
 
@@ -2546,7 +2641,7 @@ fn clear_contact_photo(app: tauri::AppHandle, state: tauri::State<AppState>, con
   };
   let cid = contact_id.trim();
   if cid.is_empty() {
-    return err("contact_id cannot be empty".to_string());
+    return app_result_to_json(Err(AppError::InvalidInput("contact_id cannot be empty".to_string())));
   }
   match state
     .contact_store
@@ -2563,7 +2658,7 @@ fn clear_contact_photo(app: tauri::AppHandle, state: tauri::State<AppState>, con
       );
       ok_t(m)
     }
-    Err(e) => err(e),
+    Err(e) => app_result_to_json(Err(AppError::Database(e))),
   }
 }
 
@@ -2572,7 +2667,7 @@ fn link_apple_contact_stub(app: tauri::AppHandle, state: tauri::State<AppState>,
   let cid = contact_id.trim().to_string();
   let aid = apple_contact_id.trim().to_string();
   if cid.is_empty() || aid.is_empty() {
-    return err("contact_id and apple_contact_id are required".to_string());
+    return app_result_to_json(Err(AppError::InvalidInput("contact_id and apple_contact_id are required".to_string())));
   }
   set_contact_meta(
     app,
@@ -2595,7 +2690,7 @@ fn link_apple_contact_stub(app: tauri::AppHandle, state: tauri::State<AppState>,
 fn unlink_apple_contact_stub(app: tauri::AppHandle, state: tauri::State<AppState>, contact_id: String) -> Value {
   let cid = contact_id.trim().to_string();
   if cid.is_empty() {
-    return err("contact_id is required".to_string());
+    return app_result_to_json(Err(AppError::InvalidInput("contact_id is required".to_string())));
   }
   set_contact_meta(
     app,
@@ -2643,7 +2738,7 @@ fn set_group_meta(app: tauri::AppHandle, state: tauri::State<AppState>, group_id
   };
   let gid = group_id.trim();
   if gid.is_empty() {
-    return err("group_id cannot be empty".to_string());
+    return app_result_to_json(Err(AppError::InvalidInput("group_id cannot be empty".to_string())));
   }
   match state.group_store.upsert_patch(&account_id, gid, patch) {
     Ok(m) => {
@@ -2663,7 +2758,7 @@ fn set_group_meta(app: tauri::AppHandle, state: tauri::State<AppState>, group_id
       );
       ok_t(m)
     }
-    Err(e) => err(e),
+    Err(e) => app_result_to_json(Err(AppError::Database(e))),
   }
 }
 
@@ -2675,7 +2770,7 @@ fn delete_group_meta(app: tauri::AppHandle, state: tauri::State<AppState>, group
   };
   let gid = group_id.trim();
   if gid.is_empty() {
-    return err("group_id cannot be empty".to_string());
+    return app_result_to_json(Err(AppError::InvalidInput("group_id cannot be empty".to_string())));
   }
   match state.group_store.delete(&account_id, gid) {
     Ok(changed) => {
@@ -2690,7 +2785,7 @@ fn delete_group_meta(app: tauri::AppHandle, state: tauri::State<AppState>, group
       }
       ok(json!(changed))
     }
-    Err(e) => err(e),
+    Err(e) => app_result_to_json(Err(AppError::Database(e))),
   }
 }
 
@@ -2947,7 +3042,7 @@ fn read_contact_photo(state: tauri::State<AppState>, contact_id: String) -> Valu
   };
   let cid = contact_id.trim();
   if cid.is_empty() {
-    return err("contact_id cannot be empty".to_string());
+    return app_result_to_json(Err(AppError::InvalidInput("contact_id cannot be empty".to_string())));
   }
   let meta = match state.contact_store.get(&account_id, cid) {
     Some(m) => m,
@@ -2964,7 +3059,7 @@ fn read_contact_photo(state: tauri::State<AppState>, contact_id: String) -> Valu
     if p.starts_with(&state.app_data_dir) {
       p
     } else {
-      return err("photo_path must be under app_data_dir".to_string());
+      return app_result_to_json(Err(AppError::InvalidInput("photo_path must be under app_data_dir".to_string())));
     }
   } else {
     state.app_data_dir.join(p)
@@ -2972,7 +3067,7 @@ fn read_contact_photo(state: tauri::State<AppState>, contact_id: String) -> Valu
 
   let bytes = match std::fs::read(&full) {
     Ok(b) => b,
-    Err(e) => return err(format!("failed to read photo: {}", e)),
+      Err(e) => return app_result_to_json(Err(AppError::FileSystem(format!("failed to read photo: {}", e)))),
   };
   let ext = full
     .extension()
@@ -3023,7 +3118,7 @@ fn search_messages(state: tauri::State<AppState>, query: String, limit: u32, thr
 fn summarize_thread(state: tauri::State<AppState>, thread_id: String, last_n: Option<u32>) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
-    None => return err("No active account".to_string()),
+    None => return app_result_to_json(Err(AppError::InvalidInput("No active account".to_string()))),
   };
   let ts = state.account_manager.get_or_create(&account);
 
@@ -3032,7 +3127,7 @@ fn summarize_thread(state: tauri::State<AppState>, thread_id: String, last_n: Op
   let ctx = msgs.iter().map(|m| format!("[{}] {}: {}", m.timestamp, m.sender, m.content)).collect::<Vec<_>>().join("\n");
 
   if !ai_enabled() {
-    return err("AI not configured. Set SIGNALX_OLLAMA_MODEL and ensure `ollama` is installed.".to_string());
+    return app_result_to_json(Err(AppError::FeatureDisabled("AI not configured. Set SIGNALX_OLLAMA_MODEL and ensure `ollama` is installed.".to_string())));
   }
 
   let model = std::env::var("SIGNALX_OLLAMA_MODEL").unwrap();
@@ -3044,7 +3139,7 @@ fn summarize_thread(state: tauri::State<AppState>, thread_id: String, last_n: Op
   let out = std::thread::spawn(move || run_ollama(&model, &prompt)).join().unwrap_or_else(|_| Err("AI thread join failed".to_string()));
   match out {
     Ok(s) => ok(json!(s.trim().to_string())),
-    Err(e) => err(e),
+    Err(e) => app_result_to_json(Err(AppError::Database(e))),
   }
 }
 
@@ -3052,12 +3147,12 @@ fn summarize_thread(state: tauri::State<AppState>, thread_id: String, last_n: Op
 fn draft_reply(state: tauri::State<AppState>, thread_id: String, intent: String, constraints: Option<String>, last_n: Option<u32>) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
-    None => return err("No active account".to_string()),
+    None => return app_result_to_json(Err(AppError::InvalidInput("No active account".to_string()))),
   };
   let ts = state.account_manager.get_or_create(&account);
   match draft_reply_for_thread(&ts, thread_id.trim(), intent.trim(), constraints.as_deref(), last_n) {
     Ok(s) => ok(json!(s)),
-    Err(e) => err(e),
+    Err(e) => app_result_to_json(Err(AppError::Database(e))),
   }
 }
 
@@ -3107,7 +3202,7 @@ fn send_message(app: tauri::AppHandle, state: tauri::State<AppState>, thread_id:
   let thread_id = thread_id.trim().to_string();
   let text = message.trim().to_string();
   if thread_id.is_empty() || text.is_empty() {
-    return err("threadId and message required".to_string());
+    return app_result_to_json(Err(AppError::InvalidInput("threadId and message required".to_string())));
   }
 
   let (kind, raw_recipient) = recipient_from_thread_id(&thread_id);
@@ -3172,7 +3267,7 @@ fn make_outbox_id_legacy(thread_id: &str) -> String {
 fn enqueue_send_legacy(app: tauri::AppHandle, state: tauri::State<AppState>, thread_id: String, recipient: String, message: String) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
-    None => return err("No active account".to_string()),
+    None => return app_result_to_json(Err(AppError::InvalidInput("No active account".to_string()))),
   };
   let tid = thread_id.trim().to_string();
   let rec = recipient.trim().to_string();
@@ -3206,12 +3301,12 @@ fn enqueue_send_legacy(app: tauri::AppHandle, state: tauri::State<AppState>, thr
 fn retry_outbox_item_legacy(app: tauri::AppHandle, state: tauri::State<AppState>, thread_id: String, outbox_id: String) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
-    None => return err("No active account".to_string()),
+    None => return app_result_to_json(Err(AppError::InvalidInput("No active account".to_string()))),
   };
   let tid = thread_id.trim();
   let oid = outbox_id.trim();
   if tid.is_empty() || oid.is_empty() {
-    return err("thread_id and outbox_id required".to_string());
+    return app_result_to_json(Err(AppError::InvalidInput("thread_id and outbox_id required".to_string())));
   }
   let ts = state.account_manager.get_or_create(&account);
   let items = ts.list_outbox(Some(tid));
@@ -3224,19 +3319,19 @@ fn retry_outbox_item_legacy(app: tauri::AppHandle, state: tauri::State<AppState>
     let _ = app.emit("outbox-updated", json!({ "thread_id": tid, "outbox_count": outbox_count }));
     return ok(json!({ "queued": true }));
   }
-  err("Outbox item not found".to_string())
+  app_result_to_json(Err(AppError::InvalidInput("Outbox item not found".to_string())))
 }
 
 #[tauri::command]
 fn delete_outbox_item_legacy(app: tauri::AppHandle, state: tauri::State<AppState>, thread_id: String, outbox_id: String) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
-    None => return err("No active account".to_string()),
+    None => return app_result_to_json(Err(AppError::InvalidInput("No active account".to_string()))),
   };
   let tid = thread_id.trim();
   let oid = outbox_id.trim();
   if tid.is_empty() || oid.is_empty() {
-    return err("thread_id and outbox_id required".to_string());
+    return app_result_to_json(Err(AppError::InvalidInput("thread_id and outbox_id required".to_string())));
   }
   let ts = state.account_manager.get_or_create(&account);
   ts.remove_outbox_item(tid, oid);
@@ -3249,7 +3344,7 @@ fn delete_outbox_item_legacy(app: tauri::AppHandle, state: tauri::State<AppState
 fn export_thread(state: tauri::State<AppState>, thread_id: String, format: String, from_ts: Option<i64>, to_ts: Option<i64>) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
-    None => return err("No active account".to_string()),
+    None => return app_result_to_json(Err(AppError::InvalidInput("No active account".to_string()))),
   };
   let ts = state.account_manager.get_or_create(&account);
 
@@ -3257,7 +3352,7 @@ fn export_thread(state: tauri::State<AppState>, thread_id: String, format: Strin
   let format = format.trim().to_lowercase();
 
   if !["txt", "json"].contains(&format.as_str()) {
-    return err("Format must be 'txt' or 'json'".to_string());
+    return app_result_to_json(Err(AppError::InvalidInput("Format must be 'txt' or 'json'".to_string())));
   }
 
   let mut messages = ts.get_thread_messages(thread_id);
@@ -3268,7 +3363,7 @@ fn export_thread(state: tauri::State<AppState>, thread_id: String, format: Strin
     messages.retain(|m| m.timestamp <= to);
   }
   if messages.is_empty() {
-    return err("Thread has no messages to export".to_string());
+    return app_result_to_json(Err(AppError::InvalidInput("Thread has no messages to export".to_string())));
   }
 
   let sanitized_id = sanitize_filename(thread_id);
@@ -3292,7 +3387,7 @@ fn export_thread(state: tauri::State<AppState>, thread_id: String, format: Strin
 
   // Write to file
   if let Err(e) = std::fs::write(&file_path, content) {
-    return err(format!("Failed to write export file: {}", e));
+    return app_result_to_json(Err(AppError::FileSystem(format!("Failed to write export file: {}", e))));
   }
 
   ok(json!({
@@ -3315,13 +3410,13 @@ fn fmt_time_export(ts: i64) -> String {
 fn export_account(state: tauri::State<AppState>, format: String, from_ts: Option<i64>, to_ts: Option<i64>) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
-    None => return err("No active account".to_string()),
+    None => return app_result_to_json(Err(AppError::InvalidInput("No active account".to_string()))),
   };
   let ts = state.account_manager.get_or_create(&account);
 
   let format = format.trim().to_lowercase();
   if !["txt", "json"].contains(&format.as_str()) {
-    return err("Format must be 'txt' or 'json'".to_string());
+    return app_result_to_json(Err(AppError::InvalidInput("Format must be 'txt' or 'json'".to_string())));
   }
 
   let threads = ts.get_threads();
@@ -3338,7 +3433,7 @@ fn export_account(state: tauri::State<AppState>, format: String, from_ts: Option
   }
 
   if all.is_empty() {
-    return err("No messages to export".to_string());
+    return app_result_to_json(Err(AppError::InvalidInput("No messages to export".to_string())));
   }
 
   let sanitized = sanitize_filename(&account);
@@ -3360,7 +3455,7 @@ fn export_account(state: tauri::State<AppState>, format: String, from_ts: Option
   };
 
   if let Err(e) = std::fs::write(&file_path, content) {
-    return err(format!("Failed to write export file: {}", e));
+    return app_result_to_json(Err(AppError::FileSystem(format!("Failed to write export file: {}", e))));
   }
 
   ok(json!({
@@ -3657,10 +3752,10 @@ fn auth_login(state: tauri::State<AppState>, username: String, password: String)
   if let Some(ref auth) = state.auth_manager {
     match auth.login(&username, &password) {
       Ok(session) => ok_t(session),
-      Err(e) => err(e),
+      Err(e) => app_result_to_json(Err(AppError::Database(e))),
     }
   } else {
-    err("Auth not enabled".to_string())
+    app_result_to_json(Err(AppError::FeatureDisabled("auth.enabled".to_string())))
   }
 }
 
@@ -3669,10 +3764,10 @@ fn auth_get_session(state: tauri::State<AppState>, token: String) -> Value {
   if let Some(ref auth) = state.auth_manager {
     match auth.get_session(&token) {
       Some(session) => ok_t(session),
-      None => err("Invalid or expired session".to_string()),
+      None => app_result_to_json(Err(AppError::Auth("Invalid or expired session".to_string()))),
     }
   } else {
-    err("Auth not enabled".to_string())
+    app_result_to_json(Err(AppError::FeatureDisabled("auth.enabled".to_string())))
   }
 }
 
@@ -3682,7 +3777,7 @@ fn auth_logout(state: tauri::State<AppState>, token: String) -> Value {
     auth.logout(&token);
     ok(json!(true))
   } else {
-    err("Auth not enabled".to_string())
+    app_result_to_json(Err(AppError::FeatureDisabled("auth.enabled".to_string())))
   }
 }
 
@@ -3709,10 +3804,10 @@ fn rules_list(state: tauri::State<AppState>, accountId: String) -> Value {
           .collect();
         ok_t(result)
       }
-      Err(e) => err(format!("Failed to list rules: {}", e)),
+      Err(e) => app_result_to_json(Err(AppError::Database(format!("Failed to list rules: {}", e)))),
     }
   } else {
-    err("Storage not available".to_string())
+      app_result_to_json(Err(AppError::FeatureDisabled("storage.sqlite".to_string())))
   }
 }
 
@@ -3732,21 +3827,23 @@ fn rules_upsert(
       // Compile DSL
       match engine.compile_rule(&dsl) {
         Ok(compiled) => {
-          let compiled_str = serde_json::to_string(&compiled)
-            .map_err(|e| format!("Serialization error: {}", e))?;
+          let compiled_str = match serde_json::to_string(&compiled) {
+            Ok(s) => s,
+            Err(e) => return app_result_to_json(Err(AppError::InvalidInput(format!("Serialization error: {}", e)))),
+          };
           
           match storage.upsert_rule(&rule_id, &account_id, &name, false, Some(&dsl), Some(&compiled_str)) {
             Ok(_) => ok(json!({ "id": rule_id })),
-            Err(e) => err(format!("Failed to save rule: {}", e)),
+            Err(e) => app_result_to_json(Err(AppError::Database(format!("Failed to save rule: {}", e)))),
           }
         }
-        Err(e) => err(format!("Failed to compile rule: {}", e)),
+        Err(e) => app_result_to_json(Err(AppError::InvalidInput(format!("Failed to compile rule: {}", e)))),
       }
     } else {
-      err("Rules engine not available".to_string())
+      app_result_to_json(Err(AppError::FeatureDisabled("automation.rules".to_string())))
     }
   } else {
-    err("Storage not available".to_string())
+      app_result_to_json(Err(AppError::FeatureDisabled("storage.sqlite".to_string())))
   }
 }
 
@@ -3755,10 +3852,10 @@ fn rules_toggle(state: tauri::State<AppState>, id: String, enabled: bool) -> Val
   if let Some(ref storage) = state.storage {
     match storage.toggle_rule(&id, enabled) {
       Ok(_) => ok(json!(true)),
-      Err(e) => err(format!("Failed to toggle rule: {}", e)),
+      Err(e) => app_result_to_json(Err(AppError::Database(format!("Failed to toggle rule: {}", e)))),
     }
   } else {
-    err("Storage not available".to_string())
+      app_result_to_json(Err(AppError::FeatureDisabled("storage.sqlite".to_string())))
   }
 }
 
@@ -3774,25 +3871,214 @@ fn rules_run_once(
   let thread_id = threadId;
   let message_body = messageBody;
   let message_from = messageFrom;
-  if let Some(ref engine) = state.rules_engine {
-    let send_enabled = features::is_feature_enabled("automation.send_enabled");
-    match engine.run_rules_for_message(&account_id, &message_body, &message_from, &thread_id, send_enabled) {
-      Ok(actions) => {
-        let result: Vec<Value> = actions
-          .into_iter()
-          .map(|a| match a {
-            rules::Action::Draft(text) => json!({ "type": "draft", "text": text }),
-            rules::Action::Send(text) => json!({ "type": "send", "text": text }),
-            rules::Action::LabelContact(label, value) => json!({ "type": "label_contact", "label": label, "value": value }),
-          })
-          .collect();
-        ok_t(result)
-      }
-      Err(e) => err(format!("Failed to run rules: {}", e)),
+  if let Some(ref _engine) = state.rules_engine {
+    // Old rules engine - stub for now
+    // Use the new automation_engine instead via automation commands
+    ok_t(Vec::<Value>::new())
+  } else {
+    app_result_to_json(Err(AppError::FeatureDisabled("automation.rules".to_string())))
+  }
+}
+
+// --------------------
+// AI Auto-Reply Commands
+// --------------------
+
+#[tauri::command]
+async fn ai_health_check(state: tauri::State<'_, AppState>) -> Result<Value, String> {
+  if let Some(ref client) = state.ai_client {
+    match client.health_check().await {
+      Ok(healthy) => Ok(ok(json!({ "healthy": healthy }))),
+      Err(e) => Ok(err(format!("Health check failed: {}", e))),
     }
   } else {
-    err("Rules engine not available".to_string())
+    Ok(app_result_to_json(Err(AppError::FeatureDisabled("ai.client".to_string()))))
   }
+}
+
+#[tauri::command]
+async fn ai_generate_reply(
+  state: tauri::State<'_, AppState>,
+  thread_id: String,
+  intent: String,
+  constraints: Option<String>,
+) -> Result<Value, String> {
+  if let Some(ref client) = state.ai_client {
+    // Get recent messages from thread
+    let account_id = match state.account_manager.get_active() {
+      Some(a) => a,
+      None => return Ok(err("No active account".to_string())),
+    };
+
+    let acc = state.account_manager.get_or_create(&account_id);
+    let thread = match acc.get_thread(&thread_id) {
+      Some(t) => t,
+      None => return Ok(err("Thread not found".to_string())),
+    };
+
+    // Get last 5 messages for context
+    let messages: Vec<String> = thread
+      .messages
+      .iter()
+      .rev()
+      .take(5)
+      .rev()
+      .map(|m| {
+        let sender = if m.direction == Direction::Outgoing { "You" } else { "Them" };
+        format!("{}: {}", sender, &m.content)
+      })
+      .collect();
+
+    // Generate reply
+    match client.generate_reply(&messages, &intent, constraints.as_deref()).await {
+      Ok(reply) => {
+        // Calculate confidence score
+        let confidence = client.calculate_confidence(&reply, &messages);
+        
+        Ok(ok(json!({
+          "reply": reply,
+          "confidence": confidence,
+          "thread_id": thread_id,
+        })))
+      }
+      Err(e) => Ok(err(format!("Failed to generate reply: {}", e))),
+    }
+  } else {
+    Ok(app_result_to_json(Err(AppError::FeatureDisabled("ai.client".to_string()))))
+  }
+}
+
+#[tauri::command]
+async fn ai_summarize_thread(
+  state: tauri::State<'_, AppState>,
+  thread_id: String,
+  length: String,
+) -> Result<Value, String> {
+  if let Some(ref client) = state.ai_client {
+    let account_id = match state.account_manager.get_active() {
+      Some(a) => a,
+      None => return Ok(err("No active account".to_string())),
+    };
+
+    let acc = state.account_manager.get_or_create(&account_id);
+    let thread = match acc.get_thread(&thread_id) {
+      Some(t) => t,
+      None => return Ok(err("Thread not found".to_string())),
+    };
+
+    let messages: Vec<String> = thread
+      .messages
+      .iter()
+      .map(|m| {
+        let sender = if m.direction == Direction::Outgoing { "You" } else { "Them" };
+        format!("{}: {}", sender, &m.content)
+      })
+      .collect();
+
+    let summary_length = match length.as_str() {
+      "brief" => ai::SummaryLength::Brief,
+      "detailed" => ai::SummaryLength::Detailed,
+      _ => ai::SummaryLength::Normal,
+    };
+
+    match client.summarize_thread(&messages, summary_length).await {
+      Ok(summary) => Ok(ok(json!({
+        "summary": summary,
+        "thread_id": thread_id,
+        "message_count": messages.len(),
+      }))),
+      Err(e) => Ok(err(format!("Failed to summarize: {}", e))),
+    }
+  } else {
+    Ok(app_result_to_json(Err(AppError::FeatureDisabled("ai.client".to_string()))))
+  }
+}
+
+// --------------------
+// Automation Rules Commands
+// --------------------
+
+#[tauri::command]
+fn automation_list_rules(state: tauri::State<AppState>) -> Value {
+  let engine = state.automation_engine.lock().unwrap();
+  ok_t(engine.get_rules())
+}
+
+#[tauri::command]
+fn automation_add_rule(
+  state: tauri::State<AppState>,
+  rule: rules::AutomationRule,
+) -> Value {
+  let mut engine = state.automation_engine.lock().unwrap();
+  engine.add_rule(rule.clone());
+  ok(json!({ "id": rule.id, "name": rule.name }))
+}
+
+#[tauri::command]
+fn automation_remove_rule(
+  state: tauri::State<AppState>,
+  rule_id: String,
+) -> Value {
+  let mut engine = state.automation_engine.lock().unwrap();
+  let removed = engine.remove_rule(&rule_id);
+  if removed {
+    ok(json!({ "removed": true }))
+  } else {
+    app_result_to_json(Err(AppError::InvalidInput("Rule not found".to_string())))
+  }
+}
+
+#[tauri::command]
+fn automation_find_matching(
+  state: tauri::State<AppState>,
+  sender: String,
+  message: String,
+  thread_id: String,
+) -> Value {
+  let engine = state.automation_engine.lock().unwrap();
+  let matching = engine.find_matching_rules(&sender, &message, &thread_id);
+  ok_t(matching)
+}
+
+#[tauri::command]
+fn automation_get_templates() -> Value {
+  let templates = vec![
+    json!({
+      "type": "out_of_office",
+      "name": "Out of Office",
+      "description": "Auto-reply after business hours",
+    }),
+    json!({
+      "type": "urgent",
+      "name": "Urgent Messages",
+      "description": "Notify for urgent keywords from VIP contacts",
+    }),
+    json!({
+      "type": "vip",
+      "name": "VIP Auto Reply",
+      "description": "Generate smart replies for VIP contacts",
+    }),
+  ];
+  ok_t(templates)
+}
+
+#[tauri::command]
+fn automation_create_from_template(
+  state: tauri::State<AppState>,
+  template_type: String,
+  auto_send: Option<bool>,
+  contacts: Option<Vec<String>>,
+) -> Value {
+  let rule = match template_type.as_str() {
+    "out_of_office" => rules::templates::out_of_office(auto_send.unwrap_or(false)),
+    "urgent" => rules::templates::urgent_message(contacts.unwrap_or_default()),
+    "vip" => rules::templates::vip_auto_reply(contacts.unwrap_or_default()),
+    _ => return app_result_to_json(Err(AppError::InvalidInput("Unknown template type".to_string()))),
+  };
+
+  let mut engine = state.automation_engine.lock().unwrap();
+  engine.add_rule(rule.clone());
+  ok(json!({ "id": rule.id, "name": rule.name }))
 }
 
 fn run_agent_mode(state: AppState) {
@@ -3879,7 +4165,7 @@ fn main() {
   // Initialize rules engine if feature enabled
   let rules_engine = if features::is_feature_enabled("automation.rules") {
     if let Some(ref st) = storage {
-      Some(Arc::new(rules::RulesEngine::new(st.clone())))
+      Some(Arc::new(OldRulesEngine::new(st.clone())))
     } else {
       eprintln!("Warning: Rules enabled but storage not available");
       None
@@ -3908,6 +4194,8 @@ fn main() {
     storage,
     auth_manager,
     rules_engine,
+    ai_client: Some(Arc::new(ai::OllamaClient::new())),
+    automation_engine: Arc::new(Mutex::new(rules::AutomationEngine::new())),
   };
 
   if should_run_agent_mode() {
@@ -3954,6 +4242,8 @@ fn main() {
       get_diagnostics,
       list_accounts,
       get_active_account,
+      get_feature_flags,
+      set_feature_flag,
       set_active_account,
       get_threads,
       get_thread_messages,
@@ -3998,7 +4288,16 @@ fn main() {
       rules_list,
       rules_upsert,
       rules_toggle,
-      rules_run_once
+      rules_run_once,
+      ai_health_check,
+      ai_generate_reply,
+      ai_summarize_thread,
+      automation_list_rules,
+      automation_add_rule,
+      automation_remove_rule,
+      automation_find_matching,
+      automation_get_templates,
+      automation_create_from_template
       // Removed legacy outbox commands
     ])
     .run(tauri::generate_context!())

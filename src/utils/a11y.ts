@@ -6,7 +6,7 @@ export { default as AccessibleModal } from '../components/AccessibleModal';
 export { default as AccessibleTabs } from '../components/AccessibleTabs';
 export type { Tab } from '../components/AccessibleTabs';
 export { default as Toast } from '../components/Toast';
-export { default as ErrorBoundary } from '../components/ErrorBoundary';
+export { ErrorBoundary } from '../components/feedback';
 
 // Form Components
 export {
@@ -98,4 +98,3 @@ export {
   generateA11yReport,
   type A11yIssue,
 } from './a11yTesting';
-

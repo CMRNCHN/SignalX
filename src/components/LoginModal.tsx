@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../utils/tauri";
 
 interface LoginModalProps {
   onLogin: (session: any) => void;

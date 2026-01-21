@@ -1,0 +1,95 @@
+.sx-textarea-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.sx-textarea-wrapper--full-width {
+  width: 100%;
+}
+
+.sx-textarea-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-normal);
+}
+
+.sx-textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: var(--input-padding-y) var(--input-padding-x);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-base);
+  outline: none;
+}
+
+.sx-textarea:hover:not(:disabled) {
+  border-color: var(--color-border-secondary);
+}
+
+.sx-textarea:focus {
+  border-color: var(--color-border-focus);
+  box-shadow: 0 0 0 3px rgba(138, 180, 255, 0.1);
+}
+
+.sx-textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: var(--color-bg-tertiary);
+}
+
+.sx-textarea--error {
+  border-color: var(--color-error);
+}
+
+.sx-textarea--error:focus {
+  border-color: var(--color-error);
+  box-shadow: 0 0 0 3px rgba(251, 113, 133, 0.1);
+}
+
+.sx-textarea--sm {
+  min-height: 60px;
+  padding: calc(var(--input-padding-y) * 0.75) calc(var(--input-padding-x) * 0.75);
+  font-size: var(--font-size-sm);
+}
+
+.sx-textarea--lg {
+  min-height: 120px;
+  padding: calc(var(--input-padding-y) * 1.25) calc(var(--input-padding-x) * 1.25);
+  font-size: var(--font-size-md);
+}
+
+.sx-textarea--resize-none {
+  resize: none;
+}
+
+.sx-textarea--resize-vertical {
+  resize: vertical;
+}
+
+.sx-textarea--resize-horizontal {
+  resize: horizontal;
+}
+
+.sx-textarea--resize-both {
+  resize: both;
+}
+
+.sx-textarea-error {
+  font-size: var(--font-size-sm);
+  color: var(--color-error);
+  line-height: var(--line-height-normal);
+}
+
+.sx-textarea-helper {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-tertiary);
+  line-height: var(--line-height-normal);
+}
