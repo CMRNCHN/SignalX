@@ -1,0 +1,129 @@
+.message-sending-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.message-sending-indicator.queued {
+  background: rgba(139, 92, 246, 0.1);
+  color: #8b5cf6;
+}
+
+.message-sending-indicator.sending {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+}
+
+.message-sending-indicator.sent {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.message-sending-indicator.retrying {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+}
+
+.message-sending-indicator.failed {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.indicator-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.indicator-icon.success {
+  animation: scaleIn 0.3s ease-out;
+}
+
+.indicator-icon.error {
+  animation: shake 0.5s ease-out;
+}
+
+.indicator-text {
+  white-space: nowrap;
+}
+
+.retry-button {
+  margin-left: 8px;
+  padding: 2px 8px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.retry-button:hover {
+  background: #dc2626;
+}
+
+.retry-button:active {
+  transform: scale(0.95);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.5);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .message-sending-indicator.queued {
+    background: rgba(139, 92, 246, 0.2);
+  }
+
+  .message-sending-indicator.sending {
+    background: rgba(59, 130, 246, 0.2);
+  }
+
+  .message-sending-indicator.sent {
+    background: rgba(16, 185, 129, 0.2);
+  }
+
+  .message-sending-indicator.retrying {
+    background: rgba(245, 158, 11, 0.2);
+  }
+
+  .message-sending-indicator.failed {
+    background: rgba(239, 68, 68, 0.2);
+  }
+}
