@@ -11,7 +11,13 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen, type UnlistenFn } from "@tauri-apps/api/event";
 import { logWithScope } from "./logger";
 
-const log = logWithScope("tauri");
+const logFn = logWithScope("tauri");
+const log = {
+  info: (msg: string, meta?: Record<string, unknown>) => logFn('info', msg, meta),
+  warn: (msg: string, meta?: Record<string, unknown>) => logFn('warn', msg, meta),
+  error: (msg: string, meta?: unknown) => logFn('error', msg, typeof meta === 'object' ? meta as Record<string, unknown> : { error: meta }),
+  debug: (msg: string, meta?: Record<string, unknown>) => logFn('debug', msg, meta),
+};
 const TAURI_WAIT_MS = 2000;
 const TAURI_POLL_MS = 100;
 const LOG_THROTTLE_MS = 5000;

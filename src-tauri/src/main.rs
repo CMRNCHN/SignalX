@@ -2200,8 +2200,10 @@ fn set_feature_flag(
     }
   }
   
-  let json = serde_json::to_string_pretty(&flags)
-    .map_err(|e| format!("Failed to serialize features: {}", e))?;
+  let json = match serde_json::to_string_pretty(&flags) {
+    Ok(j) => j,
+    Err(e) => return err(format!("Failed to serialize features: {}", e)),
+  };
   
   if let Err(e) = std::fs::write(&path, json) {
     return err(format!("Failed to write features file: {}", e));
@@ -2234,7 +2236,7 @@ fn require_active_account(state: &AppState) -> Result<String, Value> {
 fn set_active_account(app: tauri::AppHandle, state: tauri::State<AppState>, account_id: String) -> Value {
   let account_id = account_id.trim().to_string();
   if account_id.is_empty() {
-    return app_result_to_json(Err(AppError::InvalidInput("account_id cannot be empty".to_string())));
+    return app_result_to_json::<()>(Err(AppError::InvalidInput("account_id cannot be empty".to_string())));
   }
 
   // ensure exists/loaded
@@ -2344,7 +2346,7 @@ fn get_outbox_state_summary(state: tauri::State<AppState>) -> Value {
   };
   match state.outbox_store.summary(&account) {
     Ok(s) => ok_t(s),
-    Err(e) => app_result_to_json(Err(AppError::Database(e))),
+    Err(e) => app_result_to_json::<()>(Err(AppError::Database(e))),
   }
 }
 
@@ -2357,7 +2359,7 @@ fn list_outbox(state: tauri::State<AppState>, thread_id: Option<String>) -> Valu
   let tid = thread_id.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty());
   match state.outbox_store.list(&account, tid) {
     Ok(items) => ok_t(items),
-    Err(e) => app_result_to_json(Err(AppError::Database(e))),
+    Err(e) => app_result_to_json::<()>(Err(AppError::Database(e))),
   }
 }
 
@@ -2370,7 +2372,7 @@ fn queue_outgoing_message(app: tauri::AppHandle, state: tauri::State<AppState>, 
   let tid = thread_id.trim().to_string();
   let body = content.trim().to_string();
   if tid.is_empty() || body.is_empty() {
-    return app_result_to_json(Err(AppError::InvalidInput("thread_id and content are required".to_string())));
+    return app_result_to_json::<()>(Err(AppError::InvalidInput("thread_id and content are required".to_string())));
   }
 
   let (_kind, derived) = recipient_from_thread_id(&tid);
@@ -2397,7 +2399,7 @@ fn queue_outgoing_message(app: tauri::AppHandle, state: tauri::State<AppState>, 
       emit_outbox_item_updated(&app, &saved);
       ok_t(saved)
     }
-    Err(e) => app_result_to_json(Err(AppError::Database(e))),
+    Err(e) => app_result_to_json::<()>(Err(AppError::Database(e))),
   }
 }
 
@@ -2409,7 +2411,7 @@ fn retry_outbox_item(app: tauri::AppHandle, state: tauri::State<AppState>, id: S
   };
   let oid = id.trim();
   if oid.is_empty() {
-    return app_result_to_json(Err(AppError::InvalidInput("id required".to_string())));
+    return app_result_to_json::<()>(Err(AppError::InvalidInput("id required".to_string())));
   }
   match state.outbox_store.find_by_id(&account_id, oid) {
     Ok(Some(mut item)) => {
@@ -2425,14 +2427,14 @@ fn retry_outbox_item(app: tauri::AppHandle, state: tauri::State<AppState>, id: S
             emit_outbox_item_updated(&app, &updated);
             ok_t(updated)
           }
-          Err(e) => app_result_to_json(Err(AppError::Database(e))),
+          Err(e) => app_result_to_json::<()>(Err(AppError::Database(e))),
         }
       } else {
         ok_t(item)
       }
     }
     Ok(None) => err("Outbox item not found".to_string()),
-    Err(e) => app_result_to_json(Err(AppError::Database(e))),
+    Err(e) => app_result_to_json::<()>(Err(AppError::Database(e))),
   }
 }
 
@@ -2444,7 +2446,7 @@ fn delete_outbox_item(app: tauri::AppHandle, state: tauri::State<AppState>, id: 
   };
   let oid = id.trim();
   if oid.is_empty() {
-    return app_result_to_json(Err(AppError::InvalidInput("id required".to_string())));
+    return app_result_to_json::<()>(Err(AppError::InvalidInput("id required".to_string())));
   }
 
   // Best-effort: find thread_id before deletion (for targeted refresh)
@@ -2456,7 +2458,7 @@ fn delete_outbox_item(app: tauri::AppHandle, state: tauri::State<AppState>, id: 
       }
       ok(json!({ "deleted": deleted }))
     }
-    Err(e) => app_result_to_json(Err(AppError::Database(e))),
+    Err(e) => app_result_to_json::<()>(Err(AppError::Database(e))),
   }
 }
 
@@ -2464,7 +2466,7 @@ fn delete_outbox_item(app: tauri::AppHandle, state: tauri::State<AppState>, id: 
 fn mark_pending_reply_consumed(state: tauri::State<AppState>, thread_id: String, message_id: String) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
-    None => return app_result_to_json(Err(AppError::InvalidInput("No active account".to_string()))),
+    None => return app_result_to_json::<()>(Err(AppError::InvalidInput("No active account".to_string()))),
   };
   let ts = state.account_manager.get_or_create(&account);
   let ok_flag = ts.consume_pending_reply(thread_id.trim(), message_id.trim());
@@ -2503,12 +2505,12 @@ fn get_alias(state: tauri::State<AppState>, number: String) -> Value {
 fn set_alias(state: tauri::State<AppState>, number: String, alias: String) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
-    None => return app_result_to_json(Err(AppError::InvalidInput("No active account".to_string()))),
+    None => return app_result_to_json::<()>(Err(AppError::InvalidInput("No active account".to_string()))),
   };
   let n = number.trim();
   let a = alias.trim();
   if n.is_empty() || a.is_empty() {
-    return app_result_to_json(Err(AppError::InvalidInput("number and alias required".to_string())));
+    return app_result_to_json::<()>(Err(AppError::InvalidInput("number and alias required".to_string())));
   }
   state.alias_manager.set_alias(&account, n, a);
   ok(json!(true))
@@ -2543,7 +2545,7 @@ fn set_contact_meta(app: tauri::AppHandle, state: tauri::State<AppState>, contac
   };
   let cid = contact_id.trim();
   if cid.is_empty() {
-    return app_result_to_json(Err(AppError::InvalidInput("contact_id cannot be empty".to_string())));
+    return app_result_to_json::<()>(Err(AppError::InvalidInput("contact_id cannot be empty".to_string())));
   }
   match state.contact_store.upsert_patch(&account_id, cid, patch) {
     Ok(m) => {
@@ -2564,7 +2566,7 @@ fn set_contact_meta(app: tauri::AppHandle, state: tauri::State<AppState>, contac
       );
       ok_t(m)
     }
-    Err(e) => app_result_to_json(Err(AppError::Database(e))),
+    Err(e) => app_result_to_json::<()>(Err(AppError::Database(e))),
   }
 }
 
@@ -2576,7 +2578,7 @@ fn delete_contact_meta(app: tauri::AppHandle, state: tauri::State<AppState>, con
   };
   let cid = contact_id.trim();
   if cid.is_empty() {
-    return app_result_to_json(Err(AppError::InvalidInput("contact_id cannot be empty".to_string())));
+    return app_result_to_json::<()>(Err(AppError::InvalidInput("contact_id cannot be empty".to_string())));
   }
   match state.contact_store.delete(&account_id, cid) {
     Ok(changed) => {
@@ -2591,7 +2593,7 @@ fn delete_contact_meta(app: tauri::AppHandle, state: tauri::State<AppState>, con
       }
       ok(json!(changed))
     }
-    Err(e) => app_result_to_json(Err(AppError::Database(e))),
+    Err(e) => app_result_to_json::<()>(Err(AppError::Database(e))),
   }
 }
 
@@ -2612,7 +2614,7 @@ fn set_contact_photo(app: tauri::AppHandle, state: tauri::State<AppState>, conta
   };
   let cid = contact_id.trim();
   if cid.is_empty() {
-    return app_result_to_json(Err(AppError::InvalidInput("contact_id cannot be empty".to_string())));
+    return app_result_to_json::<()>(Err(AppError::InvalidInput("contact_id cannot be empty".to_string())));
   }
   match state
     .contact_store
@@ -2629,7 +2631,7 @@ fn set_contact_photo(app: tauri::AppHandle, state: tauri::State<AppState>, conta
       );
       ok_t(m)
     }
-    Err(e) => app_result_to_json(Err(AppError::Database(e))),
+    Err(e) => app_result_to_json::<()>(Err(AppError::Database(e))),
   }
 }
 
@@ -2641,7 +2643,7 @@ fn clear_contact_photo(app: tauri::AppHandle, state: tauri::State<AppState>, con
   };
   let cid = contact_id.trim();
   if cid.is_empty() {
-    return app_result_to_json(Err(AppError::InvalidInput("contact_id cannot be empty".to_string())));
+    return app_result_to_json::<()>(Err(AppError::InvalidInput("contact_id cannot be empty".to_string())));
   }
   match state
     .contact_store
@@ -2658,7 +2660,7 @@ fn clear_contact_photo(app: tauri::AppHandle, state: tauri::State<AppState>, con
       );
       ok_t(m)
     }
-    Err(e) => app_result_to_json(Err(AppError::Database(e))),
+    Err(e) => app_result_to_json::<()>(Err(AppError::Database(e))),
   }
 }
 
@@ -2667,7 +2669,7 @@ fn link_apple_contact_stub(app: tauri::AppHandle, state: tauri::State<AppState>,
   let cid = contact_id.trim().to_string();
   let aid = apple_contact_id.trim().to_string();
   if cid.is_empty() || aid.is_empty() {
-    return app_result_to_json(Err(AppError::InvalidInput("contact_id and apple_contact_id are required".to_string())));
+    return app_result_to_json::<()>(Err(AppError::InvalidInput("contact_id and apple_contact_id are required".to_string())));
   }
   set_contact_meta(
     app,
@@ -2690,7 +2692,7 @@ fn link_apple_contact_stub(app: tauri::AppHandle, state: tauri::State<AppState>,
 fn unlink_apple_contact_stub(app: tauri::AppHandle, state: tauri::State<AppState>, contact_id: String) -> Value {
   let cid = contact_id.trim().to_string();
   if cid.is_empty() {
-    return app_result_to_json(Err(AppError::InvalidInput("contact_id is required".to_string())));
+    return app_result_to_json::<()>(Err(AppError::InvalidInput("contact_id is required".to_string())));
   }
   set_contact_meta(
     app,
@@ -2738,7 +2740,7 @@ fn set_group_meta(app: tauri::AppHandle, state: tauri::State<AppState>, group_id
   };
   let gid = group_id.trim();
   if gid.is_empty() {
-    return app_result_to_json(Err(AppError::InvalidInput("group_id cannot be empty".to_string())));
+    return app_result_to_json::<()>(Err(AppError::InvalidInput("group_id cannot be empty".to_string())));
   }
   match state.group_store.upsert_patch(&account_id, gid, patch) {
     Ok(m) => {
@@ -2758,7 +2760,7 @@ fn set_group_meta(app: tauri::AppHandle, state: tauri::State<AppState>, group_id
       );
       ok_t(m)
     }
-    Err(e) => app_result_to_json(Err(AppError::Database(e))),
+    Err(e) => app_result_to_json::<()>(Err(AppError::Database(e))),
   }
 }
 
@@ -2770,7 +2772,7 @@ fn delete_group_meta(app: tauri::AppHandle, state: tauri::State<AppState>, group
   };
   let gid = group_id.trim();
   if gid.is_empty() {
-    return app_result_to_json(Err(AppError::InvalidInput("group_id cannot be empty".to_string())));
+    return app_result_to_json::<()>(Err(AppError::InvalidInput("group_id cannot be empty".to_string())));
   }
   match state.group_store.delete(&account_id, gid) {
     Ok(changed) => {
@@ -2785,7 +2787,7 @@ fn delete_group_meta(app: tauri::AppHandle, state: tauri::State<AppState>, group
       }
       ok(json!(changed))
     }
-    Err(e) => app_result_to_json(Err(AppError::Database(e))),
+    Err(e) => app_result_to_json::<()>(Err(AppError::Database(e))),
   }
 }
 
@@ -3042,7 +3044,7 @@ fn read_contact_photo(state: tauri::State<AppState>, contact_id: String) -> Valu
   };
   let cid = contact_id.trim();
   if cid.is_empty() {
-    return app_result_to_json(Err(AppError::InvalidInput("contact_id cannot be empty".to_string())));
+    return app_result_to_json::<()>(Err(AppError::InvalidInput("contact_id cannot be empty".to_string())));
   }
   let meta = match state.contact_store.get(&account_id, cid) {
     Some(m) => m,
@@ -3059,7 +3061,7 @@ fn read_contact_photo(state: tauri::State<AppState>, contact_id: String) -> Valu
     if p.starts_with(&state.app_data_dir) {
       p
     } else {
-      return app_result_to_json(Err(AppError::InvalidInput("photo_path must be under app_data_dir".to_string())));
+      return app_result_to_json::<()>(Err(AppError::InvalidInput("photo_path must be under app_data_dir".to_string())));
     }
   } else {
     state.app_data_dir.join(p)
@@ -3067,7 +3069,7 @@ fn read_contact_photo(state: tauri::State<AppState>, contact_id: String) -> Valu
 
   let bytes = match std::fs::read(&full) {
     Ok(b) => b,
-      Err(e) => return app_result_to_json(Err(AppError::FileSystem(format!("failed to read photo: {}", e)))),
+      Err(e) => return app_result_to_json::<()>(Err(AppError::FileSystem(format!("failed to read photo: {}", e)))),
   };
   let ext = full
     .extension()
@@ -3118,7 +3120,7 @@ fn search_messages(state: tauri::State<AppState>, query: String, limit: u32, thr
 fn summarize_thread(state: tauri::State<AppState>, thread_id: String, last_n: Option<u32>) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
-    None => return app_result_to_json(Err(AppError::InvalidInput("No active account".to_string()))),
+    None => return app_result_to_json::<()>(Err(AppError::InvalidInput("No active account".to_string()))),
   };
   let ts = state.account_manager.get_or_create(&account);
 
@@ -3127,7 +3129,7 @@ fn summarize_thread(state: tauri::State<AppState>, thread_id: String, last_n: Op
   let ctx = msgs.iter().map(|m| format!("[{}] {}: {}", m.timestamp, m.sender, m.content)).collect::<Vec<_>>().join("\n");
 
   if !ai_enabled() {
-    return app_result_to_json(Err(AppError::FeatureDisabled("AI not configured. Set SIGNALX_OLLAMA_MODEL and ensure `ollama` is installed.".to_string())));
+    return app_result_to_json::<()>(Err(AppError::FeatureDisabled("AI not configured. Set SIGNALX_OLLAMA_MODEL and ensure `ollama` is installed.".to_string())));
   }
 
   let model = std::env::var("SIGNALX_OLLAMA_MODEL").unwrap();
@@ -3139,7 +3141,7 @@ fn summarize_thread(state: tauri::State<AppState>, thread_id: String, last_n: Op
   let out = std::thread::spawn(move || run_ollama(&model, &prompt)).join().unwrap_or_else(|_| Err("AI thread join failed".to_string()));
   match out {
     Ok(s) => ok(json!(s.trim().to_string())),
-    Err(e) => app_result_to_json(Err(AppError::Database(e))),
+    Err(e) => app_result_to_json::<()>(Err(AppError::Database(e))),
   }
 }
 
@@ -3147,12 +3149,12 @@ fn summarize_thread(state: tauri::State<AppState>, thread_id: String, last_n: Op
 fn draft_reply(state: tauri::State<AppState>, thread_id: String, intent: String, constraints: Option<String>, last_n: Option<u32>) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
-    None => return app_result_to_json(Err(AppError::InvalidInput("No active account".to_string()))),
+    None => return app_result_to_json::<()>(Err(AppError::InvalidInput("No active account".to_string()))),
   };
   let ts = state.account_manager.get_or_create(&account);
   match draft_reply_for_thread(&ts, thread_id.trim(), intent.trim(), constraints.as_deref(), last_n) {
     Ok(s) => ok(json!(s)),
-    Err(e) => app_result_to_json(Err(AppError::Database(e))),
+    Err(e) => app_result_to_json::<()>(Err(AppError::Database(e))),
   }
 }
 
@@ -3202,7 +3204,7 @@ fn send_message(app: tauri::AppHandle, state: tauri::State<AppState>, thread_id:
   let thread_id = thread_id.trim().to_string();
   let text = message.trim().to_string();
   if thread_id.is_empty() || text.is_empty() {
-    return app_result_to_json(Err(AppError::InvalidInput("threadId and message required".to_string())));
+    return app_result_to_json::<()>(Err(AppError::InvalidInput("threadId and message required".to_string())));
   }
 
   let (kind, raw_recipient) = recipient_from_thread_id(&thread_id);
@@ -3267,7 +3269,7 @@ fn make_outbox_id_legacy(thread_id: &str) -> String {
 fn enqueue_send_legacy(app: tauri::AppHandle, state: tauri::State<AppState>, thread_id: String, recipient: String, message: String) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
-    None => return app_result_to_json(Err(AppError::InvalidInput("No active account".to_string()))),
+    None => return app_result_to_json::<()>(Err(AppError::InvalidInput("No active account".to_string()))),
   };
   let tid = thread_id.trim().to_string();
   let rec = recipient.trim().to_string();
@@ -3301,12 +3303,12 @@ fn enqueue_send_legacy(app: tauri::AppHandle, state: tauri::State<AppState>, thr
 fn retry_outbox_item_legacy(app: tauri::AppHandle, state: tauri::State<AppState>, thread_id: String, outbox_id: String) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
-    None => return app_result_to_json(Err(AppError::InvalidInput("No active account".to_string()))),
+    None => return app_result_to_json::<()>(Err(AppError::InvalidInput("No active account".to_string()))),
   };
   let tid = thread_id.trim();
   let oid = outbox_id.trim();
   if tid.is_empty() || oid.is_empty() {
-    return app_result_to_json(Err(AppError::InvalidInput("thread_id and outbox_id required".to_string())));
+    return app_result_to_json::<()>(Err(AppError::InvalidInput("thread_id and outbox_id required".to_string())));
   }
   let ts = state.account_manager.get_or_create(&account);
   let items = ts.list_outbox(Some(tid));
@@ -3319,19 +3321,19 @@ fn retry_outbox_item_legacy(app: tauri::AppHandle, state: tauri::State<AppState>
     let _ = app.emit("outbox-updated", json!({ "thread_id": tid, "outbox_count": outbox_count }));
     return ok(json!({ "queued": true }));
   }
-  app_result_to_json(Err(AppError::InvalidInput("Outbox item not found".to_string())))
+  app_result_to_json::<()>(Err(AppError::InvalidInput("Outbox item not found".to_string())))
 }
 
 #[tauri::command]
 fn delete_outbox_item_legacy(app: tauri::AppHandle, state: tauri::State<AppState>, thread_id: String, outbox_id: String) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
-    None => return app_result_to_json(Err(AppError::InvalidInput("No active account".to_string()))),
+    None => return app_result_to_json::<()>(Err(AppError::InvalidInput("No active account".to_string()))),
   };
   let tid = thread_id.trim();
   let oid = outbox_id.trim();
   if tid.is_empty() || oid.is_empty() {
-    return app_result_to_json(Err(AppError::InvalidInput("thread_id and outbox_id required".to_string())));
+    return app_result_to_json::<()>(Err(AppError::InvalidInput("thread_id and outbox_id required".to_string())));
   }
   let ts = state.account_manager.get_or_create(&account);
   ts.remove_outbox_item(tid, oid);
@@ -3344,7 +3346,7 @@ fn delete_outbox_item_legacy(app: tauri::AppHandle, state: tauri::State<AppState
 fn export_thread(state: tauri::State<AppState>, thread_id: String, format: String, from_ts: Option<i64>, to_ts: Option<i64>) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
-    None => return app_result_to_json(Err(AppError::InvalidInput("No active account".to_string()))),
+    None => return app_result_to_json::<()>(Err(AppError::InvalidInput("No active account".to_string()))),
   };
   let ts = state.account_manager.get_or_create(&account);
 
@@ -3352,7 +3354,7 @@ fn export_thread(state: tauri::State<AppState>, thread_id: String, format: Strin
   let format = format.trim().to_lowercase();
 
   if !["txt", "json"].contains(&format.as_str()) {
-    return app_result_to_json(Err(AppError::InvalidInput("Format must be 'txt' or 'json'".to_string())));
+    return app_result_to_json::<()>(Err(AppError::InvalidInput("Format must be 'txt' or 'json'".to_string())));
   }
 
   let mut messages = ts.get_thread_messages(thread_id);
@@ -3363,7 +3365,7 @@ fn export_thread(state: tauri::State<AppState>, thread_id: String, format: Strin
     messages.retain(|m| m.timestamp <= to);
   }
   if messages.is_empty() {
-    return app_result_to_json(Err(AppError::InvalidInput("Thread has no messages to export".to_string())));
+    return app_result_to_json::<()>(Err(AppError::InvalidInput("Thread has no messages to export".to_string())));
   }
 
   let sanitized_id = sanitize_filename(thread_id);
@@ -3387,7 +3389,7 @@ fn export_thread(state: tauri::State<AppState>, thread_id: String, format: Strin
 
   // Write to file
   if let Err(e) = std::fs::write(&file_path, content) {
-    return app_result_to_json(Err(AppError::FileSystem(format!("Failed to write export file: {}", e))));
+    return app_result_to_json::<()>(Err(AppError::FileSystem(format!("Failed to write export file: {}", e))));
   }
 
   ok(json!({
@@ -3410,13 +3412,13 @@ fn fmt_time_export(ts: i64) -> String {
 fn export_account(state: tauri::State<AppState>, format: String, from_ts: Option<i64>, to_ts: Option<i64>) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
-    None => return app_result_to_json(Err(AppError::InvalidInput("No active account".to_string()))),
+    None => return app_result_to_json::<()>(Err(AppError::InvalidInput("No active account".to_string()))),
   };
   let ts = state.account_manager.get_or_create(&account);
 
   let format = format.trim().to_lowercase();
   if !["txt", "json"].contains(&format.as_str()) {
-    return app_result_to_json(Err(AppError::InvalidInput("Format must be 'txt' or 'json'".to_string())));
+    return app_result_to_json::<()>(Err(AppError::InvalidInput("Format must be 'txt' or 'json'".to_string())));
   }
 
   let threads = ts.get_threads();
@@ -3433,7 +3435,7 @@ fn export_account(state: tauri::State<AppState>, format: String, from_ts: Option
   }
 
   if all.is_empty() {
-    return app_result_to_json(Err(AppError::InvalidInput("No messages to export".to_string())));
+    return app_result_to_json::<()>(Err(AppError::InvalidInput("No messages to export".to_string())));
   }
 
   let sanitized = sanitize_filename(&account);
@@ -3455,7 +3457,7 @@ fn export_account(state: tauri::State<AppState>, format: String, from_ts: Option
   };
 
   if let Err(e) = std::fs::write(&file_path, content) {
-    return app_result_to_json(Err(AppError::FileSystem(format!("Failed to write export file: {}", e))));
+    return app_result_to_json::<()>(Err(AppError::FileSystem(format!("Failed to write export file: {}", e))));
   }
 
   ok(json!({
@@ -3752,10 +3754,10 @@ fn auth_login(state: tauri::State<AppState>, username: String, password: String)
   if let Some(ref auth) = state.auth_manager {
     match auth.login(&username, &password) {
       Ok(session) => ok_t(session),
-      Err(e) => app_result_to_json(Err(AppError::Database(e))),
+      Err(e) => app_result_to_json::<()>(Err(AppError::Database(e))),
     }
   } else {
-    app_result_to_json(Err(AppError::FeatureDisabled("auth.enabled".to_string())))
+    app_result_to_json::<()>(Err(AppError::FeatureDisabled("auth.enabled".to_string())))
   }
 }
 
@@ -3764,10 +3766,10 @@ fn auth_get_session(state: tauri::State<AppState>, token: String) -> Value {
   if let Some(ref auth) = state.auth_manager {
     match auth.get_session(&token) {
       Some(session) => ok_t(session),
-      None => app_result_to_json(Err(AppError::Auth("Invalid or expired session".to_string()))),
+      None => app_result_to_json::<()>(Err(AppError::Auth("Invalid or expired session".to_string()))),
     }
   } else {
-    app_result_to_json(Err(AppError::FeatureDisabled("auth.enabled".to_string())))
+    app_result_to_json::<()>(Err(AppError::FeatureDisabled("auth.enabled".to_string())))
   }
 }
 
@@ -3777,7 +3779,7 @@ fn auth_logout(state: tauri::State<AppState>, token: String) -> Value {
     auth.logout(&token);
     ok(json!(true))
   } else {
-    app_result_to_json(Err(AppError::FeatureDisabled("auth.enabled".to_string())))
+    app_result_to_json::<()>(Err(AppError::FeatureDisabled("auth.enabled".to_string())))
   }
 }
 
@@ -3804,10 +3806,10 @@ fn rules_list(state: tauri::State<AppState>, accountId: String) -> Value {
           .collect();
         ok_t(result)
       }
-      Err(e) => app_result_to_json(Err(AppError::Database(format!("Failed to list rules: {}", e)))),
+      Err(e) => app_result_to_json::<()>(Err(AppError::Database(format!("Failed to list rules: {}", e)))),
     }
   } else {
-      app_result_to_json(Err(AppError::FeatureDisabled("storage.sqlite".to_string())))
+      app_result_to_json::<()>(Err(AppError::FeatureDisabled("storage.sqlite".to_string())))
   }
 }
 
@@ -3829,21 +3831,21 @@ fn rules_upsert(
         Ok(compiled) => {
           let compiled_str = match serde_json::to_string(&compiled) {
             Ok(s) => s,
-            Err(e) => return app_result_to_json(Err(AppError::InvalidInput(format!("Serialization error: {}", e)))),
+            Err(e) => return app_result_to_json::<()>(Err(AppError::InvalidInput(format!("Serialization error: {}", e)))),
           };
           
           match storage.upsert_rule(&rule_id, &account_id, &name, false, Some(&dsl), Some(&compiled_str)) {
             Ok(_) => ok(json!({ "id": rule_id })),
-            Err(e) => app_result_to_json(Err(AppError::Database(format!("Failed to save rule: {}", e)))),
+            Err(e) => app_result_to_json::<()>(Err(AppError::Database(format!("Failed to save rule: {}", e)))),
           }
         }
-        Err(e) => app_result_to_json(Err(AppError::InvalidInput(format!("Failed to compile rule: {}", e)))),
+        Err(e) => app_result_to_json::<()>(Err(AppError::InvalidInput(format!("Failed to compile rule: {}", e)))),
       }
     } else {
-      app_result_to_json(Err(AppError::FeatureDisabled("automation.rules".to_string())))
+      app_result_to_json::<()>(Err(AppError::FeatureDisabled("automation.rules".to_string())))
     }
   } else {
-      app_result_to_json(Err(AppError::FeatureDisabled("storage.sqlite".to_string())))
+      app_result_to_json::<()>(Err(AppError::FeatureDisabled("storage.sqlite".to_string())))
   }
 }
 
@@ -3852,10 +3854,10 @@ fn rules_toggle(state: tauri::State<AppState>, id: String, enabled: bool) -> Val
   if let Some(ref storage) = state.storage {
     match storage.toggle_rule(&id, enabled) {
       Ok(_) => ok(json!(true)),
-      Err(e) => app_result_to_json(Err(AppError::Database(format!("Failed to toggle rule: {}", e)))),
+      Err(e) => app_result_to_json::<()>(Err(AppError::Database(format!("Failed to toggle rule: {}", e)))),
     }
   } else {
-      app_result_to_json(Err(AppError::FeatureDisabled("storage.sqlite".to_string())))
+      app_result_to_json::<()>(Err(AppError::FeatureDisabled("storage.sqlite".to_string())))
   }
 }
 
@@ -3876,7 +3878,7 @@ fn rules_run_once(
     // Use the new automation_engine instead via automation commands
     ok_t(Vec::<Value>::new())
   } else {
-    app_result_to_json(Err(AppError::FeatureDisabled("automation.rules".to_string())))
+    app_result_to_json::<()>(Err(AppError::FeatureDisabled("automation.rules".to_string())))
   }
 }
 
@@ -3892,7 +3894,7 @@ async fn ai_health_check(state: tauri::State<'_, AppState>) -> Result<Value, Str
       Err(e) => Ok(err(format!("Health check failed: {}", e))),
     }
   } else {
-    Ok(app_result_to_json(Err(AppError::FeatureDisabled("ai.client".to_string()))))
+    Ok(app_result_to_json::<()>(Err(AppError::FeatureDisabled("ai.client".to_string()))))
   }
 }
 
@@ -3944,7 +3946,7 @@ async fn ai_generate_reply(
       Err(e) => Ok(err(format!("Failed to generate reply: {}", e))),
     }
   } else {
-    Ok(app_result_to_json(Err(AppError::FeatureDisabled("ai.client".to_string()))))
+    Ok(app_result_to_json::<()>(Err(AppError::FeatureDisabled("ai.client".to_string()))))
   }
 }
 
@@ -3990,7 +3992,7 @@ async fn ai_summarize_thread(
       Err(e) => Ok(err(format!("Failed to summarize: {}", e))),
     }
   } else {
-    Ok(app_result_to_json(Err(AppError::FeatureDisabled("ai.client".to_string()))))
+    Ok(app_result_to_json::<()>(Err(AppError::FeatureDisabled("ai.client".to_string()))))
   }
 }
 
@@ -4024,7 +4026,7 @@ fn automation_remove_rule(
   if removed {
     ok(json!({ "removed": true }))
   } else {
-    app_result_to_json(Err(AppError::InvalidInput("Rule not found".to_string())))
+    app_result_to_json::<()>(Err(AppError::InvalidInput("Rule not found".to_string())))
   }
 }
 
@@ -4073,7 +4075,7 @@ fn automation_create_from_template(
     "out_of_office" => rules::templates::out_of_office(auto_send.unwrap_or(false)),
     "urgent" => rules::templates::urgent_message(contacts.unwrap_or_default()),
     "vip" => rules::templates::vip_auto_reply(contacts.unwrap_or_default()),
-    _ => return app_result_to_json(Err(AppError::InvalidInput("Unknown template type".to_string()))),
+    _ => return app_result_to_json::<()>(Err(AppError::InvalidInput("Unknown template type".to_string()))),
   };
 
   let mut engine = state.automation_engine.lock().unwrap();

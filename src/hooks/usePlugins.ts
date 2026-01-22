@@ -14,7 +14,13 @@ import {
  * Hook to integrate plugin system with app events
  */
 export function usePlugins() {
-  const log = logWithScope("usePlugins");
+  const logFn = logWithScope("usePlugins");
+  const log = {
+    info: (msg: string, meta?: Record<string, unknown>) => logFn('info', msg, meta),
+    warn: (msg: string, meta?: Record<string, unknown>) => logFn('warn', msg, meta),
+    error: (msg: string, meta?: unknown) => logFn('error', msg, typeof meta === 'object' ? meta as Record<string, unknown> : { error: meta }),
+    debug: (msg: string, meta?: Record<string, unknown>) => logFn('debug', msg, meta),
+  };
   useEffect(() => {
     const unlisteners: (() => void)[] = [];
 

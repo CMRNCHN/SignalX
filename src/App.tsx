@@ -4,6 +4,7 @@ import "./App.css";
 import { ToolsPanel } from "./components/ToolsPanel";
 import { SettingsModal } from "./components/SettingsModal";
 import { NewMessageModal } from "./components/NewMessageModal";
+import { LinkAccountModal } from "./components/LinkAccountModal";
 import SkipLink from "./components/SkipLink";
 import { ToastContainer } from "./components/Toast";
 import { useToast } from "./hooks/useToast";
@@ -531,18 +532,37 @@ function WelcomeOverlay({
               }}
             >
               {accounts.length === 0 ? (
-                <div
-                  style={{
-                    padding: 12,
-                    borderRadius: 12,
-                    border: "1px solid rgba(148, 163, 184, 0.14)",
-                    background: "rgba(255,255,255,0.02)",
-                    color: "#94a3b8",
-                  }}
-                >
-                  No accounts detected yet. If you have `SIGNALX_NUMBER` set,
-                  restart the app; otherwise link a Signal device first.
-                </div>
+                <>
+                  <div
+                    style={{
+                      padding: 12,
+                      borderRadius: 12,
+                      border: "1px solid rgba(148, 163, 184, 0.14)",
+                      background: "rgba(255,255,255,0.02)",
+                      color: "#94a3b8",
+                    }}
+                  >
+                    No accounts detected yet. Click "Add Account" below to link your Signal device.
+                  </div>
+                  <Button
+                    onClick={(e) => {
+                      e.stopPropagation(); // Prevent event bubbling
+                      console.log('Add Account button clicked!');
+                      console.log('Current showLinkAccount state:', showLinkAccount);
+                      setShowLinkAccount(true);
+                      setShowWelcome(false); // Hide welcome overlay when showing link modal
+                      console.log('showLinkAccount set to true, showWelcome set to false');
+                    }}
+                    variant="primary"
+                    size="md"
+                    style={{
+                      background: "linear-gradient(135deg, #0ea5e9, #22d3ee)",
+                      boxShadow: "0 10px 30px rgba(14,165,233,0.35)",
+                    }}
+                  >
+                    + Add Account
+                  </Button>
+                </>
               ) : (
                 accounts.map((acc) => {
                   const selected = selectedAccount === acc;
@@ -637,8 +657,14 @@ function fmtTime(ts: number) {
 
 export default function App() {
   const { toasts, dismissToast, showError, showSuccess, showInfo } = useToast();
-  const log = logWithScope("App");
-  const addLog = (msg: string) => log("info", msg);
+  const logFn = logWithScope("App");
+  const log = {
+    info: (msg: string, meta?: Record<string, unknown>) => logFn('info', msg, meta),
+    warn: (msg: string, meta?: Record<string, unknown>) => logFn('warn', msg, meta),
+    error: (msg: string, meta?: unknown) => logFn('error', msg, typeof meta === 'object' ? meta as Record<string, unknown> : { error: meta }),
+    debug: (msg: string, meta?: Record<string, unknown>) => logFn('debug', msg, meta),
+  };
+  const addLog = (msg: string) => logFn("info", msg);
   const [tauriAvailable, setTauriAvailable] = useState(isTauriAvailable());
 
   useEffect(() => {
@@ -661,6 +687,8 @@ export default function App() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [composerText, setComposerText] = useState("");
+  const [showLinkAccount, setShowLinkAccount] = useState(false);
+  const [linkAccountStep, setLinkAccountStep] = useState<'phone' | 'qr' | 'done'>('phone');
   const [sending, setSending] = useState(false);
 
   // Initialize plugins
@@ -3685,7 +3713,7 @@ export default function App() {
           }
         }}
       />
-      {showWelcome ? (
+      {showWelcome && !showLinkAccount ? (
         <WelcomeOverlay
           accounts={accounts}
           selectedAccount={welcomeAccount}
@@ -3741,6 +3769,24 @@ export default function App() {
       >
         <OutboxStatus show={true} />
       </FeatureHint>
+      <LinkAccountModal 
+        open={showLinkAccount}
+        onClose={() => setShowLinkAccount(false)}
+        onSuccess={async () => {
+          // Refresh accounts after successful linking
+          if (tauriAvailable) {
+            try {
+              const accts = await invoke<string[]>("get_accounts");
+              setAccounts(accts);
+              if (accts.length > 0) {
+                setWelcomeAccount(accts[0]);
+              }
+            } catch (err) {
+              console.error('Failed to refresh accounts:', err);
+            }
+          }
+        }}
+      />
     </div>
   );
 }

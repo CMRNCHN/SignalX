@@ -10,7 +10,13 @@ import type { IncomingMessage } from '../../packages/signal_automation_scaffoldi
 export function useAutomation(
   onDraftReady?: (draft: { threadId: string; content: string; confidence: number }) => void
 ) {
-  const log = logWithScope("useAutomation");
+  const logFn = logWithScope("useAutomation");
+  const log = {
+    info: (msg: string, meta?: Record<string, unknown>) => logFn('info', msg, meta),
+    warn: (msg: string, meta?: Record<string, unknown>) => logFn('warn', msg, meta),
+    error: (msg: string, meta?: unknown) => logFn('error', msg, typeof meta === 'object' ? meta as Record<string, unknown> : { error: meta }),
+    debug: (msg: string, meta?: Record<string, unknown>) => logFn('debug', msg, meta),
+  };
   useEffect(() => {
     let unlisten: (() => void) | null = null;
 

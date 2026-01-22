@@ -37,6 +37,7 @@ yarn-error.log*
 *.tmp
 *.temp
 *.bak
+*.bak*
 *.backup
 signal-link-*.png
 signal-link-*.txt

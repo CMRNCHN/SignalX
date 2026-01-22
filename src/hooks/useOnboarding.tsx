@@ -8,7 +8,13 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
 import { logWithScope } from '../utils/logger';
 
-const log = logWithScope('useOnboarding');
+const logFn = logWithScope('useOnboarding');
+const log = {
+  info: (msg: string, meta?: Record<string, unknown>) => logFn('info', msg, meta),
+  warn: (msg: string, meta?: Record<string, unknown>) => logFn('warn', msg, meta),
+  error: (msg: string, meta?: unknown) => logFn('error', msg, typeof meta === 'object' ? meta as Record<string, unknown> : { error: meta }),
+  debug: (msg: string, meta?: Record<string, unknown>) => logFn('debug', msg, meta),
+};
 
 export type OnboardingStep = 
   | 'welcome'           // Initial welcome screen
