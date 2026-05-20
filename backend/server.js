@@ -29,13 +29,7 @@ app.get('/api/customers', (req, res) => {
 
 app.post('/api/customers', (req, res) => {
   const { name, email, phone, address } = req.body;
-  const result = runCommand(`customer create "${name}" "${email}" "${phone}" "${address}"`);
-  res.json(result);
-});
-
-app.get('/api/customers/:id', (req, res) => {
-  const result = runCommand(`customer get ${req.params.id}`);
-  res.json(result);
+  res.json(runCommand(`customer create "${name}" "${email}" "${phone}" "${address}"`));
 });
 
 app.get('/api/orders', (req, res) => {
@@ -44,19 +38,12 @@ app.get('/api/orders', (req, res) => {
 
 app.post('/api/orders', (req, res) => {
   const { customerId, amount } = req.body;
-  const result = runCommand(`order create ${customerId} ${amount}`);
-  res.json(result);
-});
-
-app.get('/api/orders/:id', (req, res) => {
-  const result = runCommand(`order get ${req.params.id}`);
-  res.json(result);
+  res.json(runCommand(`order create ${customerId} ${amount}`));
 });
 
 app.patch('/api/orders/:id/status', (req, res) => {
   const { status } = req.body;
-  const result = runCommand(`order status ${req.params.id} ${status}`);
-  res.json(result);
+  res.json(runCommand(`order status ${req.params.id} ${status}`));
 });
 
 app.get('/api/invoices', (req, res) => {
@@ -65,19 +52,31 @@ app.get('/api/invoices', (req, res) => {
 
 app.post('/api/invoices', (req, res) => {
   const { orderId } = req.body;
-  const result = runCommand(`invoice create ${orderId}`);
-  res.json(result);
-});
-
-app.get('/api/invoices/:id', (req, res) => {
-  const result = runCommand(`invoice get ${req.params.id}`);
-  res.json(result);
+  res.json(runCommand(`invoice create ${orderId}`));
 });
 
 app.post('/api/invoices/:id/pay', (req, res) => {
   const { amount } = req.body;
-  const result = runCommand(`invoice pay ${req.params.id} ${amount}`);
-  res.json(result);
+  res.json(runCommand(`invoice pay ${req.params.id} ${amount}`));
+});
+
+app.get('/api/signal/conversations', (req, res) => {
+  res.json(runCommand('signal list'));
+});
+
+app.get('/api/signal/conversation/:customerId', (req, res) => {
+  res.json(runCommand(`signal conversation ${req.params.customerId}`));
+});
+
+app.post('/api/signal/send', (req, res) => {
+  const { phone, message } = req.body;
+  res.json(runCommand(`signal send "${phone}" "${message}"`));
+});
+
+app.post('/api/signal/order-confirmation', (req, res) => {
+  const { customerId, orderId } = req.body;
+  runCommand(`order create ${customerId} 0`);
+  res.json({ status: 'Order confirmation sent via Signal' });
 });
 
 app.get('*', (req, res) => {

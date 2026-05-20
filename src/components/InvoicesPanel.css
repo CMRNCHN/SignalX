@@ -1,0 +1,109 @@
+.invoices-panel {
+  padding: 20px;
+  background: #f5f5f5;
+  border-radius: 8px;
+  margin: 10px 0;
+}
+
+.invoices-panel h2 {
+  color: #333;
+  margin-bottom: 20px;
+  font-size: 24px;
+}
+
+.invoice-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  margin-bottom: 20px;
+  background: white;
+  padding: 15px;
+  border-radius: 6px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.invoice-form input {
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.invoice-form button {
+  padding: 10px 20px;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.invoice-form button:hover {
+  background: #c82333;
+}
+
+.invoices-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.invoices-table thead {
+  background: #333;
+  color: white;
+}
+
+.invoices-table th {
+  padding: 12px;
+  text-align: left;
+  font-weight: 600;
+}
+
+.invoices-table td {
+  padding: 12px;
+  border-bottom: 1px solid #eee;
+}
+
+.invoices-table tbody tr:hover {
+  background: #f9f9f9;
+}
+
+.payment-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.payment-form input {
+  padding: 6px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.payment-form button {
+  padding: 6px 12px;
+  background: #17a2b8;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.payment-form button:hover {
+  background: #138496;
+}
+
+.cancel-btn {
+  background: #6c757d !important;
+}
+
+.cancel-btn:hover {
+  background: #5a6268 !important;
+}

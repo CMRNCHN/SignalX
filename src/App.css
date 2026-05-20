@@ -1,14 +1,60 @@
-/* SignalX Desktop - functional styling only (no aesthetics pass) */
-:root {
-  color-scheme: dark;
+.app-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px;
 }
 
-html, body, #root {
-  height: 100%;
-  margin: 0;
-  padding: 0;
+.header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 30px 0;
+  margin-bottom: 30px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
 }
 
-* {
-  box-sizing: border-box;
+.header h1 {
+  font-size: 32px;
+  margin-bottom: 5px;
+}
+
+.header p {
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.nav-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  background: white;
+  padding: 10px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.nav-tabs button {
+  padding: 10px 20px;
+  border: none;
+  background: #f0f0f0;
+  color: #333;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.nav-tabs button:hover {
+  background: #e0e0e0;
+}
+
+.nav-tabs button.active {
+  background: #667eea;
+  color: white;
+}
+
+.content {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
