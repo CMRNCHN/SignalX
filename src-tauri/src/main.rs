@@ -3742,6 +3742,22 @@ fn main() {
       if let Some(a) = state.account_manager.get_active() {
         ensure_outbox_worker(app.handle().clone(), state.clone(), a);
       }
+
+      // Graceful shutdown on SIGINT / SIGTERM (e.g. signal-cli process cleanup)
+      {
+        let handle = app.handle().clone();
+        tauri::async_runtime::spawn(async move {
+          use tokio::signal::unix::{signal, SignalKind};
+          let mut sigint = signal(SignalKind::interrupt()).unwrap();
+          let mut sigterm = signal(SignalKind::terminate()).unwrap();
+          tokio::select! {
+            _ = sigint.recv() => eprintln!("[SignalX] SIGINT received, shutting down"),
+            _ = sigterm.recv() => eprintln!("[SignalX] SIGTERM received, shutting down"),
+          }
+          handle.exit(0);
+        });
+      }
+
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
