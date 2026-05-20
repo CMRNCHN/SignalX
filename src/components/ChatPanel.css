@@ -1,0 +1,100 @@
+/* Chat panel styling.  Shows messages in a scrollable area with two
+   distinct message styles, and an input bar at the bottom. */
+
+.chat-panel {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sx-pad-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sx-gap-1);
+  margin-bottom: 12px;
+}
+
+.chat-message {
+  max-width: 78%;
+  padding: var(--sx-pad-2);
+  border-radius: var(--sx-r-1);
+  font-size: 0.92rem;
+  line-height: var(--sx-line);
+  border: 1px solid var(--sx-border);
+}
+
+.chat-message-you {
+  align-self: flex-end;
+  background-color: rgba(138,180,255,.12);
+  border-color: rgba(138,180,255,.30);
+  color: var(--sx-text);
+}
+
+.chat-message-ai {
+  align-self: flex-start;
+  background-color: rgba(255,255,255,.04);
+  color: var(--sx-text);
+}
+
+.chat-message-contact {
+  align-self: flex-start;
+  background-color: rgba(0,0,0,.22);
+  color: var(--sx-text);
+}
+
+.chat-message {
+  position: relative;
+  word-wrap: break-word;
+}
+
+.chat-input {
+  display: flex;
+  align-items: center;
+  gap: var(--sx-gap-1);
+  padding: var(--sx-pad-2);
+  border-top: 1px solid var(--sx-border);
+  background: rgba(0,0,0,.14);
+}
+
+.chat-input input {
+  flex: 1;
+  border: 1px solid var(--sx-border);
+  border-radius: 12px;
+  padding: 12px;
+  background-color: rgba(0,0,0,.22);
+  color: var(--sx-text);
+  font-size: 0.92rem;
+}
+
+.chat-input input::placeholder {
+  color: var(--sx-faint);
+}
+
+.chat-input input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.chat-input button {
+  background-color: rgba(138,180,255,.14);
+  color: var(--sx-text);
+  border: 1px solid rgba(138,180,255,.30);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.chat-input button:hover:not(:disabled) {
+  background-color: rgba(138,180,255,.22);
+}
+
+.chat-input button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

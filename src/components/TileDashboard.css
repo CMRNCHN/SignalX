@@ -1,0 +1,30 @@
+/* Styling for the dashboard tile row.  Uses a flexible row layout with
+   pastel coloured tiles. */
+
+.tiles-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 16px;
+}
+
+.tile {
+  padding: 16px;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  color: #1A1C1F;
+  height: 90px;
+}
+
+.tile-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.tile-title {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}

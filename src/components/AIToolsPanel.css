@@ -1,0 +1,27 @@
+.ai-tools-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.suggestions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.suggestion-button {
+  border: none;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1A1C1F;
+  cursor: pointer;
+  text-align: left;
+  transition: opacity 0.2s ease;
+}
+
+.suggestion-button:hover {
+  opacity: 0.85;
+}
