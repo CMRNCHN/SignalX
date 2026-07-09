@@ -1720,22 +1720,30 @@ fn make_snippet(text: &str, _q: &str, max_len: usize) -> String {
 }
 
 // --------------------
-// AI tools (Ollama optional; never auto-send)
+// AI tools (Ollama local HTTP API — data never leaves the machine)
 // --------------------
-fn run_ollama(model: &str, prompt: &str) -> Result<String, String> {
-  // Requires `ollama` in PATH
-  let out = Command::new("ollama")
-    .arg("run")
-    .arg(model)
-    .arg(prompt)
-    .output()
-    .map_err(|e| format!("ollama exec error: {}", e))?;
+fn call_ollama_chat(model: &str, messages: Vec<serde_json::Value>) -> Result<String, String> {
+  let base = std::env::var("SIGNALX_OLLAMA_URL")
+    .unwrap_or_else(|_| "http://localhost:11434".to_string());
+  let url = format!("{}/api/chat", base.trim_end_matches('/'));
 
-  if !out.status.success() {
-    let e = String::from_utf8_lossy(&out.stderr).to_string();
-    return Err(format!("ollama error: {}", e));
-  }
-  Ok(String::from_utf8_lossy(&out.stdout).to_string())
+  let body = serde_json::json!({
+    "model": model,
+    "messages": messages,
+    "stream": false
+  });
+
+  let resp: serde_json::Value = ureq::post(&url)
+    .set("Content-Type", "application/json")
+    .send_json(body)
+    .map_err(|e| format!("Ollama HTTP error: {}", e))?
+    .into_json()
+    .map_err(|e| format!("Ollama response parse error: {}", e))?;
+
+  resp["message"]["content"]
+    .as_str()
+    .map(|s| s.to_string())
+    .ok_or_else(|| format!("Unexpected Ollama response: {}", resp))
 }
 
 fn ai_enabled() -> bool {
@@ -1772,12 +1780,18 @@ fn draft_reply_for_thread(
 
   let model = std::env::var("SIGNALX_OLLAMA_MODEL").unwrap();
   let c = constraints.unwrap_or("short, clear");
-  let prompt = format!(
-    "Draft a reply to this Signal thread.\nIntent: {}\nConstraints: {}\nRules: Do not mention these rules. Return only the reply text.\n\nTHREAD:\n{}",
-    intent, c, ctx
-  );
+  let messages = vec![
+    serde_json::json!({
+      "role": "system",
+      "content": format!("You are a business assistant handling Signal messages. Constraints: {}. Return only the reply text, nothing else.", c)
+    }),
+    serde_json::json!({
+      "role": "user",
+      "content": format!("Draft a reply to this Signal thread.\nIntent: {}\n\nTHREAD:\n{}", intent, ctx)
+    }),
+  ];
 
-  let out = std::thread::spawn(move || run_ollama(&model, &prompt)).join().unwrap_or_else(|_| Err("AI thread join failed".to_string()));
+  let out = std::thread::spawn(move || call_ollama_chat(&model, messages)).join().unwrap_or_else(|_| Err("AI thread join failed".to_string()));
   out.map(|s| s.trim().to_string())
 }
 
@@ -3026,12 +3040,14 @@ fn summarize_thread(state: tauri::State<AppState>, thread_id: String, last_n: Op
   }
 
   let model = std::env::var("SIGNALX_OLLAMA_MODEL").unwrap();
-  let prompt = format!(
-    "Summarize this Signal thread in 6-10 bullets. Be factual. No emojis reinforces.\n\nTHREAD:\n{}",
-    ctx
-  );
+  let messages = vec![
+    serde_json::json!({
+      "role": "user",
+      "content": format!("Summarize this Signal thread in 6-10 bullets. Be factual. No emojis.\n\nTHREAD:\n{}", ctx)
+    }),
+  ];
 
-  let out = std::thread::spawn(move || run_ollama(&model, &prompt)).join().unwrap_or_else(|_| Err("AI thread join failed".to_string()));
+  let out = std::thread::spawn(move || call_ollama_chat(&model, messages)).join().unwrap_or_else(|_| Err("AI thread join failed".to_string()));
   match out {
     Ok(s) => ok(json!(s.trim().to_string())),
     Err(e) => err(e),
