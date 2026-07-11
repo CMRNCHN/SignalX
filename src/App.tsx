@@ -1,47 +1,27 @@
-import React, { useState } from 'react'
-import { CustomersPanel } from './components/CustomersPanel'
-import { OrdersPanel } from './components/OrdersPanel'
-import { InvoicesPanel } from './components/InvoicesPanel'
-import './App.css'
+// Placeholder shell for SignalX.
+// The real messaging UI (sidebar accounts, thread list, conversation view,
+// composer, AI drafting, auto-reply controls) is built in a later phase and
+// will overwrite this file. This exists only so the Tauri window renders.
 
-function App() {
-  const [activeTab, setActiveTab] = useState('customers')
-
+export default function App() {
   return (
-    <div className="app-container">
-      <div className="header">
-        <h1>SignalX</h1>
-        <p>Order Management System</p>
-      </div>
-
-      <div className="nav-tabs">
-        <button
-          className={activeTab === 'customers' ? 'active' : ''}
-          onClick={() => setActiveTab('customers')}
-        >
-          Customers
-        </button>
-        <button
-          className={activeTab === 'orders' ? 'active' : ''}
-          onClick={() => setActiveTab('orders')}
-        >
-          Orders
-        </button>
-        <button
-          className={activeTab === 'invoices' ? 'active' : ''}
-          onClick={() => setActiveTab('invoices')}
-        >
-          Invoices
-        </button>
-      </div>
-
-      <div className="content">
-        {activeTab === 'customers' && <CustomersPanel />}
-        {activeTab === 'orders' && <OrdersPanel />}
-        {activeTab === 'invoices' && <InvoicesPanel />}
-      </div>
+    <div className="app-shell">
+      <aside className="app-sidebar">
+        <div className="app-brand">SignalX</div>
+        <nav className="app-nav">
+          <span className="app-nav-placeholder">Accounts &amp; threads</span>
+        </nav>
+      </aside>
+      <main className="app-main">
+        <header className="app-header">
+          <h1>SignalX</h1>
+        </header>
+        <section className="app-content">
+          <p className="app-hint">
+            Tauri shell is up. The messaging UI is built in a later phase.
+          </p>
+        </section>
+      </main>
     </div>
-  )
+  );
 }
-
-export default App

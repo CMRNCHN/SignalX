@@ -1,5 +1,3 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
@@ -9,8 +7,16 @@ use std::sync::{Arc, Mutex};
 use base64::Engine;
 use uuid::Uuid;
 
-use tauri::{Emitter, Manager};
 use tokio::sync::Mutex as AsyncMutex;
+
+fn tokio_block_on<F: std::future::Future>(f: F) -> F::Output {
+  tokio::runtime::Builder::new_multi_thread()
+    .enable_all()
+    .build()
+    .expect("failed to start Tokio runtime")
+    .block_on(f)
+}
+
 
 const RECEIVE_TIMEOUT_SECS: &str = "2";
 const RECEIVE_MAX_MESSAGES: &str = "50";
@@ -21,6 +27,9 @@ const SELF_HEAL_FAILURE_THRESHOLD: u32 = 10;
 const DEFAULT_AGENT_INTENT: &str = "prepare but do not send";
 const DEFAULT_AGENT_CONSTRAINTS: &str = "concise, actionable, do not auto-send";
 const DEFAULT_AGENT_LAST_N: u32 = 50;
+const DEFAULT_OLLAMA_URL: &str = "http://localhost:11434";
+const DEFAULT_OLLAMA_TIMEOUT_SECS: u64 = 120;
+const OLLAMA_PROBE_TIMEOUT_SECS: u64 = 3;
 
 // --------------------
 // API helpers
@@ -317,7 +326,7 @@ impl OutboxStore {
   }
 
   fn ensure_loaded(&self, account_id: &str) -> Result<(), String> {
-    tauri::async_runtime::block_on(self.ensure_loaded_async(account_id))
+    tokio_block_on(self.ensure_loaded_async(account_id))
   }
 
   async fn save_account_atomic_async(&self, account_id: &str) -> Result<(), String> {
@@ -345,7 +354,7 @@ impl OutboxStore {
   }
 
   fn save_account_atomic(&self, account_id: &str) -> Result<(), String> {
-    tauri::async_runtime::block_on(self.save_account_atomic_async(account_id))
+    tokio_block_on(self.save_account_atomic_async(account_id))
   }
 
   fn list(&self, account_id: &str, thread_id: Option<&str>) -> Result<Vec<OutboxItem>, String> {
@@ -1722,23 +1731,104 @@ fn make_snippet(text: &str, _q: &str, max_len: usize) -> String {
 // --------------------
 // AI tools (Ollama local HTTP API — data never leaves the machine)
 // --------------------
-fn call_ollama_chat(model: &str, messages: Vec<serde_json::Value>) -> Result<String, String> {
-  let base = std::env::var("SIGNALX_OLLAMA_URL")
-    .unwrap_or_else(|_| "http://localhost:11434".to_string());
-  let url = format!("{}/api/chat", base.trim_end_matches('/'));
+fn ollama_base_url() -> String {
+  std::env::var("SIGNALX_OLLAMA_URL")
+    .unwrap_or_else(|_| DEFAULT_OLLAMA_URL.to_string())
+    .trim_end_matches('/')
+    .to_string()
+}
 
-  let body = serde_json::json!({
+fn ollama_timeout() -> std::time::Duration {
+  let secs = std::env::var("SIGNALX_OLLAMA_TIMEOUT_SECS")
+    .ok()
+    .and_then(|s| s.parse().ok())
+    .unwrap_or(DEFAULT_OLLAMA_TIMEOUT_SECS);
+  std::time::Duration::from_secs(secs)
+}
+
+fn ai_not_configured_msg() -> String {
+  format!(
+    "AI not configured. Set SIGNALX_OLLAMA_MODEL in .signalx.env and ensure Ollama is running at {}.",
+    ollama_base_url()
+  )
+}
+
+fn map_ollama_http_error(e: ureq::Error, base_url: &str) -> String {
+  match e {
+    ureq::Error::Status(code, resp) => {
+      let body = resp.into_string().unwrap_or_default();
+      if let Ok(v) = serde_json::from_str::<Value>(&body) {
+        if let Some(err) = v.get("error").and_then(|e| e.as_str()) {
+          if err.contains("not found") {
+            return format!("Ollama model not found: {}. Run `ollama pull <model>`.", err);
+          }
+          return format!("Ollama error (HTTP {}): {}", code, err);
+        }
+      }
+      let detail = body.trim();
+      if detail.is_empty() {
+        format!("Ollama HTTP error (status {})", code)
+      } else {
+        format!("Ollama HTTP error (status {}): {}", code, detail)
+      }
+    }
+    ureq::Error::Transport(t) => {
+      let msg = t.to_string();
+      if msg.contains("Connection refused") || msg.contains("connect") || msg.contains("failed to connect") {
+        format!(
+          "Cannot reach Ollama at {}. Start the server with `ollama serve`.",
+          base_url
+        )
+      } else if msg.contains("timed out") || msg.contains("timeout") {
+        "Ollama request timed out. Try a smaller model or increase SIGNALX_OLLAMA_TIMEOUT_SECS.".to_string()
+      } else {
+        format!("Ollama connection error: {}", msg)
+      }
+    }
+  }
+}
+
+fn build_ollama_chat_body(model: &str, messages: Vec<Value>) -> Value {
+  let mut body = json!({
     "model": model,
     "messages": messages,
     "stream": false
   });
 
-  let resp: serde_json::Value = ureq::post(&url)
+  let mut options = serde_json::Map::new();
+  if let Ok(t) = std::env::var("SIGNALX_OLLAMA_TEMPERATURE") {
+    if let Ok(v) = t.parse::<f64>() {
+      options.insert("temperature".to_string(), json!(v));
+    }
+  }
+  if let Ok(n) = std::env::var("SIGNALX_OLLAMA_NUM_PREDICT") {
+    if let Ok(v) = n.parse::<u64>() {
+      options.insert("num_predict".to_string(), json!(v));
+    }
+  }
+  if !options.is_empty() {
+    body["options"] = json!(options);
+  }
+
+  body
+}
+
+fn call_ollama_chat(model: &str, messages: Vec<Value>) -> Result<String, String> {
+  let base = ollama_base_url();
+  let url = format!("{}/api/chat", base);
+  let body = build_ollama_chat_body(model, messages);
+
+  let resp: Value = ureq::post(&url)
     .set("Content-Type", "application/json")
+    .timeout(ollama_timeout())
     .send_json(body)
-    .map_err(|e| format!("Ollama HTTP error: {}", e))?
+    .map_err(|e| map_ollama_http_error(e, &base))?
     .into_json()
     .map_err(|e| format!("Ollama response parse error: {}", e))?;
+
+  if let Some(err) = resp.get("error").and_then(|e| e.as_str()) {
+    return Err(format!("Ollama error: {}", err));
+  }
 
   resp["message"]["content"]
     .as_str()
@@ -1748,6 +1838,67 @@ fn call_ollama_chat(model: &str, messages: Vec<serde_json::Value>) -> Result<Str
 
 fn ai_enabled() -> bool {
   std::env::var("SIGNALX_OLLAMA_MODEL").ok().map(|s| !s.trim().is_empty()).unwrap_or(false)
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct AiStatus {
+  configured: bool,
+  ollama_url: String,
+  ollama_model: Option<String>,
+  ollama_reachable: bool,
+  ollama_last_error: Option<String>,
+}
+
+fn probe_ollama() -> AiStatus {
+  let base = ollama_base_url();
+  let model = std::env::var("SIGNALX_OLLAMA_MODEL")
+    .ok()
+    .map(|s| s.trim().to_string())
+    .filter(|s| !s.is_empty());
+  let configured = model.is_some();
+  let url = format!("{}/api/tags", base);
+  let timeout = std::time::Duration::from_secs(OLLAMA_PROBE_TIMEOUT_SECS);
+
+  match ureq::get(&url).timeout(timeout).call() {
+    Ok(resp) => {
+      let status = resp.status();
+      if status >= 400 {
+        AiStatus {
+          configured,
+          ollama_url: base,
+          ollama_model: model,
+          ollama_reachable: false,
+          ollama_last_error: Some(format!("Ollama HTTP error (status {})", status)),
+        }
+      } else {
+        AiStatus {
+          configured,
+          ollama_url: base,
+          ollama_model: model,
+          ollama_reachable: true,
+          ollama_last_error: None,
+        }
+      }
+    }
+    Err(e) => {
+      let err = map_ollama_http_error(e, &base);
+      AiStatus {
+        configured,
+        ollama_url: base,
+        ollama_model: model,
+        ollama_reachable: false,
+        ollama_last_error: Some(err),
+      }
+    }
+  }
+}
+
+fn format_thread_context(msgs: &[Message]) -> String {
+  msgs
+    .iter()
+    .map(|m| format!("[{}] {}: {}", m.timestamp, m.sender, m.content))
+    .collect::<Vec<_>>()
+    .join("\n")
 }
 
 fn collect_recent_messages(ts: &ThreadState, thread_id: &str, last_n: usize) -> Vec<Message> {
@@ -1767,32 +1918,30 @@ fn draft_reply_for_thread(
   last_n: Option<u32>,
 ) -> Result<String, String> {
   if !ai_enabled() {
-    return Err("AI not configured. Set SIGNALX_OLLAMA_MODEL and ensure `ollama` is installed.".to_string());
+    return Err(ai_not_configured_msg());
   }
 
   let n = last_n.unwrap_or(DEFAULT_AGENT_LAST_N).max(1).min(200) as usize;
   let msgs = collect_recent_messages(ts, thread_id, n);
-  let ctx = msgs
-    .iter()
-    .map(|m| format!("[{}] {}: {}", m.timestamp, m.sender, m.content))
-    .collect::<Vec<_>>()
-    .join("\n");
+  if msgs.is_empty() {
+    return Err("No messages in thread.".to_string());
+  }
+  let ctx = format_thread_context(&msgs);
 
   let model = std::env::var("SIGNALX_OLLAMA_MODEL").unwrap();
   let c = constraints.unwrap_or("short, clear");
   let messages = vec![
-    serde_json::json!({
+    json!({
       "role": "system",
       "content": format!("You are a business assistant handling Signal messages. Constraints: {}. Return only the reply text, nothing else.", c)
     }),
-    serde_json::json!({
+    json!({
       "role": "user",
       "content": format!("Draft a reply to this Signal thread.\nIntent: {}\n\nTHREAD:\n{}", intent, ctx)
     }),
   ];
 
-  let out = std::thread::spawn(move || call_ollama_chat(&model, messages)).join().unwrap_or_else(|_| Err("AI thread join failed".to_string()));
-  out.map(|s| s.trim().to_string())
+  call_ollama_chat(&model, messages).map(|s| s.trim().to_string())
 }
 
 // --------------------
@@ -2049,10 +2198,15 @@ struct Diagnostics {
   config_path: Option<String>,
   number: Option<String>,
   active_account: Option<String>,
+  ollama_configured: bool,
+  ollama_url: String,
+  ollama_model: Option<String>,
+  ollama_reachable: bool,
+  ollama_last_error: Option<String>,
 }
 
 // --------------------
-// Tauri shared state
+// Application state
 // --------------------
 #[derive(Clone)]
 struct AppState {
@@ -2094,23 +2248,22 @@ fn compute_backoff_ms(attempt: u32) -> i64 {
 }
 
 // --------------------
-// Tauri commands
+// API handlers (reserved for future CLI/HTTP)
 // --------------------
-#[tauri::command]
-fn get_receive_loop_state(state: tauri::State<AppState>) -> Value {
+fn get_receive_loop_state(state: &AppState) -> Value {
   ok_t(state.receive_monitor.snapshot())
 }
 
-#[tauri::command]
-fn get_diagnostics(state: tauri::State<AppState>) -> Value {
+fn get_diagnostics(state: &AppState) -> Value {
   let cli = state.signal_cli_info.lock().unwrap().clone();
+  let ai = probe_ollama();
   let diag = Diagnostics {
     env_path: state.env_path.as_ref().map(|p| p.to_string_lossy().to_string()),
     app_data_dir: state.app_data_dir.to_string_lossy().to_string(),
     threads_dir: state.threads_dir.to_string_lossy().to_string(),
     aliases_dir: state.aliases_dir.to_string_lossy().to_string(),
     search_dir: state.search_dir.to_string_lossy().to_string(),
-  export_dir: state.export_dir.to_string_lossy().to_string(),
+    export_dir: state.export_dir.to_string_lossy().to_string(),
     signal_cli_path: cli.bin,
     signal_cli_version: cli.version,
     signal_cli_usable: cli.is_usable,
@@ -2118,17 +2271,24 @@ fn get_diagnostics(state: tauri::State<AppState>) -> Value {
     config_path: get_signal_config(),
     number: get_signal_number(),
     active_account: state.account_manager.get_active(),
+    ollama_configured: ai.configured,
+    ollama_url: ai.ollama_url,
+    ollama_model: ai.ollama_model,
+    ollama_reachable: ai.ollama_reachable,
+    ollama_last_error: ai.ollama_last_error,
   };
   ok_t(diag)
 }
 
-#[tauri::command]
-fn list_accounts(state: tauri::State<AppState>) -> Value {
+fn check_ai_status() -> Value {
+  ok_t(probe_ollama())
+}
+
+fn list_accounts(state: &AppState) -> Value {
   ok_t(state.account_manager.list_accounts())
 }
 
-#[tauri::command]
-fn get_active_account(state: tauri::State<AppState>) -> Value {
+fn get_active_account(state: &AppState) -> Value {
   ok(json!({ "account_id": state.account_manager.get_active() }))
 }
 
@@ -2139,8 +2299,7 @@ fn require_active_account(state: &AppState) -> Result<String, Value> {
     .ok_or_else(|| err("no active account".to_string()))
 }
 
-#[tauri::command]
-fn set_active_account(app: tauri::AppHandle, state: tauri::State<AppState>, account_id: String) -> Value {
+fn set_active_account(state: &AppState, account_id: String) -> Value {
   let account_id = account_id.trim().to_string();
   if account_id.is_empty() {
     return err("account_id cannot be empty".to_string());
@@ -2153,13 +2312,11 @@ fn set_active_account(app: tauri::AppHandle, state: tauri::State<AppState>, acco
   state.group_store.load_account(&account_id);
 
   state.account_manager.set_active(account_id.clone());
-  let _ = app.emit("account-changed", json!({ "account_id": account_id.clone() }));
-  ensure_outbox_worker(app.clone(), state.inner().clone(), account_id.clone());
+  ensure_outbox_worker(state.clone(), account_id.clone());
   ok(json!(true))
 }
 
-#[tauri::command]
-fn get_threads(state: tauri::State<AppState>) -> Value {
+fn get_threads(state: &AppState) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => {
@@ -2177,8 +2334,7 @@ fn get_threads(state: tauri::State<AppState>) -> Value {
   ok_t(ts.get_threads())
 }
 
-#[tauri::command]
-fn get_thread_messages(state: tauri::State<AppState>, thread_id: String) -> Value {
+fn get_thread_messages(state: &AppState, thread_id: String) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return ok_t(Vec::<Message>::new()),
@@ -2187,8 +2343,7 @@ fn get_thread_messages(state: tauri::State<AppState>, thread_id: String) -> Valu
   ok_t(ts.get_thread_messages(thread_id.trim()))
 }
 
-#[tauri::command]
-fn get_pending_replies(state: tauri::State<AppState>, thread_id: String) -> Value {
+fn get_pending_replies(state: &AppState, thread_id: String) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return ok_t(Vec::<PendingReply>::new()),
@@ -2197,8 +2352,7 @@ fn get_pending_replies(state: tauri::State<AppState>, thread_id: String) -> Valu
   ok_t(ts.get_pending_replies(thread_id.trim()))
 }
 
-#[tauri::command]
-fn get_draft_history(state: tauri::State<AppState>, thread_id: String) -> Value {
+fn get_draft_history(state: &AppState, thread_id: String) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return ok_t(Vec::<PendingReply>::new()),
@@ -2207,8 +2361,7 @@ fn get_draft_history(state: tauri::State<AppState>, thread_id: String) -> Value 
   ok_t(ts.get_draft_history(thread_id.trim()))
 }
 
-#[tauri::command]
-fn get_outbox_legacy(state: tauri::State<AppState>, thread_id: Option<String>) -> Value {
+fn get_outbox_legacy(state: &AppState, thread_id: Option<String>) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return ok_t(Vec::<OutboxEntry>::new()),
@@ -2233,20 +2386,11 @@ fn recipient_from_thread_id(thread_id: &str) -> (String, String) {
   ("dm".to_string(), tid.to_string())
 }
 
-fn emit_outbox_updated(app: &tauri::AppHandle, account_id: &str, thread_id: Option<&str>, summary: OutboxSummary) {
-  let payload = match thread_id {
-    Some(tid) => json!({ "account_id": account_id, "thread_id": tid, "summary": summary }),
-    None => json!({ "account_id": account_id, "summary": summary }),
-  };
-  let _ = app.emit("outbox-updated", payload);
-}
+fn emit_outbox_updated(_account_id: &str, _thread_id: Option<&str>, _summary: OutboxSummary) {}
 
-fn emit_outbox_item_updated(app: &tauri::AppHandle, item: &OutboxItem) {
-  let _ = app.emit("outbox-item-updated", item.clone());
-}
+fn emit_outbox_item_updated(_item: &OutboxItem) {}
 
-#[tauri::command]
-fn get_outbox_state_summary(state: tauri::State<AppState>) -> Value {
+fn get_outbox_state_summary(state: &AppState) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return ok_t(OutboxSummary::empty()),
@@ -2257,8 +2401,7 @@ fn get_outbox_state_summary(state: tauri::State<AppState>) -> Value {
   }
 }
 
-#[tauri::command]
-fn list_outbox(state: tauri::State<AppState>, thread_id: Option<String>) -> Value {
+fn list_outbox(state: &AppState, thread_id: Option<String>) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return ok_t(Vec::<OutboxItem>::new()),
@@ -2270,8 +2413,7 @@ fn list_outbox(state: tauri::State<AppState>, thread_id: Option<String>) -> Valu
   }
 }
 
-#[tauri::command]
-fn queue_outgoing_message(app: tauri::AppHandle, state: tauri::State<AppState>, thread_id: String, recipient: String, content: String) -> Value {
+fn queue_outgoing_message(state: &AppState, thread_id: String, recipient: String, content: String) -> Value {
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -2301,17 +2443,16 @@ fn queue_outgoing_message(app: tauri::AppHandle, state: tauri::State<AppState>, 
   match state.outbox_store.add_item(item.clone()) {
     Ok(saved) => {
       if let Ok(summary) = state.outbox_store.summary(&account_id) {
-        emit_outbox_updated(&app, &account_id, Some(&tid), summary);
+        emit_outbox_updated(&account_id, Some(&tid), summary);
       }
-      emit_outbox_item_updated(&app, &saved);
+      emit_outbox_item_updated(&saved);
       ok_t(saved)
     }
     Err(e) => err(e),
   }
 }
 
-#[tauri::command]
-fn retry_outbox_item(app: tauri::AppHandle, state: tauri::State<AppState>, id: String) -> Value {
+fn retry_outbox_item(state: &AppState, id: String) -> Value {
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -2329,9 +2470,9 @@ fn retry_outbox_item(app: tauri::AppHandle, state: tauri::State<AppState>, id: S
         match state.outbox_store.update_item(&account_id, item.clone()) {
           Ok(updated) => {
             if let Ok(summary) = state.outbox_store.summary(&account_id) {
-              emit_outbox_updated(&app, &account_id, Some(&updated.thread_id), summary);
+              emit_outbox_updated(&account_id, Some(&updated.thread_id), summary);
             }
-            emit_outbox_item_updated(&app, &updated);
+            emit_outbox_item_updated(&updated);
             ok_t(updated)
           }
           Err(e) => err(e),
@@ -2345,8 +2486,7 @@ fn retry_outbox_item(app: tauri::AppHandle, state: tauri::State<AppState>, id: S
   }
 }
 
-#[tauri::command]
-fn delete_outbox_item(app: tauri::AppHandle, state: tauri::State<AppState>, id: String) -> Value {
+fn delete_outbox_item(state: &AppState, id: String) -> Value {
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -2361,7 +2501,7 @@ fn delete_outbox_item(app: tauri::AppHandle, state: tauri::State<AppState>, id: 
   match state.outbox_store.delete_item(&account_id, oid) {
     Ok(deleted) => {
       if let Ok(summary) = state.outbox_store.summary(&account_id) {
-        emit_outbox_updated(&app, &account_id, thread_id.as_deref(), summary);
+        emit_outbox_updated(&account_id, thread_id.as_deref(), summary);
       }
       ok(json!({ "deleted": deleted }))
     }
@@ -2369,8 +2509,7 @@ fn delete_outbox_item(app: tauri::AppHandle, state: tauri::State<AppState>, id: 
   }
 }
 
-#[tauri::command]
-fn mark_pending_reply_consumed(state: tauri::State<AppState>, thread_id: String, message_id: String) -> Value {
+fn mark_pending_reply_consumed(state: &AppState, thread_id: String, message_id: String) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return err("No active account".to_string()),
@@ -2380,8 +2519,7 @@ fn mark_pending_reply_consumed(state: tauri::State<AppState>, thread_id: String,
   ok(json!({ "consumed": ok_flag }))
 }
 
-#[tauri::command]
-fn mark_thread_read(state: tauri::State<AppState>, thread_id: String) -> Value {
+fn mark_thread_read(state: &AppState, thread_id: String) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return ok(json!(false)),
@@ -2390,8 +2528,7 @@ fn mark_thread_read(state: tauri::State<AppState>, thread_id: String) -> Value {
   ok(json!(ts.mark_thread_read(thread_id.trim())))
 }
 
-#[tauri::command]
-fn list_aliases(state: tauri::State<AppState>) -> Value {
+fn list_aliases(state: &AppState) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return ok_t(HashMap::<String, String>::new()),
@@ -2399,8 +2536,7 @@ fn list_aliases(state: tauri::State<AppState>) -> Value {
   ok_t(state.alias_manager.list_aliases(&account))
 }
 
-#[tauri::command]
-fn get_alias(state: tauri::State<AppState>, number: String) -> Value {
+fn get_alias(state: &AppState, number: String) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return ok(json!(null)),
@@ -2408,8 +2544,7 @@ fn get_alias(state: tauri::State<AppState>, number: String) -> Value {
   ok(json!(state.alias_manager.get_alias(&account, number.trim())))
 }
 
-#[tauri::command]
-fn set_alias(state: tauri::State<AppState>, number: String, alias: String) -> Value {
+fn set_alias(state: &AppState, number: String, alias: String) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return err("No active account".to_string()),
@@ -2426,8 +2561,7 @@ fn set_alias(state: tauri::State<AppState>, number: String, alias: String) -> Va
 // --------------------
 // Contact meta commands
 // --------------------
-#[tauri::command]
-fn list_contact_meta(state: tauri::State<AppState>) -> Value {
+fn list_contact_meta(state: &AppState) -> Value {
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -2435,8 +2569,7 @@ fn list_contact_meta(state: tauri::State<AppState>) -> Value {
   ok_t(state.contact_store.list(&account_id))
 }
 
-#[tauri::command]
-fn get_contact_meta(state: tauri::State<AppState>, contact_id: String) -> Value {
+fn get_contact_meta(state: &AppState, contact_id: String) -> Value {
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -2444,8 +2577,7 @@ fn get_contact_meta(state: tauri::State<AppState>, contact_id: String) -> Value 
   ok_t(state.contact_store.get(&account_id, contact_id.trim()))
 }
 
-#[tauri::command]
-fn set_contact_meta(app: tauri::AppHandle, state: tauri::State<AppState>, contact_id: String, patch: ContactMetaPatch) -> Value {
+fn set_contact_meta(state: &AppState, contact_id: String, patch: ContactMetaPatch) -> Value {
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -2456,29 +2588,13 @@ fn set_contact_meta(app: tauri::AppHandle, state: tauri::State<AppState>, contac
   }
   match state.contact_store.upsert_patch(&account_id, cid, patch) {
     Ok(m) => {
-      let _ = app.emit(
-        "contact-meta-updated",
-        json!({
-          "contact_id": m.contact_id,
-          "updated_at": m.updated_at,
-          "summary": {
-            "display_name": m.display_name,
-            "alias": m.alias,
-            "favorite": m.favorite,
-            "muted": m.muted,
-            "categories": m.categories,
-            "custom_fields_count": m.custom_fields.len()
-          }
-        }),
-      );
       ok_t(m)
     }
     Err(e) => err(e),
   }
 }
 
-#[tauri::command]
-fn delete_contact_meta(app: tauri::AppHandle, state: tauri::State<AppState>, contact_id: String) -> Value {
+fn delete_contact_meta(state: &AppState, contact_id: String) -> Value {
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -2490,13 +2606,6 @@ fn delete_contact_meta(app: tauri::AppHandle, state: tauri::State<AppState>, con
   match state.contact_store.delete(&account_id, cid) {
     Ok(changed) => {
       if changed {
-        let _ = app.emit(
-          "contact-meta-updated",
-          json!({
-            "contact_id": normalize_contact_id(cid),
-            "deleted": true
-          }),
-        );
       }
       ok(json!(changed))
     }
@@ -2504,8 +2613,7 @@ fn delete_contact_meta(app: tauri::AppHandle, state: tauri::State<AppState>, con
   }
 }
 
-#[tauri::command]
-fn list_categories(state: tauri::State<AppState>) -> Value {
+fn list_categories(state: &AppState) -> Value {
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -2513,8 +2621,7 @@ fn list_categories(state: tauri::State<AppState>) -> Value {
   ok_t(state.contact_store.list_categories(&account_id))
 }
 
-#[tauri::command]
-fn set_contact_photo(app: tauri::AppHandle, state: tauri::State<AppState>, contact_id: String, bytes: Vec<u8>, ext: String) -> Value {
+fn set_contact_photo(state: &AppState, contact_id: String, bytes: Vec<u8>, ext: String) -> Value {
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -2528,22 +2635,13 @@ fn set_contact_photo(app: tauri::AppHandle, state: tauri::State<AppState>, conta
     .set_photo(&state.app_data_dir, &account_id, cid, bytes, &ext)
   {
     Ok(m) => {
-      let _ = app.emit(
-        "contact-meta-updated",
-        json!({
-          "contact_id": m.contact_id,
-          "updated_at": m.updated_at,
-          "summary": { "photo_path": m.photo_path }
-        }),
-      );
       ok_t(m)
     }
     Err(e) => err(e),
   }
 }
 
-#[tauri::command]
-fn clear_contact_photo(app: tauri::AppHandle, state: tauri::State<AppState>, contact_id: String) -> Value {
+fn clear_contact_photo(state: &AppState, contact_id: String) -> Value {
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -2557,29 +2655,19 @@ fn clear_contact_photo(app: tauri::AppHandle, state: tauri::State<AppState>, con
     .clear_photo(&state.app_data_dir, &account_id, cid)
   {
     Ok(m) => {
-      let _ = app.emit(
-        "contact-meta-updated",
-        json!({
-          "contact_id": m.contact_id,
-          "updated_at": m.updated_at,
-          "summary": { "photo_path": m.photo_path }
-        }),
-      );
       ok_t(m)
     }
     Err(e) => err(e),
   }
 }
 
-#[tauri::command]
-fn link_apple_contact_stub(app: tauri::AppHandle, state: tauri::State<AppState>, contact_id: String, apple_contact_id: String) -> Value {
+fn link_apple_contact_stub(state: &AppState, contact_id: String, apple_contact_id: String) -> Value {
   let cid = contact_id.trim().to_string();
   let aid = apple_contact_id.trim().to_string();
   if cid.is_empty() || aid.is_empty() {
     return err("contact_id and apple_contact_id are required".to_string());
   }
   set_contact_meta(
-    app,
     state,
     cid,
     ContactMetaPatch {
@@ -2595,14 +2683,12 @@ fn link_apple_contact_stub(app: tauri::AppHandle, state: tauri::State<AppState>,
   )
 }
 
-#[tauri::command]
-fn unlink_apple_contact_stub(app: tauri::AppHandle, state: tauri::State<AppState>, contact_id: String) -> Value {
+fn unlink_apple_contact_stub(state: &AppState, contact_id: String) -> Value {
   let cid = contact_id.trim().to_string();
   if cid.is_empty() {
     return err("contact_id is required".to_string());
   }
   set_contact_meta(
-    app,
     state,
     cid,
     ContactMetaPatch {
@@ -2621,8 +2707,7 @@ fn unlink_apple_contact_stub(app: tauri::AppHandle, state: tauri::State<AppState
 // --------------------
 // Group meta commands
 // --------------------
-#[tauri::command]
-fn list_group_meta(state: tauri::State<AppState>) -> Value {
+fn list_group_meta(state: &AppState) -> Value {
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -2630,8 +2715,7 @@ fn list_group_meta(state: tauri::State<AppState>) -> Value {
   ok_t(state.group_store.list(&account_id))
 }
 
-#[tauri::command]
-fn get_group_meta(state: tauri::State<AppState>, group_id: String) -> Value {
+fn get_group_meta(state: &AppState, group_id: String) -> Value {
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -2639,8 +2723,7 @@ fn get_group_meta(state: tauri::State<AppState>, group_id: String) -> Value {
   ok_t(state.group_store.get(&account_id, group_id.trim()))
 }
 
-#[tauri::command]
-fn set_group_meta(app: tauri::AppHandle, state: tauri::State<AppState>, group_id: String, patch: GroupMetaPatch) -> Value {
+fn set_group_meta(state: &AppState, group_id: String, patch: GroupMetaPatch) -> Value {
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -2651,28 +2734,13 @@ fn set_group_meta(app: tauri::AppHandle, state: tauri::State<AppState>, group_id
   }
   match state.group_store.upsert_patch(&account_id, gid, patch) {
     Ok(m) => {
-      let _ = app.emit(
-        "group-meta-updated",
-        json!({
-          "group_id": m.group_id,
-          "updated_at": m.updated_at,
-          "summary": {
-            "display_name": m.display_name,
-            "favorite": m.favorite,
-            "muted": m.muted,
-            "categories": m.categories,
-            "custom_fields_count": m.custom_fields.len()
-          }
-        }),
-      );
       ok_t(m)
     }
     Err(e) => err(e),
   }
 }
 
-#[tauri::command]
-fn delete_group_meta(app: tauri::AppHandle, state: tauri::State<AppState>, group_id: String) -> Value {
+fn delete_group_meta(state: &AppState, group_id: String) -> Value {
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -2684,13 +2752,6 @@ fn delete_group_meta(app: tauri::AppHandle, state: tauri::State<AppState>, group
   match state.group_store.delete(&account_id, gid) {
     Ok(changed) => {
       if changed {
-        let _ = app.emit(
-          "group-meta-updated",
-          json!({
-            "group_id": normalize_group_id(gid),
-            "deleted": true
-          }),
-        );
       }
       ok(json!(changed))
     }
@@ -2698,8 +2759,7 @@ fn delete_group_meta(app: tauri::AppHandle, state: tauri::State<AppState>, group
   }
 }
 
-#[tauri::command]
-fn list_group_categories(state: tauri::State<AppState>) -> Value {
+fn list_group_categories(state: &AppState) -> Value {
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -2815,8 +2875,7 @@ fn search_match_score_and_fields(query_lc: &str, meta_fields: &[(&str, &str)], c
   (score, matched)
 }
 
-#[tauri::command]
-fn search_contacts(state: tauri::State<AppState>, query: String, filters: Option<PeopleSearchFilters>) -> Value {
+fn search_contacts(state: &AppState, query: String, filters: Option<PeopleSearchFilters>) -> Value {
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -2876,8 +2935,7 @@ fn search_contacts(state: tauri::State<AppState>, query: String, filters: Option
   ok_t(hits)
 }
 
-#[tauri::command]
-fn search_groups(state: tauri::State<AppState>, query: String, filters: Option<PeopleSearchFilters>) -> Value {
+fn search_groups(state: &AppState, query: String, filters: Option<PeopleSearchFilters>) -> Value {
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -2943,8 +3001,7 @@ struct ContactPhotoData {
   mime: String,
 }
 
-#[tauri::command]
-fn read_contact_photo(state: tauri::State<AppState>, contact_id: String) -> Value {
+fn read_contact_photo(state: &AppState, contact_id: String) -> Value {
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -2994,8 +3051,7 @@ fn read_contact_photo(state: tauri::State<AppState>, contact_id: String) -> Valu
   ok_t(ContactPhotoData { bytes_base64, mime })
 }
 
-#[tauri::command]
-fn search_messages(state: tauri::State<AppState>, query: String, limit: u32, thread_id: Option<String>, sender: Option<String>, after_ts: Option<i64>, before_ts: Option<i64>) -> Value {
+fn search_messages(state: &AppState, query: String, limit: u32, thread_id: Option<String>, sender: Option<String>, after_ts: Option<i64>, before_ts: Option<i64>) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return ok_t(Vec::<SearchResult>::new()),
@@ -3023,51 +3079,71 @@ fn search_messages(state: tauri::State<AppState>, query: String, limit: u32, thr
   ok_t(search_in_messages(&all, q, limit, sender, after_ts, before_ts))
 }
 
-#[tauri::command]
-fn summarize_thread(state: tauri::State<AppState>, thread_id: String, last_n: Option<u32>) -> Value {
+fn summarize_thread(state: &AppState, thread_id: String, last_n: Option<u32>) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return err("No active account".to_string()),
   };
   let ts = state.account_manager.get_or_create(&account);
+  let thread_id = thread_id.trim().to_string();
 
   let n = last_n.unwrap_or(DEFAULT_AGENT_LAST_N).max(1).min(200) as usize;
-  let msgs = collect_recent_messages(&ts, thread_id.trim(), n);
-  let ctx = msgs.iter().map(|m| format!("[{}] {}: {}", m.timestamp, m.sender, m.content)).collect::<Vec<_>>().join("\n");
+  let msgs = collect_recent_messages(&ts, &thread_id, n);
+  if msgs.is_empty() {
+    return err("No messages in thread.".to_string());
+  }
+  let ctx = format_thread_context(&msgs);
 
   if !ai_enabled() {
-    return err("AI not configured. Set SIGNALX_OLLAMA_MODEL and ensure `ollama` is installed.".to_string());
+    return err(ai_not_configured_msg());
   }
 
   let model = std::env::var("SIGNALX_OLLAMA_MODEL").unwrap();
-  let messages = vec![
-    serde_json::json!({
-      "role": "user",
-      "content": format!("Summarize this Signal thread in 6-10 bullets. Be factual. No emojis.\n\nTHREAD:\n{}", ctx)
-    }),
-  ];
+  let messages = vec![json!({
+    "role": "user",
+    "content": format!("Summarize this Signal thread in 6-10 bullets. Be factual. No emojis.\n\nTHREAD:\n{}", ctx)
+  })];
 
-  let out = std::thread::spawn(move || call_ollama_chat(&model, messages)).join().unwrap_or_else(|_| Err("AI thread join failed".to_string()));
+  let out = tokio_block_on(async move {
+    tokio::task::spawn_blocking(move || call_ollama_chat(&model, messages))
+      .await
+      .unwrap_or_else(|_| Err("AI task join failed".to_string()))
+  });
   match out {
     Ok(s) => ok(json!(s.trim().to_string())),
     Err(e) => err(e),
   }
 }
 
-#[tauri::command]
-fn draft_reply(state: tauri::State<AppState>, thread_id: String, intent: String, constraints: Option<String>, last_n: Option<u32>) -> Value {
+fn draft_reply(
+  state: &AppState,
+  thread_id: String,
+  intent: String,
+  constraints: Option<String>,
+  last_n: Option<u32>,
+) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return err("No active account".to_string()),
   };
   let ts = state.account_manager.get_or_create(&account);
-  match draft_reply_for_thread(&ts, thread_id.trim(), intent.trim(), constraints.as_deref(), last_n) {
+  let thread_id = thread_id.trim().to_string();
+  let intent = intent.trim().to_string();
+
+  let out = tokio_block_on(async move {
+    tokio::task::spawn_blocking(move || {
+      draft_reply_for_thread(&ts, &thread_id, &intent, constraints.as_deref(), last_n)
+    })
+    .await
+    .unwrap_or_else(|_| Err("AI task join failed".to_string()))
+  });
+
+  match out {
     Ok(s) => ok(json!(s)),
     Err(e) => err(e),
   }
 }
 
-#[tauri::command]
 fn open_path(path: String) -> Value {
   use std::process::Command;
   
@@ -3099,8 +3175,7 @@ fn open_path(path: String) -> Value {
   ok(json!(true))
 }
 
-#[tauri::command]
-fn send_message(app: tauri::AppHandle, state: tauri::State<AppState>, thread_id: String, message: String) -> Value {
+fn send_message(state: &AppState, thread_id: String, message: String) -> Value {
   let config = match get_signal_config() {
     Some(c) => c,
     None => return err("SIGNALX_SIGNALCLI_CONFIG not set".to_string()),
@@ -3125,7 +3200,7 @@ fn send_message(app: tauri::AppHandle, state: tauri::State<AppState>, thread_id:
   let rec = raw_recipient.clone();
   let kind2 = kind.clone();
 
-  let res = tauri::async_runtime::block_on(async move {
+  let res = tokio_block_on(async move {
     tokio::task::spawn_blocking(move || {
       let mut cmd = build_signal_command(&cfg, Some(&num));
       cmd.arg("send");
@@ -3159,14 +3234,12 @@ fn send_message(app: tauri::AppHandle, state: tauri::State<AppState>, thread_id:
   let ts2 = ts.clone();
   let msg2 = msg.clone();
   let participants2 = participants.clone();
-  let _ = tauri::async_runtime::block_on(async move {
+  let _ = tokio_block_on(async move {
     tokio::task::spawn_blocking(move || {
       ts2.add_message(msg2, participants2);
     })
     .await
   });
-
-  let _ = app.emit("message-sent", msg);
   ok(json!({ "status": "sent" }))
 }
 
@@ -3174,8 +3247,7 @@ fn make_outbox_id_legacy(thread_id: &str) -> String {
   format!("outbox-{}-{}", thread_id, now_ms())
 }
 
-#[tauri::command]
-fn enqueue_send_legacy(app: tauri::AppHandle, state: tauri::State<AppState>, thread_id: String, recipient: String, message: String) -> Value {
+fn enqueue_send_legacy(state: &AppState, thread_id: String, recipient: String, message: String) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return err("No active account".to_string()),
@@ -3204,12 +3276,10 @@ fn enqueue_send_legacy(app: tauri::AppHandle, state: tauri::State<AppState>, thr
   ts.enqueue_outbox(item.clone());
 
   let outbox_count = ts.outbox_pending_count(&tid);
-  let _ = app.emit("outbox-updated", json!({ "thread_id": tid, "outbox_count": outbox_count }));
   ok_t(item)
 }
 
-#[tauri::command]
-fn retry_outbox_item_legacy(app: tauri::AppHandle, state: tauri::State<AppState>, thread_id: String, outbox_id: String) -> Value {
+fn retry_outbox_item_legacy(state: &AppState, thread_id: String, outbox_id: String) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return err("No active account".to_string()),
@@ -3227,14 +3297,12 @@ fn retry_outbox_item_legacy(app: tauri::AppHandle, state: tauri::State<AppState>
     item.last_error = None;
     ts.update_outbox_item(tid, item);
     let outbox_count = ts.outbox_pending_count(tid);
-    let _ = app.emit("outbox-updated", json!({ "thread_id": tid, "outbox_count": outbox_count }));
     return ok(json!({ "queued": true }));
   }
   err("Outbox item not found".to_string())
 }
 
-#[tauri::command]
-fn delete_outbox_item_legacy(app: tauri::AppHandle, state: tauri::State<AppState>, thread_id: String, outbox_id: String) -> Value {
+fn delete_outbox_item_legacy(state: &AppState, thread_id: String, outbox_id: String) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return err("No active account".to_string()),
@@ -3247,12 +3315,10 @@ fn delete_outbox_item_legacy(app: tauri::AppHandle, state: tauri::State<AppState
   let ts = state.account_manager.get_or_create(&account);
   ts.remove_outbox_item(tid, oid);
   let outbox_count = ts.outbox_pending_count(tid);
-  let _ = app.emit("outbox-updated", json!({ "thread_id": tid, "outbox_count": outbox_count }));
   ok(json!({ "deleted": true }))
 }
 
-#[tauri::command]
-fn export_thread(state: tauri::State<AppState>, thread_id: String, format: String, from_ts: Option<i64>, to_ts: Option<i64>) -> Value {
+fn export_thread(state: &AppState, thread_id: String, format: String, from_ts: Option<i64>, to_ts: Option<i64>) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return err("No active account".to_string()),
@@ -3318,7 +3384,7 @@ fn fmt_time_export(ts: i64) -> String {
   }
 }
 
-fn export_account(state: tauri::State<AppState>, format: String, from_ts: Option<i64>, to_ts: Option<i64>) -> Value {
+fn export_account(state: &AppState, format: String, from_ts: Option<i64>, to_ts: Option<i64>) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return err("No active account".to_string()),
@@ -3414,7 +3480,7 @@ fn trigger_agent_draft(agent: AgentModeConfig, ts: ThreadState, thread_id: Strin
   });
 }
 
-async fn receive_loop(app: Option<tauri::AppHandle>, state: AppState, agent_mode: Option<AgentModeConfig>) {
+async fn receive_loop(state: AppState, agent_mode: Option<AgentModeConfig>) {
   loop {
     // cooldown window (self-heal)
     let snap = state.receive_monitor.snapshot();
@@ -3495,10 +3561,7 @@ async fn receive_loop(app: Option<tauri::AppHandle>, state: AppState, agent_mode
               let thread_id = msg.thread_id.clone();
               let msg_id = msg.id.clone();
               ts.add_message(msg.clone(), participants);
-              if let Some(app_handle) = app.as_ref() {
-                let _ = app_handle.emit("message-received", msg.clone());
-              }
-              if let Some(agent_cfg) = agent_mode.clone() {
+if let Some(agent_cfg) = agent_mode.clone() {
                 trigger_agent_draft(agent_cfg, ts.clone(), thread_id, msg_id);
               }
             }
@@ -3520,8 +3583,8 @@ async fn receive_loop(app: Option<tauri::AppHandle>, state: AppState, agent_mode
   }
 }
 
-fn start_receive_loop(app: tauri::AppHandle, state: AppState, agent_mode: Option<AgentModeConfig>) {
-  tauri::async_runtime::spawn(receive_loop(Some(app), state, agent_mode));
+fn start_receive_loop(state: AppState, agent_mode: Option<AgentModeConfig>) {
+  tokio::spawn(receive_loop(state, agent_mode));
 }
 
 fn outbox_send_lock_for(state: &AppState, account_id: &str) -> Arc<AsyncMutex<()>> {
@@ -3531,7 +3594,7 @@ fn outbox_send_lock_for(state: &AppState, account_id: &str) -> Arc<AsyncMutex<()
     .clone()
 }
 
-fn ensure_outbox_worker(app: tauri::AppHandle, state: AppState, account_id: String) {
+fn ensure_outbox_worker(state: AppState, account_id: String) {
   let mut set = state.outbox_workers.lock().unwrap();
   if set.contains(&account_id) {
     return;
@@ -3539,7 +3602,7 @@ fn ensure_outbox_worker(app: tauri::AppHandle, state: AppState, account_id: Stri
   set.insert(account_id.clone());
   drop(set);
 
-  tauri::async_runtime::spawn(async move {
+  tokio::spawn(async move {
     loop {
       // Claim an eligible item first (this persists "sending" state).
       let claimed = match state.outbox_store.claim_next_for_send_async(&account_id).await {
@@ -3562,9 +3625,9 @@ fn ensure_outbox_worker(app: tauri::AppHandle, state: AppState, account_id: Stri
           item.last_error = Some("SIGNALX_SIGNALCLI_CONFIG not set".to_string());
           let _ = state.outbox_store.update_item_async(&account_id, item.clone()).await;
           if let Ok(summary) = state.outbox_store.summary_async(&account_id).await {
-            emit_outbox_updated(&app, &account_id, Some(&item.thread_id), summary);
+            emit_outbox_updated(&account_id, Some(&item.thread_id), summary);
           }
-          emit_outbox_item_updated(&app, &item);
+          emit_outbox_item_updated(&item);
           tokio::time::sleep(std::time::Duration::from_millis(600)).await;
           continue;
         }
@@ -3576,9 +3639,9 @@ fn ensure_outbox_worker(app: tauri::AppHandle, state: AppState, account_id: Stri
           item.last_error = Some("SIGNALX_NUMBER not set".to_string());
           let _ = state.outbox_store.update_item_async(&account_id, item.clone()).await;
           if let Ok(summary) = state.outbox_store.summary_async(&account_id).await {
-            emit_outbox_updated(&app, &account_id, Some(&item.thread_id), summary);
+            emit_outbox_updated(&account_id, Some(&item.thread_id), summary);
           }
-          emit_outbox_item_updated(&app, &item);
+          emit_outbox_item_updated(&item);
           tokio::time::sleep(std::time::Duration::from_millis(600)).await;
           continue;
         }
@@ -3624,9 +3687,9 @@ fn ensure_outbox_worker(app: tauri::AppHandle, state: AppState, account_id: Stri
           item.last_error = None;
           let _ = state.outbox_store.update_item_async(&account_id, item.clone()).await;
           if let Ok(summary) = state.outbox_store.summary_async(&account_id).await {
-            emit_outbox_updated(&app, &account_id, Some(&item.thread_id), summary);
+            emit_outbox_updated(&account_id, Some(&item.thread_id), summary);
           }
-          emit_outbox_item_updated(&app, &item);
+          emit_outbox_item_updated(&item);
 
           // Persist + emit normalized message (canonical flow).
           let ts = state.account_manager.get_or_create(&account_id);
@@ -3638,16 +3701,15 @@ fn ensure_outbox_worker(app: tauri::AppHandle, state: AppState, account_id: Stri
             ts2.add_message(msg2, participants2);
           })
           .await;
-          let _ = app.emit("message-sent", msg);
         }
         Err(e) => {
           item.state = "failed".to_string();
           item.last_error = Some(e);
           let _ = state.outbox_store.update_item_async(&account_id, item.clone()).await;
           if let Ok(summary) = state.outbox_store.summary_async(&account_id).await {
-            emit_outbox_updated(&app, &account_id, Some(&item.thread_id), summary);
+            emit_outbox_updated(&account_id, Some(&item.thread_id), summary);
           }
-          emit_outbox_item_updated(&app, &item);
+          emit_outbox_item_updated(&item);
           tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
       }
@@ -3655,13 +3717,50 @@ fn ensure_outbox_worker(app: tauri::AppHandle, state: AppState, account_id: Stri
   });
 }
 
-fn run_agent_mode(state: AppState) {
-  eprintln!("Starting SignalX agent mode (headless) – generating drafts only");
-  if !ai_enabled() {
-    eprintln!("WARNING: Agent mode requested but AI is not configured; drafts will not be created.");
+fn run_headless(state: AppState) {
+  eprintln!("SignalX headless daemon starting");
+
+  let cli = state.signal_cli_info.lock().unwrap().clone();
+  if !cli.is_usable {
+    eprintln!(
+      "WARNING: signal-cli not usable at {}: {:?}",
+      cli.bin, cli.last_error
+    );
+  } else if let Some(v) = &cli.version {
+    eprintln!("signal-cli {} at {}", v, cli.bin);
   }
-  let rt = tokio::runtime::Runtime::new().expect("failed to start Tokio runtime for agent mode");
-  rt.block_on(receive_loop(None, state, Some(AgentModeConfig::enabled_default())));
+
+  if let Some(n) = get_signal_number() {
+    state.account_manager.set_active(n.clone());
+    state.account_manager.get_or_create(&n);
+    state.alias_manager.load_account(&n);
+    state.contact_store.load_account(&n);
+    state.group_store.load_account(&n);
+  }
+
+  let agent_mode = if should_run_agent_mode() {
+    eprintln!("Agent mode enabled — incoming messages will generate AI drafts");
+    Some(AgentModeConfig::enabled_default())
+  } else {
+    None
+  };
+
+  let rt = tokio::runtime::Runtime::new().expect("failed to start Tokio runtime");
+  rt.block_on(async {
+    tokio::spawn(receive_loop(state.clone(), agent_mode));
+
+    if let Some(a) = state.account_manager.get_active() {
+      ensure_outbox_worker(state.clone(), a);
+    }
+
+    use tokio::signal::unix::{signal, SignalKind};
+    let mut sigint = signal(SignalKind::interrupt()).expect("SIGINT handler");
+    let mut sigterm = signal(SignalKind::terminate()).expect("SIGTERM handler");
+    tokio::select! {
+      _ = sigint.recv() => eprintln!("[SignalX] SIGINT received, shutting down"),
+      _ = sigterm.recv() => eprintln!("[SignalX] SIGTERM received, shutting down"),
+    }
+  });
 }
 
 fn should_run_agent_mode() -> bool {
@@ -3721,106 +3820,5 @@ fn main() {
     outbox_workers: Arc::new(Mutex::new(HashSet::new())),
   };
 
-  if should_run_agent_mode() {
-    run_agent_mode(state.clone());
-    return;
-  }
-
-  tauri::Builder::default()
-    .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-      // A second instance was launched: focus existing window and exit the new instance.
-      if let Some(w) = app.get_webview_window("main") {
-        let _ = w.show();
-        let _ = w.set_focus();
-      }
-      std::process::exit(0);
-    }))
-    .manage(state.clone())
-    .setup(move |app| {
-      // refresh signal-cli probe on startup
-      let cli_path = get_signal_cli_path();
-      let cli_info = probe_signal_cli(&cli_path);
-      {
-        let mut lock = state.signal_cli_info.lock().unwrap();
-        *lock = cli_info;
-      }
-
-      // warm active account
-      if let Some(n) = get_signal_number() {
-        state.account_manager.set_active(n.clone());
-        state.account_manager.get_or_create(&n);
-        state.alias_manager.load_account(&n);
-        state.contact_store.load_account(&n);
-        state.group_store.load_account(&n);
-      }
-
-      start_receive_loop(app.handle().clone(), state.clone(), None);
-      if let Some(a) = state.account_manager.get_active() {
-        ensure_outbox_worker(app.handle().clone(), state.clone(), a);
-      }
-
-      // Graceful shutdown on SIGINT / SIGTERM (e.g. signal-cli process cleanup)
-      {
-        let handle = app.handle().clone();
-        tauri::async_runtime::spawn(async move {
-          use tokio::signal::unix::{signal, SignalKind};
-          let mut sigint = signal(SignalKind::interrupt()).unwrap();
-          let mut sigterm = signal(SignalKind::terminate()).unwrap();
-          tokio::select! {
-            _ = sigint.recv() => eprintln!("[SignalX] SIGINT received, shutting down"),
-            _ = sigterm.recv() => eprintln!("[SignalX] SIGTERM received, shutting down"),
-          }
-          handle.exit(0);
-        });
-      }
-
-      Ok(())
-    })
-    .invoke_handler(tauri::generate_handler![
-      get_receive_loop_state,
-      get_diagnostics,
-      list_accounts,
-      get_active_account,
-      set_active_account,
-      get_threads,
-      get_thread_messages,
-      get_pending_replies,
-      get_draft_history,
-      mark_pending_reply_consumed,
-      get_outbox_state_summary,
-      list_outbox,
-      queue_outgoing_message,
-      retry_outbox_item,
-      delete_outbox_item,
-      mark_thread_read,
-      list_aliases,
-      get_alias,
-      set_alias,
-      list_contact_meta,
-      get_contact_meta,
-      set_contact_meta,
-      delete_contact_meta,
-      set_contact_photo,
-      clear_contact_photo,
-      list_categories,
-      link_apple_contact_stub,
-      unlink_apple_contact_stub,
-      list_group_meta,
-      get_group_meta,
-      set_group_meta,
-      delete_group_meta,
-      list_group_categories,
-      read_contact_photo,
-      search_contacts,
-      search_groups,
-      search_messages,
-      summarize_thread,
-      draft_reply,
-      export_thread,
-      open_path,
-      send_message
-      // Removed legacy outbox commands
-    ])
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
+  run_headless(state);
 }

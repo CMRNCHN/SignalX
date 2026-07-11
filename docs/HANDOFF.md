@@ -1,183 +1,52 @@
-# SignalX Desktop - Handoff Document
+# SignalX - Handoff
 
-## Current Status
+## Where things stand
 
-### Configuration
+- **Working today:** a headless Rust daemon (`src-tauri/src/main.rs`) that uses
+  `signal-cli` to receive/send Signal messages, persists threads to disk, runs an
+  outbox worker, and can auto-draft replies via a local Ollama model.
+- **Not present:** a GUI. The prior Tauri + React frontend, `tauri.conf.json`,
+  `build.rs`, icons, and capabilities were deleted. The daemon's real-time event
+  emit points are currently no-op stubs.
+- **Goal:** rebuild a Tauri + React desktop client on top of the existing daemon,
+  reusing its handler functions (see `NEXT_STEPS.md` for the phase plan).
 
-- **`.signalx.env`** (redacted):
-  ```
-  SIGNALX_SIGNALCLI_CONFIG=/Users/cameroncohen/.local/share/signal-cli
-  SIGNALX_NUMBER=+1[REDACTED]
-  SIGNALX_SIGNALCLI_BIN=/opt/homebrew/bin/signal-cli
-  # SIGNALX_OLLAMA_MODEL=qwen2.5:7b-instruct (commented out)
-  ```
-
-### Launcher
-
-- **`SignalX-Dev.command`** exists and is executable
-- Logs to: `run-dev.command.log` (will be created on first run)
-- Launcher handles:
-  - Port 5173 cleanup
-  - npm install check
-  - Vite + Tauri dev startup
-
-### Current Implementation
-
-- Basic receive badge exists (shows "ok" or error states)
-- Backend has `get_receive_loop_state()` command
-- Event-driven architecture (no polling)
-- Backend is source of truth for messages
-
----
-
-## Next Tasks (In Order)
-
-### A) Enhanced Health Badge
-
-**Location**: `src/App.tsx` sidebar (currently line ~388)
-
-**Requirements**:
-
-- Use `get_receive_loop_state()` data
-- Color logic:
-  - **Green**: `last_receive_ok_at` < 15 seconds ago
-  - **Yellow**: 15-60 seconds ago
-  - **Red**: > 60 seconds ago OR `consecutive_failures > 0`
-- Tooltip shows:
-  - `backoff_ms`
-  - `consecutive_failures` (error_count)
-  - `last_receive_error` (if any)
-
-**Implementation notes**:
-
-- Calculate time delta: `Date.now() - (receiveState.last_receive_ok_at || 0)`
-- Use HTML `title` attribute or a proper tooltip library
-- Replace current simple badge at line 388
-
----
-
-### B) Production Build Command
-
-**Task**: Add build instructions and verify output
-
-**Commands**:
+## Run it
 
 ```bash
-npm run tauri build
+cd src-tauri && cargo run          # headless daemon
+SIGNALX_AGENT=1 cargo run           # with AI auto-draft mode
 ```
 
-**Deliverables**:
+Config: `.signalx.env` (copy from `.signalx.env.example`). Keys cover only
+`signal-cli` and Ollama:
 
-1. Document output path (typically `src-tauri/target/release/bundle/`)
-2. Document how to run the built `.app` on macOS
-3. Add to README or create `BUILD.md`
+- `SIGNALX_SIGNALCLI_CONFIG` - signal-cli config path
+- `SIGNALX_NUMBER` - your Signal phone number
+- `SIGNALX_SIGNALCLI_BIN` - (optional) path to signal-cli binary
+- `SIGNALX_OLLAMA_MODEL` / `SIGNALX_OLLAMA_URL` - (optional) local Ollama
 
-**Expected output location**:
+Never commit `.signalx.env` (contains your phone number).
 
-- macOS: `src-tauri/target/release/bundle/macos/SignalX.app`
+## The daemon command surface (to be wrapped by the GUI)
 
----
+The daemon exposes plain functions returning `{success, data}` / `{success,
+error}` JSON. These are what the future Tauri commands should wrap:
 
-### C) Export Tools
+- Threads/messages: `get_threads`, `get_thread_messages`, `send_message`,
+  `search_messages`
+- Contacts/groups/aliases and export helpers
+- Diagnostics/health: `get_receive_loop_state`, `get_diagnostics`
+- AI: `summarize_thread`, `draft_reply`, `check_ai_status`
 
-**Backend**: Add new Tauri command `export_thread`
+## Conventions to maintain in the rebuild
 
-**Signature**:
+1. **Daemon is source of truth** for messages — no localStorage canonical state.
+2. **Event-driven, no polling** — implement the stubbed emit points via
+   `AppHandle.emit` (new-message and outbox-status events).
+3. **API shape** — commands return `{success: true, data}` or
+   `{success: false, error}`.
+4. **AI never auto-sends** in assisted mode; auto-reply is a separate, opt-in,
+   guarded mode (Phase 5).
 
-```rust
-#[tauri::command]
-fn export_thread(
-    state: tauri::State<AppState>,
-    thread_id: String,
-    format: String, // "txt" or "json"
-) -> Value
-```
-
-**Requirements**:
-
-1. Export thread messages to file in `app_data_dir/export/`
-2. Return file path in response
-3. Format:
-   - `.txt`: Human-readable format (timestamp, sender, content)
-   - `.json`: Full message objects as JSON array
-
-**Frontend**: Add export UI
-
-- Button in thread header (next to "Refresh")
-- Dropdown or buttons for format selection
-- Show "Open folder" button after export
-- Use Tauri's `open` command to reveal file in Finder
-
-**Tauri API needed**:
-
-```typescript
-import { open } from "@tauri-apps/api/shell";
-// After export:
-await open(pathToFile);
-```
-
----
-
-## Constraints (Must Maintain)
-
-1. **Backend is source of truth**: No localStorage for canonical messages
-2. **No polling**: Event-driven only (use Tauri events)
-3. **API format**: All commands return `{success: true, data: T}` or `{success: false, error: string}`
-
----
-
-## Acceptance Checklist
-
-Before marking as "done", verify:
-
-- [ ] Account switching doesn't crash
-- [ ] Threads load and open
-- [ ] Unread counts change when opening a thread
-- [ ] App restarts and history persists (disk persistence works)
-- [ ] Search returns results
-- [ ] Alias set/get works
-- [ ] AI summarize/draft produces output (if Ollama configured)
-
----
-
-## Optional: AI Tools Setup
-
-To enable AI features:
-
-1. Install Ollama:
-
-   ```bash
-   brew install ollama
-   ollama pull qwen2.5:7b-instruct
-   ```
-
-2. Update `.signalx.env`:
-
-   ```
-   SIGNALX_OLLAMA_MODEL=qwen2.5:7b-instruct
-   ```
-
-3. Verify:
-   - `summarize_thread(thread_id)` returns readable summary
-   - `draft_reply(thread_id, intent)` returns draft (never auto-sends)
-
----
-
-## Testing Notes
-
-After implementing each task:
-
-- Test with real Signal account
-- Verify no crashes on account switch
-- Check disk persistence (close/reopen app)
-- Verify export files are readable
-
----
-
-## File Locations
-
-- Frontend: `src/App.tsx`
-- Backend: `src-tauri/src/main.rs`
-- Config: `.signalx.env`
-- Launcher: `SignalX-Dev.command`
-- Log: `run-dev.command.log` (created on first run)
+See `STATUS.md` for current state and `NEXT_STEPS.md` for the phased plan.

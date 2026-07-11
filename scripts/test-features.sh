@@ -49,14 +49,34 @@ fi
 
 if command -v ollama >/dev/null 2>&1; then
     echo -e "${GREEN}✓${NC} ollama is installed"
-    if grep -q "^SIGNALX_OLLAMA_MODEL=" .signalx.env 2>/dev/null; then
-        MODEL=$(grep "^SIGNALX_OLLAMA_MODEL=" .signalx.env | cut -d'=' -f2)
-        echo -e "${GREEN}✓${NC} Ollama model configured: $MODEL"
-    else
-        echo -e "${YELLOW}⚠${NC} Ollama installed but SIGNALX_OLLAMA_MODEL not set in .signalx.env"
-    fi
 else
     echo -e "${YELLOW}⚠${NC} ollama not installed (optional, for AI features)"
+fi
+
+OLLAMA_URL="${SIGNALX_OLLAMA_URL:-http://localhost:11434}"
+if [ -f ".signalx.env" ]; then
+    ENV_URL="$(grep '^SIGNALX_OLLAMA_URL=' .signalx.env 2>/dev/null | head -1 | cut -d'=' -f2- | tr -d '[:space:]')"
+    if [ -n "$ENV_URL" ]; then
+        OLLAMA_URL="$ENV_URL"
+    fi
+fi
+OLLAMA_URL="${OLLAMA_URL%/}"
+
+if grep -q "^SIGNALX_OLLAMA_MODEL=" .signalx.env 2>/dev/null; then
+    MODEL=$(grep "^SIGNALX_OLLAMA_MODEL=" .signalx.env | head -1 | cut -d'=' -f2- | tr -d '[:space:]')
+    echo -e "${GREEN}✓${NC} Ollama model configured: $MODEL"
+else
+    echo -e "${YELLOW}⚠${NC} SIGNALX_OLLAMA_MODEL not set in .signalx.env (AI features disabled)"
+fi
+
+if command -v curl >/dev/null 2>&1; then
+    if curl -sf --max-time 3 "${OLLAMA_URL}/api/tags" >/dev/null 2>&1; then
+        echo -e "${GREEN}✓${NC} Ollama HTTP API reachable at ${OLLAMA_URL}"
+    else
+        echo -e "${YELLOW}⚠${NC} Ollama HTTP API not reachable at ${OLLAMA_URL} (start with: ollama serve)"
+    fi
+else
+    echo -e "${YELLOW}⚠${NC} curl not found; skipping Ollama HTTP reachability check"
 fi
 
 echo ""

@@ -5,7 +5,7 @@
 ### 1. Prerequisites Check
 ```bash
 # Verify dependencies
-./test-features.sh
+./scripts/test-features.sh
 ```
 
 ### 2. Configure Environment
@@ -40,20 +40,21 @@ SIGNALX_SIGNALCLI_BIN=/opt/homebrew/bin/signal-cli
 ### Feature Verification
 Run the verification script:
 ```bash
-./test-features.sh
+./scripts/test-features.sh
 ```
 
 ## 🤖 AI Features (Optional)
 
 ### Setup AI Tools
 ```bash
-./setup-ai.sh
+./scripts/setup-ai.sh
 ```
 
 This will:
 - Install Ollama (if needed)
+- Start the Ollama HTTP server (`ollama serve`)
 - Pull a language model
-- Configure `.signalx.env`
+- Configure `.signalx.env` with `SIGNALX_OLLAMA_MODEL` and `SIGNALX_OLLAMA_URL`
 
 ### Test AI Features
 1. Select a thread with messages
@@ -95,9 +96,11 @@ open src-tauri/target/release/bundle/macos/SignalX.app
 3. Check console logs for errors
 
 ### AI Features Not Working
-1. Verify Ollama is running: `ollama list`
-2. Check `.signalx.env` has `SIGNALX_OLLAMA_MODEL` set
-3. Test Ollama directly: `ollama run qwen2.5:7b-instruct "test"`
+1. Verify Ollama server is running: `ollama serve` (in a separate terminal)
+2. Check HTTP API: `curl -s http://localhost:11434/api/tags`
+3. Check `.signalx.env` has `SIGNALX_OLLAMA_MODEL` set
+4. In the app Diagnostics panel, confirm `ollama_reachable: true`
+5. List pulled models: `ollama list`
 
 ## 📁 Important Directories
 
@@ -145,7 +148,7 @@ open src-tauri/target/release/bundle/macos/SignalX.app
 
 1. Check `run-dev.command.log` for errors
 2. Review Diagnostics panel in app
-3. Verify all prerequisites with `./test-features.sh`
+3. Verify all prerequisites with `./scripts/test-features.sh`
 4. Check Health badge status
 
 
