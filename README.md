@@ -1,8 +1,6 @@
 # SignalX
 
-Headless Signal backend: receives messages via signal-cli, persists threads locally, processes outbox sends, and optional AI agent drafts via Ollama.
-
-No GUI — run as a background daemon.
+AI-powered Signal desktop client. Native Tauri + React GUI on top of a Rust Signal daemon (`signal-cli` + optional Ollama drafts / guarded auto-reply).
 
 ## Quick start
 
@@ -12,19 +10,20 @@ No GUI — run as a background daemon.
    # edit .signalx.env with your number and signal-cli config path
    ```
 
-2. Build and run:
+2. Run the GUI (default):
    ```bash
-   cd src-tauri && cargo run
+   npm install
+   npm run tauri dev
    ```
-   Or: `./SignalX-Dev.command` / `./run-dev.sh`
+   Or double-click `./SignalX-Dev.command` / run `./run-dev.sh`.
 
-3. Optional AI agent mode (auto-draft incoming messages):
+3. Headless daemon only (optional):
    ```bash
-   SIGNALX_AGENT=1 cargo run
-   # or: cargo run -- --agent
+   cd src-tauri && cargo run -- --headless
+   # or: SIGNALX_HEADLESS=1 cargo run
    ```
 
-4. Optional AI setup:
+4. Optional AI setup (Ollama):
    ```bash
    ./scripts/setup-ai.sh
    ```
@@ -33,7 +32,8 @@ No GUI — run as a background daemon.
 
 | Path | Purpose |
 |------|---------|
-| `src-tauri/` | Rust daemon (Signal CLI, threads, outbox, Ollama) |
+| `src/` | React messaging UI |
+| `src-tauri/` | Rust daemon + Tauri commands (Signal CLI, threads, outbox, Ollama, auto-reply) |
 | `scripts/` | Dev, test, and cleanup helpers |
 
 ## Docs
