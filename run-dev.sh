@@ -18,5 +18,14 @@ if [[ ! -d "$ROOT/node_modules" ]]; then
   npm install
 fi
 
+# Free Vite's fixed port (vite.config.ts uses strictPort: true).
+if command -v lsof >/dev/null 2>&1; then
+  PID="$(lsof -ti tcp:5173 || true)"
+  if [ -n "$PID" ]; then
+    echo "Killing process on port 5173: $PID"
+    kill -9 $PID || true
+  fi
+fi
+
 # Launch the Tauri dev shell (starts Vite via beforeDevCommand).
-npm run tauri dev -- "$@"
+npm run tauri:dev -- "$@"
