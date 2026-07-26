@@ -374,12 +374,12 @@ PY
   fi
 fi
 
-# Muted hidden-by-default is a UI invariant: validate the code defaults quickly.
-if grep -q 'const \[filterShowMuted, setFilterShowMuted\] = useState(false);' src/App.tsx && \
-   grep -q 'const \[groupFilterShowMuted, setGroupFilterShowMuted\] = useState(false);' src/App.tsx; then
-  echo -e "${GREEN}✓${NC} Muted is hidden by default (UI filters default to off)"
+# Muted hidden-by-default: people-search filters default include_muted to false (serde).
+if grep -q 'include_muted: bool,' src-tauri/src/lib.rs && \
+   grep -B2 'include_muted: bool,' src-tauri/src/lib.rs | grep -q '#\[serde(default)\]'; then
+  echo -e "${GREEN}✓${NC} Muted is hidden by default (include_muted defaults to false)"
 else
-  require_or_warn "Muted hidden-by-default check failed (App.tsx defaults changed?)"
+  require_or_warn "Muted hidden-by-default check failed (PeopleSearchFilters include_muted default changed?)"
 fi
 
 echo "=== Manual Testing Checklist ==="
