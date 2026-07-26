@@ -379,6 +379,12 @@ textarea {
   text-align: left;
 }
 
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .toggle {
   display: flex;
   align-items: center;

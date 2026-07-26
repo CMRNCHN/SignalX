@@ -13,6 +13,7 @@ import {
   type GroupMeta,
   type IvrSettings,
   type Message,
+  type Order,
   type OutboxItem,
   type Product,
   type ReceiveLoopState,
@@ -22,7 +23,7 @@ import {
   type ThreadSummary,
 } from "./api";
 
-type Panel = "threads" | "search" | "contacts" | "groups" | "products" | "customers" | "audit" | "settings";
+type Panel = "threads" | "search" | "contacts" | "groups" | "products" | "customers" | "orders" | "audit" | "settings";
 
 function healthTone(s: ReceiveLoopState | null): "green" | "yellow" | "red" {
   if (!s) return "yellow";
@@ -97,6 +98,9 @@ export default function App() {
     stock: "0",
     sku: "",
   });
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [orderProductId, setOrderProductId] = useState("");
+  const [orderQty, setOrderQty] = useState("1");
   const [audit, setAudit] = useState<AutoReplyAuditEntry[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<string | null>(null);
@@ -118,7 +122,7 @@ export default function App() {
   };
 
   const refreshMeta = async () => {
-    const [c, g, ar, au, ivr, prods, custs] = await Promise.all([
+    const [c, g, ar, au, ivr, prods, custs, ords] = await Promise.all([
       api.listContactMeta(),
       api.listGroupMeta(),
       api.getAutoReplySettings(),
@@ -126,14 +130,19 @@ export default function App() {
       api.getIvrSettings(),
       api.listProducts(),
       api.listCustomers(),
+      api.listOrders(),
     ]);
     if (c.success) setContacts(c.data);
     if (g.success) setGroups(g.data);
     if (ar.success) setAutoSettings(ar.data);
     if (au.success) setAudit(au.data);
     if (ivr.success) setIvrSettings(ivr.data);
-    if (prods.success) setProducts(prods.data);
+    if (prods.success) {
+      setProducts(prods.data);
+      if (!orderProductId && prods.data[0]) setOrderProductId(prods.data[0].id);
+    }
     if (custs.success) setCustomers(custs.data);
+    if (ords.success) setOrders(ords.data);
   };
 
   const bootstrap = async () => {
@@ -440,6 +449,40 @@ export default function App() {
     await refreshMeta();
   };
 
+  const placeOrder = async () => {
+    if (!selectedId || selectedId.startsWith("group:")) {
+      setStatus("Select a DM thread to place an order");
+      return;
+    }
+    const qty = Math.max(1, Math.floor(Number(orderQty) || 1));
+    const pid = orderProductId || products[0]?.id;
+    if (!pid) {
+      setStatus("Add a product first");
+      return;
+    }
+    const res = await api.createOrder(selectedId, [{ productId: pid, quantity: qty }]);
+    if (!res.success) {
+      setStatus(res.error);
+      return;
+    }
+    setStatus(`Order ${res.data.id.slice(0, 8)} created — $${(res.data.total_cents / 100).toFixed(2)}`);
+    await refreshMeta();
+    setPanel("orders");
+  };
+
+  const markOrderPaid = async (id: string) => {
+    const res = await api.setOrderStatus(id, "paid");
+    if (!res.success) setStatus(res.error);
+    await refreshMeta();
+  };
+
+  const sendInvoice = async (id: string) => {
+    const res = await api.sendOrderInvoice(id);
+    if (!res.success) setStatus(res.error);
+    else setStatus("Invoice queued to Signal outbox");
+    if (selectedId) await refreshMessages(selectedId);
+  };
+
   const tone = healthTone(health);
   const title = selectedId ? threadTitle(selectedId, contacts, groups) : "SignalX";
 
@@ -480,6 +523,7 @@ export default function App() {
               ["groups", "Groups"],
               ["products", "Products"],
               ["customers", "Customers"],
+              ["orders", "Orders"],
               ["audit", "Auto-reply log"],
               ["settings", "Settings"],
             ] as const
@@ -718,6 +762,74 @@ export default function App() {
         </section>
       )}
 
+      {panel === "orders" && (
+        <section className="thread-col wide">
+          <header className="col-head">Orders</header>
+          <div className="settings-body">
+            <div className="product-form">
+              <p className="hint">
+                Creates an order for the selected DM, decrements stock, and can send an invoice
+                over Signal.
+              </p>
+              <select
+                value={orderProductId}
+                onChange={(e) => setOrderProductId(e.target.value)}
+              >
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} (${(p.price_cents / 100).toFixed(2)}, {p.quantity_in_stock} left)
+                  </option>
+                ))}
+              </select>
+              <input
+                placeholder="Qty"
+                value={orderQty}
+                onChange={(e) => setOrderQty(e.target.value)}
+              />
+              <button type="button" className="send-btn" onClick={() => void placeOrder()}>
+                Place order on current chat
+              </button>
+            </div>
+            <div className="thread-list">
+              {orders.map((o) => (
+                <div key={o.id} className="thread-row product-row">
+                  <div className="thread-row-top">
+                    <span className="thread-name">
+                      {o.id.slice(0, 8)} · {o.status}
+                    </span>
+                    <span className="thread-time">${(o.total_cents / 100).toFixed(2)}</span>
+                  </div>
+                  <div className="convo-sub">
+                    {o.thread_id} · {o.lines.map((l) => `${l.name}×${l.quantity}`).join(", ")}
+                  </div>
+                  <div className="row-actions">
+                    <button type="button" className="ghost-btn" onClick={() => void sendInvoice(o.id)}>
+                      Send invoice
+                    </button>
+                    {o.status !== "paid" && (
+                      <button type="button" className="ghost-btn" onClick={() => void markOrderPaid(o.id)}>
+                        Mark paid
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      onClick={() => {
+                        setSelectedId(o.thread_id);
+                        setPanel("threads");
+                      }}
+                    >
+                      Open chat
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {orders.length === 0 && <p className="hint">No orders yet.</p>}
+            </div>
+          </div>
+        </section>
+      )}
+
       {panel === "audit" && (
         <section className="thread-col wide">
           <header className="col-head">Auto-reply audit</header>
@@ -843,7 +955,7 @@ export default function App() {
         </section>
       )}
 
-      {(panel === "audit" || panel === "settings" || panel === "products") ? null : (
+      {(panel === "audit" || panel === "settings" || panel === "products" || panel === "orders") ? null : (
       <main className="convo">
         {!selectedId ? (
           <div className="convo-empty">

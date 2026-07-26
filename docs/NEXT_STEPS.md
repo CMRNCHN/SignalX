@@ -8,8 +8,8 @@ account and one outbox send path.
 
 1. ~~Menu responder (IVR)~~
 2. ~~Catalog + customers~~
-3. **Orders + invoices in-thread**
-4. **AI polish** on commerce flows
+3. ~~Orders + invoices in-thread~~
+4. AI polish (optional) — drafts already work; tighten copy for order/IVR flows later
 
 ## AI setup (optional)
 

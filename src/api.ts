@@ -178,6 +178,24 @@ export interface Customer {
   updated_at: number;
 }
 
+export interface OrderLine {
+  product_id: string;
+  name: string;
+  quantity: number;
+  unit_price_cents: number;
+}
+
+export interface Order {
+  id: string;
+  customer_id: string;
+  thread_id: string;
+  status: string;
+  lines: OrderLine[];
+  total_cents: number;
+  created_at: number;
+  updated_at: number;
+}
+
 async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<ApiResult<T>> {
   try {
     const raw = await invoke<ApiResult<T>>(cmd, args);
@@ -275,6 +293,19 @@ export const api = {
       threadId,
       displayName: displayName ?? null,
     }),
+  listOrders: (threadId?: string) =>
+    call<Order[]>("cmd_list_orders", { threadId: threadId ?? null }),
+  createOrder: (threadId: string, lines: { productId: string; quantity: number }[]) =>
+    call<Order>("cmd_create_order", {
+      threadId,
+      lines: lines.map((l) => ({
+        product_id: l.productId,
+        quantity: l.quantity,
+      })),
+    }),
+  setOrderStatus: (id: string, status: string) =>
+    call<Order>("cmd_set_order_status", { id, status }),
+  sendOrderInvoice: (id: string) => call<Order>("cmd_send_order_invoice", { id }),
 };
 
 export async function onEvent<T>(

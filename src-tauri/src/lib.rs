@@ -13,8 +13,10 @@ use chrono::Timelike;
 
 mod ivr;
 mod commerce;
+mod orders;
 use ivr::{thread_allowed, IvrSettings, IvrStore};
 use commerce::{format_catalog_list, CommerceStore, Customer, Product};
+use orders::{format_invoice, Order, OrderLineInput, OrderStore};
 
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
@@ -2460,6 +2462,7 @@ struct AppState {
   auto_reply: AutoReplyStore,
   ivr: IvrStore,
   commerce: CommerceStore,
+  orders: OrderStore,
 }
 
 fn now_ms() -> i64 {
@@ -4208,6 +4211,7 @@ fn build_app_state() -> AppState {
     auto_reply: AutoReplyStore::new(&app_data_dir),
     ivr: IvrStore::new(&app_data_dir),
     commerce: CommerceStore::new(&app_data_dir),
+    orders: OrderStore::new(&app_data_dir),
   }
 }
 
@@ -4449,6 +4453,81 @@ fn ensure_customer_for_thread(state: &AppState, thread_id: String, display_name:
       updated_at: 0,
     },
   )
+}
+
+fn list_orders(state: &AppState, thread_id: Option<String>) -> Value {
+  let orders = match thread_id {
+    Some(tid) if !tid.trim().is_empty() => state.orders.list_for_thread(tid.trim()),
+    _ => state.orders.list(),
+  };
+  ok_t(orders)
+}
+
+fn create_order(
+  state: &AppState,
+  thread_id: String,
+  lines: Vec<OrderLineInput>,
+) -> Value {
+  let tid = thread_id.trim().to_string();
+  if tid.is_empty() {
+    return err("thread_id required".to_string());
+  }
+  if tid.starts_with("group:") {
+    return err("orders require a DM thread".to_string());
+  }
+  let customer = match state.commerce.customer_by_thread(&tid) {
+    Some(c) => c,
+    None => {
+      let name = tid.trim_start_matches("dm:").to_string();
+      match state.commerce.upsert_customer(
+        Customer {
+          id: String::new(),
+          thread_id: tid.clone(),
+          display_name: name,
+          notes: String::new(),
+          updated_at: 0,
+        },
+        now_ms(),
+      ) {
+        Ok(c) => c,
+        Err(e) => return err(e),
+      }
+    }
+  };
+  match state
+    .orders
+    .create(&state.commerce, customer.id, tid.clone(), lines, now_ms())
+  {
+    Ok(order) => {
+      emit_event("commerce://orders", state.orders.list());
+      emit_event("commerce://products", state.commerce.list_products());
+      ok_t(order)
+    }
+    Err(e) => err(e),
+  }
+}
+
+fn set_order_status(state: &AppState, id: String, status: String) -> Value {
+  match state.orders.set_status(id.trim(), status.trim(), now_ms()) {
+    Ok(order) => {
+      emit_event("commerce://orders", state.orders.list());
+      ok_t(order)
+    }
+    Err(e) => err(e),
+  }
+}
+
+fn send_order_invoice(state: &AppState, id: String) -> Value {
+  let order = match state.orders.get(id.trim()) {
+    Some(o) => o,
+    None => return err("order not found".to_string()),
+  };
+  let body = format_invoice(&order, "SignalX");
+  let (_k, recipient) = recipient_from_thread_id(&order.thread_id);
+  match queue_outgoing_message(state, order.thread_id.clone(), recipient, body) {
+    v if v.get("success").and_then(|x| x.as_bool()).unwrap_or(false) => ok_t(order),
+    v => v,
+  }
 }
 
 // --------------------
@@ -4732,6 +4811,26 @@ fn cmd_ensure_customer_for_thread(
 ) -> Value {
   ensure_customer_for_thread(&state, thread_id, display_name)
 }
+#[tauri::command]
+fn cmd_list_orders(state: State<'_, AppState>, thread_id: Option<String>) -> Value {
+  list_orders(&state, thread_id)
+}
+#[tauri::command]
+fn cmd_create_order(
+  state: State<'_, AppState>,
+  thread_id: String,
+  lines: Vec<OrderLineInput>,
+) -> Value {
+  create_order(&state, thread_id, lines)
+}
+#[tauri::command]
+fn cmd_set_order_status(state: State<'_, AppState>, id: String, status: String) -> Value {
+  set_order_status(&state, id, status)
+}
+#[tauri::command]
+fn cmd_send_order_invoice(state: State<'_, AppState>, id: String) -> Value {
+  send_order_invoice(&state, id)
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -4818,6 +4917,10 @@ pub fn run() {
       cmd_upsert_customer,
       cmd_delete_customer,
       cmd_ensure_customer_for_thread,
+      cmd_list_orders,
+      cmd_create_order,
+      cmd_set_order_status,
+      cmd_send_order_invoice,
     ])
     .run(tauri::generate_context!())
     .expect("error while running SignalX");
