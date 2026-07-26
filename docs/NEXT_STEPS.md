@@ -6,8 +6,8 @@ account and one outbox send path.
 
 ## Remaining product work
 
-1. ~~Menu responder (IVR)~~ — shipped (text menus, handoff, allowlist)
-2. **Catalog + customers** — local products + customers tied to Signal contacts
+1. ~~Menu responder (IVR)~~
+2. ~~Catalog + customers~~
 3. **Orders + invoices in-thread**
 4. **AI polish** on commerce flows
 

@@ -83,9 +83,13 @@ impl IvrMenus {
     nodes.insert(
       "main".to_string(),
       IvrNode {
-        prompt: "Welcome — reply with a number:\n1 · Info\n2 · Leave a note\n3 · Talk to a person\n0 · Main menu".to_string(),
+        prompt: "Welcome — reply with a number:\n1 · Browse products\n2 · Leave a note\n3 · Talk to a person\n0 · Main menu".to_string(),
         choices: HashMap::from([
-          ("1".into(), IvrChoice { goto: Some("info".into()), action: None, reply: None }),
+          ("1".into(), IvrChoice {
+            goto: Some("browse".into()),
+            action: Some("list_catalog".into()),
+            reply: None,
+          }),
           ("2".into(), IvrChoice { goto: Some("ask_note".into()), action: None, reply: None }),
           ("3".into(), IvrChoice {
             goto: None,
@@ -97,6 +101,19 @@ impl IvrMenus {
           ("help".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
         ]),
         on_unknown: Some("Please reply with 1, 2, 3, or 0.".into()),
+        capture_slot: None,
+        after_capture: None,
+      },
+    );
+    nodes.insert(
+      "browse".to_string(),
+      IvrNode {
+        prompt: "Reply 0 for the main menu.".to_string(),
+        choices: HashMap::from([
+          ("0".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
+          ("menu".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
+        ]),
+        on_unknown: Some("Reply 0 for the main menu.".into()),
         capture_slot: None,
         after_capture: None,
       },
@@ -128,7 +145,7 @@ impl IvrMenus {
       },
     );
     Self {
-      version: 1,
+      version: 2,
       entry: "main".to_string(),
       session_ttl_ms: 1_800_000,
       nodes,
@@ -142,6 +159,8 @@ pub struct IvrStepResult {
   pub reply: Option<String>,
   /// Engine ran for this inbound (caller should skip AI auto-send path).
   pub handled: bool,
+  /// Side effect for the host (e.g. `list_catalog`).
+  pub action: Option<String>,
 }
 
 pub fn normalize_input(raw: &str) -> String {
@@ -190,6 +209,7 @@ pub fn step(mut session: IvrSession, inbound: &str, menus: &IvrMenus, now: i64) 
       session,
       reply: None,
       handled: true,
+      action: None,
     };
   }
 
@@ -203,6 +223,7 @@ pub fn step(mut session: IvrSession, inbound: &str, menus: &IvrMenus, now: i64) 
       session,
       reply: None,
       handled: true,
+      action: None,
     };
   }
 
@@ -215,6 +236,7 @@ pub fn step(mut session: IvrSession, inbound: &str, menus: &IvrMenus, now: i64) 
         reply: Some(prompt_for(menus, &menus.entry)),
         session,
         handled: true,
+        action: None,
       };
     }
   };
@@ -222,24 +244,8 @@ pub fn step(mut session: IvrSession, inbound: &str, menus: &IvrMenus, now: i64) 
   // Capture node: any non-empty text (except menu/help/0 shortcuts if also in choices)
   if let Some(slot) = &node.capture_slot {
     if let Some(choice) = node.choices.get(&input) {
-      if let Some(action) = &choice.action {
-        if action == "handoff" {
-          session.handed_off = true;
-          touch(&mut session, menus, now);
-          return IvrStepResult {
-            reply: choice.reply.clone(),
-            session,
-            handled: true,
-          };
-        }
-      }
-      if let Some(goto) = &choice.goto {
-        let reply = apply_goto(&mut session, menus, goto, now);
-        return IvrStepResult {
-          reply: Some(reply),
-          session,
-          handled: true,
-        };
+      if let Some(res) = apply_choice(&mut session, menus, choice, now) {
+        return res;
       }
     }
     session.slots.insert(slot.clone(), inbound.trim().to_string());
@@ -250,6 +256,7 @@ pub fn step(mut session: IvrSession, inbound: &str, menus: &IvrMenus, now: i64) 
         reply: Some(format!("{}\n\n{}", ack, next_prompt)),
         session,
         handled: true,
+        action: None,
       };
     }
     touch(&mut session, menus, now);
@@ -257,28 +264,13 @@ pub fn step(mut session: IvrSession, inbound: &str, menus: &IvrMenus, now: i64) 
       reply: Some("Thanks.".to_string()),
       session,
       handled: true,
+      action: None,
     };
   }
 
   if let Some(choice) = node.choices.get(&input) {
-    if let Some(action) = &choice.action {
-      if action == "handoff" {
-        session.handed_off = true;
-        touch(&mut session, menus, now);
-        return IvrStepResult {
-          reply: choice.reply.clone(),
-          session,
-          handled: true,
-        };
-      }
-    }
-    if let Some(goto) = &choice.goto {
-      let reply = apply_goto(&mut session, menus, goto, now);
-      return IvrStepResult {
-        reply: Some(reply),
-        session,
-        handled: true,
-      };
+    if let Some(res) = apply_choice(&mut session, menus, choice, now) {
+      return res;
     }
   }
 
@@ -291,7 +283,50 @@ pub fn step(mut session: IvrSession, inbound: &str, menus: &IvrMenus, now: i64) 
     reply: Some(format!("{}\n\n{}", hint, node.prompt)),
     session,
     handled: true,
+    action: None,
   }
+}
+
+fn apply_choice(
+  session: &mut IvrSession,
+  menus: &IvrMenus,
+  choice: &IvrChoice,
+  now: i64,
+) -> Option<IvrStepResult> {
+  if let Some(action) = &choice.action {
+    if action == "handoff" {
+      session.handed_off = true;
+      touch(session, menus, now);
+      return Some(IvrStepResult {
+        reply: choice.reply.clone(),
+        session: session.clone(),
+        handled: true,
+        action: Some("handoff".into()),
+      });
+    }
+    if action == "list_catalog" {
+      if let Some(goto) = &choice.goto {
+        session.node_id = goto.clone();
+        touch(session, menus, now);
+      }
+      return Some(IvrStepResult {
+        reply: None,
+        session: session.clone(),
+        handled: true,
+        action: Some("list_catalog".into()),
+      });
+    }
+  }
+  if let Some(goto) = &choice.goto {
+    let reply = apply_goto(session, menus, goto, now);
+    return Some(IvrStepResult {
+      reply: Some(reply),
+      session: session.clone(),
+      handled: true,
+      action: None,
+    });
+  }
+  None
 }
 
 pub fn thread_allowed(settings: &IvrSettings, thread_id: &str) -> bool {
@@ -341,10 +376,19 @@ impl IvrStore {
     };
 
     let menus = if menus_path.is_file() {
-      std::fs::read_to_string(&menus_path)
+      let loaded: Option<IvrMenus> = std::fs::read_to_string(&menus_path)
         .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_else(IvrMenus::default_demo)
+        .and_then(|s| serde_json::from_str(&s).ok());
+      match loaded {
+        Some(m) if m.version >= 2 => m,
+        _ => {
+          let m = IvrMenus::default_demo();
+          if let Ok(json) = serde_json::to_string_pretty(&m) {
+            let _ = std::fs::write(&menus_path, json);
+          }
+          m
+        }
+      }
     } else {
       let m = IvrMenus::default_demo();
       if let Ok(json) = serde_json::to_string_pretty(&m) {
@@ -497,13 +541,14 @@ mod tests {
   }
 
   #[test]
-  fn main_one_goes_to_info() {
+  fn main_one_lists_catalog_action() {
     let m = menus();
     let s = fresh_session("dm:+1", &m, 1000);
     let r = step(s, "1", &m, 1000);
     assert!(r.handled);
-    assert_eq!(r.session.node_id, "info");
-    assert!(r.reply.unwrap().contains("demo"));
+    assert_eq!(r.session.node_id, "browse");
+    assert_eq!(r.action.as_deref(), Some("list_catalog"));
+    assert!(r.reply.is_none());
   }
 
   #[test]
@@ -546,8 +591,9 @@ mod tests {
     s.node_id = "info".into();
     s.expires_at = 1500;
     let r = step(s, "1", &m, 2000);
-    // after expiry, fresh session at main, then "1" -> info
-    assert_eq!(r.session.node_id, "info");
+    // after expiry, fresh session at main, then "1" -> browse + list_catalog
+    assert_eq!(r.session.node_id, "browse");
+    assert_eq!(r.action.as_deref(), Some("list_catalog"));
   }
 
   #[test]

@@ -12,7 +12,9 @@ use tokio::sync::Mutex as AsyncMutex;
 use chrono::Timelike;
 
 mod ivr;
+mod commerce;
 use ivr::{thread_allowed, IvrSettings, IvrStore};
+use commerce::{format_catalog_list, CommerceStore, Customer, Product};
 
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
@@ -2457,6 +2459,7 @@ struct AppState {
   outbox_workers: Arc<Mutex<HashSet<String>>>, // account_id set
   auto_reply: AutoReplyStore,
   ivr: IvrStore,
+  commerce: CommerceStore,
 }
 
 fn now_ms() -> i64 {
@@ -4204,6 +4207,7 @@ fn build_app_state() -> AppState {
     outbox_workers: Arc::new(Mutex::new(HashSet::new())),
     auto_reply: AutoReplyStore::new(&app_data_dir),
     ivr: IvrStore::new(&app_data_dir),
+    commerce: CommerceStore::new(&app_data_dir),
   }
 }
 
@@ -4251,7 +4255,12 @@ fn maybe_handle_ivr(state: &AppState, thread_id: &str, content: &str) -> bool {
     }),
   );
 
-  if let Some(reply) = result.reply {
+  let mut reply = result.reply;
+  if result.action.as_deref() == Some("list_catalog") {
+    reply = Some(format_catalog_list(&state.commerce.list_products(), 15));
+  }
+
+  if let Some(reply) = reply {
     let (_kind, recipient) = recipient_from_thread_id(thread_id);
     let _ = queue_outgoing_message(state, thread_id.to_string(), recipient, reply);
   }
@@ -4370,6 +4379,76 @@ fn clear_thread_handoff(state: &AppState, thread_id: String) -> Value {
     }
     Err(e) => err(e),
   }
+}
+
+fn list_products(state: &AppState) -> Value {
+  ok_t(state.commerce.list_products())
+}
+
+fn upsert_product(state: &AppState, product: Product) -> Value {
+  match state.commerce.upsert_product(product, now_ms()) {
+    Ok(p) => {
+      emit_event("commerce://products", state.commerce.list_products());
+      ok_t(p)
+    }
+    Err(e) => err(e),
+  }
+}
+
+fn delete_product(state: &AppState, id: String) -> Value {
+  match state.commerce.delete_product(id.trim()) {
+    Ok(deleted) => {
+      emit_event("commerce://products", state.commerce.list_products());
+      ok(json!({ "deleted": deleted }))
+    }
+    Err(e) => err(e),
+  }
+}
+
+fn list_customers(state: &AppState) -> Value {
+  ok_t(state.commerce.list_customers())
+}
+
+fn upsert_customer(state: &AppState, customer: Customer) -> Value {
+  match state.commerce.upsert_customer(customer, now_ms()) {
+    Ok(c) => {
+      emit_event("commerce://customers", state.commerce.list_customers());
+      ok_t(c)
+    }
+    Err(e) => err(e),
+  }
+}
+
+fn delete_customer(state: &AppState, id: String) -> Value {
+  match state.commerce.delete_customer(id.trim()) {
+    Ok(deleted) => {
+      emit_event("commerce://customers", state.commerce.list_customers());
+      ok(json!({ "deleted": deleted }))
+    }
+    Err(e) => err(e),
+  }
+}
+
+fn ensure_customer_for_thread(state: &AppState, thread_id: String, display_name: Option<String>) -> Value {
+  let tid = thread_id.trim().to_string();
+  if tid.is_empty() {
+    return err("thread_id required".to_string());
+  }
+  if let Some(existing) = state.commerce.customer_by_thread(&tid) {
+    return ok_t(existing);
+  }
+  let name = display_name
+    .unwrap_or_else(|| tid.trim_start_matches("dm:").to_string());
+  upsert_customer(
+    state,
+    Customer {
+      id: String::new(),
+      thread_id: tid,
+      display_name: name,
+      notes: String::new(),
+      updated_at: 0,
+    },
+  )
 }
 
 // --------------------
@@ -4621,6 +4700,38 @@ fn cmd_set_thread_ivr(state: State<'_, AppState>, thread_id: String, enabled: bo
 fn cmd_clear_thread_handoff(state: State<'_, AppState>, thread_id: String) -> Value {
   clear_thread_handoff(&state, thread_id)
 }
+#[tauri::command]
+fn cmd_list_products(state: State<'_, AppState>) -> Value {
+  list_products(&state)
+}
+#[tauri::command]
+fn cmd_upsert_product(state: State<'_, AppState>, product: Product) -> Value {
+  upsert_product(&state, product)
+}
+#[tauri::command]
+fn cmd_delete_product(state: State<'_, AppState>, id: String) -> Value {
+  delete_product(&state, id)
+}
+#[tauri::command]
+fn cmd_list_customers(state: State<'_, AppState>) -> Value {
+  list_customers(&state)
+}
+#[tauri::command]
+fn cmd_upsert_customer(state: State<'_, AppState>, customer: Customer) -> Value {
+  upsert_customer(&state, customer)
+}
+#[tauri::command]
+fn cmd_delete_customer(state: State<'_, AppState>, id: String) -> Value {
+  delete_customer(&state, id)
+}
+#[tauri::command]
+fn cmd_ensure_customer_for_thread(
+  state: State<'_, AppState>,
+  thread_id: String,
+  display_name: Option<String>,
+) -> Value {
+  ensure_customer_for_thread(&state, thread_id, display_name)
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -4700,6 +4811,13 @@ pub fn run() {
       cmd_get_thread_ivr,
       cmd_set_thread_ivr,
       cmd_clear_thread_handoff,
+      cmd_list_products,
+      cmd_upsert_product,
+      cmd_delete_product,
+      cmd_list_customers,
+      cmd_upsert_customer,
+      cmd_delete_customer,
+      cmd_ensure_customer_for_thread,
     ])
     .run(tauri::generate_context!())
     .expect("error while running SignalX");

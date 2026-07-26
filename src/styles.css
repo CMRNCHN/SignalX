@@ -364,10 +364,19 @@ textarea {
   border-radius: 6px;
 }
 
-.auto-thread-badge.warn {
-  color: #fde68a;
-  border-color: rgba(251, 191, 36, 0.45);
-  background: rgba(251, 191, 36, 0.12);
+.product-form {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.product-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  text-align: left;
 }
 
 .toggle {

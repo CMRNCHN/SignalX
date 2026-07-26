@@ -160,6 +160,24 @@ export interface ThreadIvrStatus {
   global_enabled?: boolean;
 }
 
+export interface Product {
+  id: string;
+  name: string;
+  description: string;
+  sku: string;
+  price_cents: number;
+  quantity_in_stock: number;
+  updated_at: number;
+}
+
+export interface Customer {
+  id: string;
+  thread_id: string;
+  display_name: string;
+  notes: string;
+  updated_at: number;
+}
+
 async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<ApiResult<T>> {
   try {
     const raw = await invoke<ApiResult<T>>(cmd, args);
@@ -243,6 +261,20 @@ export const api = {
     call<ThreadIvrStatus>("cmd_set_thread_ivr", { threadId, enabled }),
   clearThreadHandoff: (threadId: string) =>
     call<ThreadIvrStatus>("cmd_clear_thread_handoff", { threadId }),
+  listProducts: () => call<Product[]>("cmd_list_products"),
+  upsertProduct: (product: Product) =>
+    call<Product>("cmd_upsert_product", { product }),
+  deleteProduct: (id: string) => call<{ deleted: boolean }>("cmd_delete_product", { id }),
+  listCustomers: () => call<Customer[]>("cmd_list_customers"),
+  upsertCustomer: (customer: Customer) =>
+    call<Customer>("cmd_upsert_customer", { customer }),
+  deleteCustomer: (id: string) =>
+    call<{ deleted: boolean }>("cmd_delete_customer", { id }),
+  ensureCustomerForThread: (threadId: string, displayName?: string) =>
+    call<Customer>("cmd_ensure_customer_for_thread", {
+      threadId,
+      displayName: displayName ?? null,
+    }),
 };
 
 export async function onEvent<T>(

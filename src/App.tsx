@@ -8,11 +8,13 @@ import {
   type AutoReplyAuditEntry,
   type AutoReplySettings,
   type ContactMeta,
+  type Customer,
   type Diagnostics,
   type GroupMeta,
   type IvrSettings,
   type Message,
   type OutboxItem,
+  type Product,
   type ReceiveLoopState,
   type SearchResult,
   type ThreadAutoReplyStatus,
@@ -20,7 +22,7 @@ import {
   type ThreadSummary,
 } from "./api";
 
-type Panel = "threads" | "search" | "contacts" | "groups" | "audit" | "settings";
+type Panel = "threads" | "search" | "contacts" | "groups" | "products" | "customers" | "audit" | "settings";
 
 function healthTone(s: ReceiveLoopState | null): "green" | "yellow" | "red" {
   if (!s) return "yellow";
@@ -87,6 +89,14 @@ export default function App() {
   const [ivrSettings, setIvrSettings] = useState<IvrSettings | null>(null);
   const [threadAuto, setThreadAuto] = useState<ThreadAutoReplyStatus | null>(null);
   const [threadIvr, setThreadIvr] = useState<ThreadIvrStatus | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [productForm, setProductForm] = useState({
+    name: "",
+    price: "",
+    stock: "0",
+    sku: "",
+  });
   const [audit, setAudit] = useState<AutoReplyAuditEntry[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<string | null>(null);
@@ -108,18 +118,22 @@ export default function App() {
   };
 
   const refreshMeta = async () => {
-    const [c, g, ar, au, ivr] = await Promise.all([
+    const [c, g, ar, au, ivr, prods, custs] = await Promise.all([
       api.listContactMeta(),
       api.listGroupMeta(),
       api.getAutoReplySettings(),
       api.listAutoReplyAudit(80),
       api.getIvrSettings(),
+      api.listProducts(),
+      api.listCustomers(),
     ]);
     if (c.success) setContacts(c.data);
     if (g.success) setGroups(g.data);
     if (ar.success) setAutoSettings(ar.data);
     if (au.success) setAudit(au.data);
     if (ivr.success) setIvrSettings(ivr.data);
+    if (prods.success) setProducts(prods.data);
+    if (custs.success) setCustomers(custs.data);
   };
 
   const bootstrap = async () => {
@@ -373,6 +387,59 @@ export default function App() {
     setStatus("Bot resumed on this chat");
   };
 
+  const saveProduct = async () => {
+    const name = productForm.name.trim();
+    if (!name) {
+      setStatus("Product name required");
+      return;
+    }
+    const priceCents = Math.round(Number(productForm.price || "0") * 100);
+    const stock = Math.max(0, Math.floor(Number(productForm.stock || "0")));
+    const res = await api.upsertProduct({
+      id: "",
+      name,
+      description: "",
+      sku: productForm.sku.trim(),
+      price_cents: Number.isFinite(priceCents) ? priceCents : 0,
+      quantity_in_stock: Number.isFinite(stock) ? stock : 0,
+      updated_at: 0,
+    });
+    if (!res.success) {
+      setStatus(res.error);
+      return;
+    }
+    setProductForm({ name: "", price: "", stock: "0", sku: "" });
+    await refreshMeta();
+  };
+
+  const removeProduct = async (id: string) => {
+    await api.deleteProduct(id);
+    await refreshMeta();
+  };
+
+  const linkCustomerFromThread = async () => {
+    if (!selectedId || selectedId.startsWith("group:")) {
+      setStatus("Select a DM thread first");
+      return;
+    }
+    const res = await api.ensureCustomerForThread(
+      selectedId,
+      threadTitle(selectedId, contacts, groups),
+    );
+    if (!res.success) {
+      setStatus(res.error);
+      return;
+    }
+    setStatus(`Customer linked: ${res.data.display_name || res.data.thread_id}`);
+    await refreshMeta();
+    setPanel("customers");
+  };
+
+  const removeCustomer = async (id: string) => {
+    await api.deleteCustomer(id);
+    await refreshMeta();
+  };
+
   const tone = healthTone(health);
   const title = selectedId ? threadTitle(selectedId, contacts, groups) : "SignalX";
 
@@ -411,6 +478,8 @@ export default function App() {
               ["search", "Search"],
               ["contacts", "Contacts"],
               ["groups", "Groups"],
+              ["products", "Products"],
+              ["customers", "Customers"],
               ["audit", "Auto-reply log"],
               ["settings", "Settings"],
             ] as const
@@ -557,6 +626,98 @@ export default function App() {
         </section>
       )}
 
+      {panel === "products" && (
+        <section className="thread-col wide">
+          <header className="col-head">Products</header>
+          <div className="settings-body">
+            <div className="product-form">
+              <input
+                placeholder="Name"
+                value={productForm.name}
+                onChange={(e) => setProductForm((f) => ({ ...f, name: e.target.value }))}
+              />
+              <input
+                placeholder="Price (USD)"
+                value={productForm.price}
+                onChange={(e) => setProductForm((f) => ({ ...f, price: e.target.value }))}
+              />
+              <input
+                placeholder="Stock"
+                value={productForm.stock}
+                onChange={(e) => setProductForm((f) => ({ ...f, stock: e.target.value }))}
+              />
+              <input
+                placeholder="SKU"
+                value={productForm.sku}
+                onChange={(e) => setProductForm((f) => ({ ...f, sku: e.target.value }))}
+              />
+              <button type="button" className="send-btn" onClick={() => void saveProduct()}>
+                Add product
+              </button>
+            </div>
+            <div className="thread-list">
+              {products.map((p) => (
+                <div key={p.id} className="thread-row product-row">
+                  <div className="thread-row-top">
+                    <span className="thread-name">{p.name}</span>
+                    <span className="thread-time">
+                      ${(p.price_cents / 100).toFixed(2)} · {p.quantity_in_stock} left
+                    </span>
+                  </div>
+                  <div className="convo-sub">{p.sku || p.id.slice(0, 8)}</div>
+                  <button type="button" className="ghost-btn" onClick={() => void removeProduct(p.id)}>
+                    Delete
+                  </button>
+                </div>
+              ))}
+              {products.length === 0 && <p className="hint">No products yet — add one above.</p>}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {panel === "customers" && (
+        <section className="thread-col">
+          <header className="col-head">
+            Customers
+            <button type="button" className="ghost-btn" onClick={() => void linkCustomerFromThread()}>
+              Link current chat
+            </button>
+          </header>
+          <div className="thread-list">
+            {customers.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className="thread-row"
+                onClick={() => {
+                  setSelectedId(c.thread_id);
+                  setPanel("threads");
+                }}
+              >
+                <div className="thread-row-top">
+                  <span className="thread-name">{c.display_name || c.thread_id}</span>
+                  <button
+                    type="button"
+                    className="ghost-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void removeCustomer(c.id);
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+                <div className="convo-sub">{c.thread_id}</div>
+              </button>
+            ))}
+            {customers.length === 0 && (
+              <p className="hint">Open a DM and use “Link current chat”.</p>
+            )}
+          </div>
+        </section>
+      )}
+
       {panel === "audit" && (
         <section className="thread-col wide">
           <header className="col-head">Auto-reply audit</header>
@@ -682,7 +843,7 @@ export default function App() {
         </section>
       )}
 
-      {(panel === "audit" || panel === "settings") ? null : (
+      {(panel === "audit" || panel === "settings" || panel === "products") ? null : (
       <main className="convo">
         {!selectedId ? (
           <div className="convo-empty">
