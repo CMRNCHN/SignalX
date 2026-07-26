@@ -8,6 +8,7 @@ import {
   type AutoReplyAuditEntry,
   type AutoReplySettings,
   type ContactMeta,
+  type Diagnostics,
   type GroupMeta,
   type Message,
   type OutboxItem,
@@ -64,8 +65,7 @@ function isOutgoing(m: Message): boolean {
 
 export default function App() {
   const [panel, setPanel] = useState<Panel>("threads");
-  const [accounts, setAccounts] = useState<string[]>([]);
-  const [activeAccount, setActiveAccount] = useState<string | null>(null);
+  const [accountNumber, setAccountNumber] = useState<string | null>(null);
   const [health, setHealth] = useState<ReceiveLoopState | null>(null);
   const [ai, setAi] = useState<AiStatus | null>(null);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
@@ -117,14 +117,16 @@ export default function App() {
   };
 
   const bootstrap = async () => {
-    const [acc, active, recv, aiStatus] = await Promise.all([
-      api.listAccounts(),
-      api.getActiveAccount(),
+    const [diag, recv, aiStatus] = await Promise.all([
+      api.getDiagnostics(),
       api.getReceiveLoopState(),
       api.checkAiStatus(),
     ]);
-    setAccounts(unwrap(acc, []));
-    setActiveAccount(unwrap(active, { account_id: null }).account_id);
+    const d = unwrap(diag, null as unknown as Diagnostics | null);
+    setAccountNumber(d?.number ?? null);
+    if (!d?.number) {
+      setStatus("Not configured — set SIGNALX_NUMBER and SIGNALX_SIGNALCLI_CONFIG in .signalx.env");
+    }
     setHealth(unwrap(recv, null as unknown as ReceiveLoopState));
     setAi(unwrap(aiStatus, null as unknown as AiStatus));
     await refreshThreads();
@@ -209,18 +211,6 @@ export default function App() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, outbox]);
-
-  const onSelectAccount = async (id: string) => {
-    const res = await api.setActiveAccount(id);
-    if (!res.success) {
-      setStatus(res.error);
-      return;
-    }
-    setActiveAccount(id);
-    setSelectedId(null);
-    await refreshThreads();
-    await refreshMeta();
-  };
 
   const onSend = async () => {
     if (!selectedId || !composer.trim() || sending) return;
@@ -335,18 +325,9 @@ export default function App() {
         </div>
 
         <label className="field-label">Account</label>
-        <select
-          className="account-select"
-          value={activeAccount ?? ""}
-          onChange={(e) => void onSelectAccount(e.target.value)}
-        >
-          {!activeAccount && <option value="">No account</option>}
-          {accounts.map((a) => (
-            <option key={a} value={a}>
-              {a}
-            </option>
-          ))}
-        </select>
+        <div className="account-label" title={accountNumber ?? undefined}>
+          {accountNumber ?? "Not configured"}
+        </div>
 
         <div className={`ai-pill ${ai?.configured && ai.ollama_reachable ? "ok" : "warn"}`}>
           {ai?.configured

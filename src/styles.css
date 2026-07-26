@@ -99,6 +99,7 @@ textarea {
 }
 
 .account-select,
+.account-label,
 .search-box input,
 .settings-body input[type="number"],
 .composer textarea {
@@ -108,6 +109,13 @@ textarea {
   border-radius: 8px;
   padding: 8px 10px;
   outline: none;
+}
+
+.account-label {
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .account-select:focus,

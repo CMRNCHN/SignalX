@@ -9,7 +9,6 @@
     "core:event:allow-unlisten",
     "core:event:allow-emit",
     "core:event:allow-emit-to",
-    "core:window:allow-set-title",
-    "core:webview:allow-internal-toggle-devtools"
+    "core:window:allow-set-title"
   ]
 }

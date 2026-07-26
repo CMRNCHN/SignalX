@@ -44,7 +44,6 @@ export interface OutboxSummary {
   queued: number;
   sending: number;
   failed: number;
-  sent: number;
 }
 
 export interface ReceiveLoopState {
@@ -159,10 +158,6 @@ export const api = {
   getThreads: () => call<ThreadSummary[]>("cmd_get_threads"),
   getThreadMessages: (threadId: string) =>
     call<Message[]>("cmd_get_thread_messages", { threadId }),
-  listAccounts: () => call<string[]>("cmd_list_accounts"),
-  getActiveAccount: () => call<{ account_id: string | null }>("cmd_get_active_account"),
-  setActiveAccount: (accountId: string) =>
-    call<boolean>("cmd_set_active_account", { accountId }),
   getReceiveLoopState: () => call<ReceiveLoopState>("cmd_get_receive_loop_state"),
   getDiagnostics: () => call<Diagnostics>("cmd_get_diagnostics"),
   checkAiStatus: () => call<AiStatus>("cmd_check_ai_status"),

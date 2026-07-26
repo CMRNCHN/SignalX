@@ -114,7 +114,10 @@ fn get_signal_config() -> Option<String> {
 }
 
 fn get_signal_number() -> Option<String> {
-  std::env::var("SIGNALX_NUMBER").ok()
+  std::env::var("SIGNALX_NUMBER")
+    .ok()
+    .map(|s| s.trim().to_string())
+    .filter(|s| !s.is_empty())
 }
 
 // Priority: SIGNALX_SIGNALCLI_BIN > /opt/homebrew/bin/signal-cli > signal-cli
@@ -298,8 +301,8 @@ impl OutboxStore {
   }
 
   fn path_for(&self, account_id: &str) -> PathBuf {
-    // Hard constraint: {app_data_dir}/outbox/{account_id}.json
-    self.dir.join(format!("{}.json", account_id))
+    // Hard constraint: {app_data_dir}/outbox/{sanitized_account_id}.json
+    outbox_path_for(&self.dir, account_id)
   }
 
   fn account_save_lock(&self, account_id: &str) -> Arc<Mutex<()>> {
@@ -2071,47 +2074,15 @@ impl AccountManager {
   }
 
   fn get_or_create(&self, account_id: &str) -> ThreadState {
+    let account_id = sanitize_filename(account_id.trim());
     let mut map = self.states.lock().unwrap();
-    if let Some(ts) = map.get(account_id) {
+    if let Some(ts) = map.get(&account_id) {
       return ts.clone();
     }
-    let ts = ThreadState::new(account_id.to_string(), self.storage_path_for(account_id));
+    let ts = ThreadState::new(account_id.clone(), self.storage_path_for(&account_id));
     ts.load();
-    map.insert(account_id.to_string(), ts.clone());
+    map.insert(account_id, ts.clone());
     ts
-  }
-
-  fn list_accounts(&self) -> Vec<String> {
-    let mut out: Vec<String> = vec![];
-
-    // from in-memory known accounts
-    {
-      let map = self.states.lock().unwrap();
-      for k in map.keys() {
-        out.push(k.clone());
-      }
-    }
-
-    // from disk files
-    if let Ok(entries) = std::fs::read_dir(&self.base_threads_dir) {
-      for e in entries.flatten() {
-        let p = e.path();
-        if p.extension().and_then(|s| s.to_str()) == Some("json") {
-          if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
-            out.push(stem.to_string());
-          }
-        }
-      }
-    }
-
-    // from env (fresh installs won't have thread files yet)
-    if let Some(n) = get_signal_number() {
-      out.push(n);
-    }
-
-    out.sort();
-    out.dedup();
-    out
   }
 
   fn get_active(&self) -> Option<String> {
@@ -2119,7 +2090,7 @@ impl AccountManager {
   }
 
   fn set_active(&self, account_id: String) {
-    *self.active_account.lock().unwrap() = Some(account_id);
+    *self.active_account.lock().unwrap() = Some(sanitize_filename(account_id.trim()));
   }
 }
 
@@ -2495,6 +2466,28 @@ fn sanitize_filename(s: &str) -> String {
     .collect()
 }
 
+fn canonical_account_id_from_number(number: &str) -> String {
+  sanitize_filename(number.trim())
+}
+
+fn configured_account_id() -> Option<String> {
+  get_signal_number().map(|n| canonical_account_id_from_number(&n))
+}
+
+fn outbox_path_for(dir: &Path, account_id: &str) -> PathBuf {
+  dir.join(format!("{}.json", sanitize_filename(account_id)))
+}
+
+fn path_is_under_root(root: &Path, candidate: &Path) -> bool {
+  let Ok(root) = root.canonicalize() else {
+    return false;
+  };
+  let Ok(cand) = candidate.canonicalize() else {
+    return false;
+  };
+  cand.starts_with(&root)
+}
+
 fn compute_backoff_ms(attempt: u32) -> i64 {
   let base = 1000i64;
   let cap = 30_000i64;
@@ -2540,51 +2533,22 @@ fn check_ai_status() -> Value {
   ok_t(probe_ollama())
 }
 
-fn list_accounts(state: &AppState) -> Value {
-  ok_t(state.account_manager.list_accounts())
-}
-
-fn get_active_account(state: &AppState) -> Value {
-  ok(json!({ "account_id": state.account_manager.get_active() }))
-}
-
 fn require_active_account(state: &AppState) -> Result<String, Value> {
-  state
-    .account_manager
-    .get_active()
-    .ok_or_else(|| err("no active account".to_string()))
-}
-
-fn set_active_account(state: &AppState, account_id: String) -> Value {
-  let account_id = account_id.trim().to_string();
-  if account_id.is_empty() {
-    return err("account_id cannot be empty".to_string());
+  let id = configured_account_id().ok_or_else(|| err("SIGNALX_NUMBER not set".to_string()))?;
+  if state.account_manager.get_active().as_ref() != Some(&id) {
+    state.account_manager.set_active(id.clone());
+    let _ = state.account_manager.get_or_create(&id);
+    state.alias_manager.load_account(&id);
+    state.contact_store.load_account(&id);
+    state.group_store.load_account(&id);
   }
-
-  // ensure exists/loaded
-  let _ts = state.account_manager.get_or_create(&account_id);
-  state.alias_manager.load_account(&account_id);
-  state.contact_store.load_account(&account_id);
-  state.group_store.load_account(&account_id);
-
-  state.account_manager.set_active(account_id.clone());
-  ensure_outbox_worker(state.clone(), account_id.clone());
-  ok(json!(true))
+  Ok(id)
 }
 
 fn get_threads(state: &AppState) -> Value {
-  let account = match state.account_manager.get_active() {
-    Some(a) => a,
-    None => {
-      // fallback to SIGNALX_NUMBER if possible
-      if let Some(n) = get_signal_number() {
-        state.account_manager.set_active(n.clone());
-        state.alias_manager.load_account(&n);
-        n
-      } else {
-        return ok_t(Vec::<ThreadSummary>::new());
-      }
-    }
+  let account = match require_active_account(state) {
+    Ok(a) => a,
+    Err(_) => return ok_t(Vec::<ThreadSummary>::new()),
   };
   let ts = state.account_manager.get_or_create(&account);
   ok_t(ts.get_threads())
@@ -3442,9 +3406,15 @@ fn draft_reply(
   }
 }
 
-fn open_path(path: String) -> Value {
+fn open_path(state: &AppState, path: String) -> Value {
   use std::process::Command;
-  
+
+  let candidate = PathBuf::from(path.trim());
+  if !path_is_under_root(&state.app_data_dir, &candidate) {
+    return err("path must be under the SignalX app data directory".to_string());
+  }
+  let path = candidate.to_string_lossy().to_string();
+
   #[cfg(target_os = "macos")]
   {
     match Command::new("open").arg(&path).output() {
@@ -3459,86 +3429,18 @@ fn open_path(path: String) -> Value {
       }
     }
   }
-  
+
   #[cfg(target_os = "linux")]
   {
     let _ = Command::new("xdg-open").arg(&path).output();
   }
-  
+
   #[cfg(target_os = "windows")]
   {
     let _ = Command::new("explorer").arg(&path).output();
   }
-  
+
   ok(json!(true))
-}
-
-fn send_message(state: &AppState, thread_id: String, message: String) -> Value {
-  let config = match get_signal_config() {
-    Some(c) => c,
-    None => return err("SIGNALX_SIGNALCLI_CONFIG not set".to_string()),
-  };
-  let my_number = match get_signal_number() {
-    Some(n) => n,
-    None => return err("SIGNALX_NUMBER not set".to_string()),
-  };
-
-  let thread_id = thread_id.trim().to_string();
-  let text = message.trim().to_string();
-  if thread_id.is_empty() || text.is_empty() {
-    return err("threadId and message required".to_string());
-  }
-
-  let (kind, raw_recipient) = recipient_from_thread_id(&thread_id);
-
-  // send via signal-cli (spawn_blocking)
-  let cfg = config.clone();
-  let num = my_number.clone();
-  let txt = text.clone();
-  let rec = raw_recipient.clone();
-  let kind2 = kind.clone();
-
-  let res = tokio_block_on(async move {
-    tokio::task::spawn_blocking(move || {
-      let mut cmd = build_signal_command(&cfg, Some(&num));
-      cmd.arg("send");
-      if kind2 == "group" {
-        cmd.arg("-g").arg(&rec).arg("-m").arg(&txt);
-      } else {
-        cmd.arg("-m").arg(&txt).arg(&rec);
-      }
-      let out = cmd
-        .output()
-        .map_err(|e| format!("failed to run signal-cli: {}", e))?;
-
-      if !out.status.success() {
-        let e = String::from_utf8_lossy(&out.stderr).to_string();
-        return Err(format!("Failed to send message: {}", e));
-      }
-      Ok(())
-    })
-    .await
-    .map_err(|e| format!("send join error: {}", e))?
-  });
-
-  if let Err(e) = res {
-    return err(e);
-  }
-
-  // store + emit normalized outgoing
-  let account = state.account_manager.get_active().unwrap_or_else(|| my_number.clone());
-  let ts = state.account_manager.get_or_create(&account);
-  let (msg, participants) = normalize_outgoing_message(&my_number, &thread_id, &raw_recipient, &text);
-  let ts2 = ts.clone();
-  let msg2 = msg.clone();
-  let participants2 = participants.clone();
-  let _ = tokio_block_on(async move {
-    tokio::task::spawn_blocking(move || {
-      ts2.add_message(msg2, participants2);
-    })
-    .await
-  });
-  ok(json!({ "status": "sent" }))
 }
 
 fn make_outbox_id_legacy(thread_id: &str) -> String {
@@ -3872,10 +3774,18 @@ async fn receive_loop(state: AppState, agent_mode: Option<AgentModeConfig>) {
       }
     };
 
-    // ensure active account fallback
-    if state.account_manager.get_active().is_none() {
-      state.account_manager.set_active(my_number.clone());
-      state.alias_manager.load_account(&my_number);
+    // ensure configured account is loaded (storage key is sanitized)
+    let Some(account_id) = configured_account_id() else {
+      state.receive_monitor.on_error("SIGNALX_NUMBER not set".to_string());
+      emit_receive_health(&state.receive_monitor.snapshot());
+      tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+      continue;
+    };
+    if state.account_manager.get_active().as_ref() != Some(&account_id) {
+      state.account_manager.set_active(account_id.clone());
+      state.alias_manager.load_account(&account_id);
+      state.contact_store.load_account(&account_id);
+      state.group_store.load_account(&account_id);
     }
 
     let cfg = config.clone();
@@ -3917,7 +3827,7 @@ async fn receive_loop(state: AppState, agent_mode: Option<AgentModeConfig>) {
         emit_receive_health(&state.receive_monitor.snapshot());
 
         if !list.is_empty() {
-          let account = state.account_manager.get_active().unwrap_or_else(|| my_number.clone());
+          let account = account_id.clone();
           let ts = state.account_manager.get_or_create(&account);
 
           for v in list.iter() {
@@ -4097,12 +4007,11 @@ fn run_headless(state: AppState) {
     eprintln!("signal-cli {} at {}", v, cli.bin);
   }
 
-  if let Some(n) = get_signal_number() {
-    state.account_manager.set_active(n.clone());
-    state.account_manager.get_or_create(&n);
-    state.alias_manager.load_account(&n);
-    state.contact_store.load_account(&n);
-    state.group_store.load_account(&n);
+  bootstrap_accounts(&state);
+
+  if configured_account_id().is_none() || get_signal_config().is_none() {
+    eprintln!("SignalX: not configured — headless receive/outbox will not start");
+    return;
   }
 
   let agent_mode = if should_run_agent_mode() {
@@ -4116,7 +4025,7 @@ fn run_headless(state: AppState) {
   rt.block_on(async {
     tokio::spawn(receive_loop(state.clone(), agent_mode));
 
-    if let Some(a) = state.account_manager.get_active() {
+    if let Some(a) = configured_account_id() {
       ensure_outbox_worker(state.clone(), a);
     }
 
@@ -4291,13 +4200,15 @@ fn build_app_state() -> AppState {
 }
 
 fn bootstrap_accounts(state: &AppState) {
-  if let Some(n) = get_signal_number() {
-    state.account_manager.set_active(n.clone());
-    state.account_manager.get_or_create(&n);
-    state.alias_manager.load_account(&n);
-    state.contact_store.load_account(&n);
-    state.group_store.load_account(&n);
-  }
+  let Some(id) = configured_account_id() else {
+    eprintln!("SignalX: SIGNALX_NUMBER not set — receive/outbox will not start");
+    return;
+  };
+  state.account_manager.set_active(id.clone());
+  state.account_manager.get_or_create(&id);
+  state.alias_manager.load_account(&id);
+  state.contact_store.load_account(&id);
+  state.group_store.load_account(&id);
 }
 
 // --------------------
@@ -4314,18 +4225,6 @@ fn cmd_get_diagnostics(state: State<'_, AppState>) -> Value {
 #[tauri::command]
 fn cmd_check_ai_status() -> Value {
   check_ai_status()
-}
-#[tauri::command]
-fn cmd_list_accounts(state: State<'_, AppState>) -> Value {
-  list_accounts(&state)
-}
-#[tauri::command]
-fn cmd_get_active_account(state: State<'_, AppState>) -> Value {
-  get_active_account(&state)
-}
-#[tauri::command]
-fn cmd_set_active_account(state: State<'_, AppState>, account_id: String) -> Value {
-  set_active_account(&state, account_id)
 }
 #[tauri::command]
 fn cmd_get_threads(state: State<'_, AppState>) -> Value {
@@ -4495,12 +4394,8 @@ fn cmd_draft_reply(
   draft_reply(&state, thread_id, intent, constraints, last_n)
 }
 #[tauri::command]
-fn cmd_open_path(path: String) -> Value {
-  open_path(path)
-}
-#[tauri::command]
-fn cmd_send_message(state: State<'_, AppState>, thread_id: String, message: String) -> Value {
-  send_message(&state, thread_id, message)
+fn cmd_open_path(state: State<'_, AppState>, path: String) -> Value {
+  open_path(&state, path)
 }
 #[tauri::command]
 fn cmd_export_thread(
@@ -4566,9 +4461,13 @@ pub fn run() {
       // Agent drafts always prepared when AI is configured; auto-send is guarded separately.
       let agent_mode = Some(AgentModeConfig::enabled_default());
 
-      start_receive_loop(runtime_state.clone(), agent_mode);
-      if let Some(a) = runtime_state.account_manager.get_active() {
-        ensure_outbox_worker(runtime_state, a);
+      if configured_account_id().is_some() && get_signal_config().is_some() {
+        start_receive_loop(runtime_state.clone(), agent_mode);
+        if let Some(a) = configured_account_id() {
+          ensure_outbox_worker(runtime_state, a);
+        }
+      } else {
+        eprintln!("SignalX: not configured — skipping receive/outbox workers");
       }
 
       eprintln!("SignalX GUI starting");
@@ -4578,9 +4477,6 @@ pub fn run() {
       cmd_get_receive_loop_state,
       cmd_get_diagnostics,
       cmd_check_ai_status,
-      cmd_list_accounts,
-      cmd_get_active_account,
-      cmd_set_active_account,
       cmd_get_threads,
       cmd_get_thread_messages,
       cmd_get_pending_replies,
@@ -4611,7 +4507,6 @@ pub fn run() {
       cmd_summarize_thread,
       cmd_draft_reply,
       cmd_open_path,
-      cmd_send_message,
       cmd_export_thread,
       cmd_export_account,
       cmd_get_auto_reply_settings,
@@ -4622,4 +4517,49 @@ pub fn run() {
     ])
     .run(tauri::generate_context!())
     .expect("error while running SignalX");
+}
+
+#[cfg(test)]
+mod foundation_tests {
+  use super::*;
+  use std::path::PathBuf;
+
+  #[test]
+  fn sanitize_replaces_phone_plus_and_path_sep() {
+    assert_eq!(sanitize_filename("+12025551212"), "_12025551212");
+    assert_eq!(sanitize_filename("../etc/passwd"), "___etc_passwd");
+    assert!(!sanitize_filename("a/../../b").contains('/'));
+    assert!(!sanitize_filename("a/../../b").contains('.'));
+  }
+
+  #[test]
+  fn canonical_account_id_trims_and_sanitizes() {
+    assert_eq!(
+      canonical_account_id_from_number("  +12025551212\n"),
+      "_12025551212"
+    );
+  }
+
+  #[test]
+  fn outbox_path_stays_under_dir() {
+    let dir = PathBuf::from("/tmp/signalx-outbox-test");
+    let p = outbox_path_for(&dir, "../../etc/passwd");
+    assert_eq!(p, dir.join("______etc_passwd.json"));
+    assert!(p.starts_with(&dir));
+  }
+
+  #[test]
+  fn path_under_root_rejects_escape() {
+    let tmp = std::env::temp_dir().join(format!("signalx-root-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&tmp);
+    let inside = tmp.join("exports").join("a.json");
+    let _ = std::fs::create_dir_all(inside.parent().unwrap());
+    std::fs::write(&inside, b"x").unwrap();
+    assert!(path_is_under_root(&tmp, &inside));
+    let outside = std::env::temp_dir().join("signalx-outside-escape");
+    std::fs::write(&outside, b"y").unwrap();
+    assert!(!path_is_under_root(&tmp, &outside));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let _ = std::fs::remove_file(&outside);
+  }
 }

@@ -65,7 +65,7 @@ This will:
 
 ### Build the App
 ```bash
-npm run tauri:build
+npm run tauri build
 ```
 
 ### Verify Build

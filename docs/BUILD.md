@@ -25,7 +25,7 @@ Or use the launcher:
 Build the production-ready app:
 
 ```bash
-npm run tauri:build
+npm run tauri build
 ```
 
 This command will:
@@ -115,7 +115,7 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Build app
-        run: npm run tauri:build
+        run: npm run tauri build
       - name: Upload artifact
         uses: actions/upload-artifact@v3
         with:
