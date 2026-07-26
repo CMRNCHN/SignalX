@@ -11,6 +11,9 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Mutex as AsyncMutex;
 use chrono::Timelike;
 
+mod ivr;
+use ivr::{thread_allowed, IvrSettings, IvrStore};
+
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
 fn set_app_handle(handle: AppHandle) {
@@ -2453,6 +2456,7 @@ struct AppState {
   outbox_send_locks: Arc<Mutex<HashMap<String, Arc<AsyncMutex<()>>>>>, // account_id -> send mutex
   outbox_workers: Arc<Mutex<HashSet<String>>>, // account_id set
   auto_reply: AutoReplyStore,
+  ivr: IvrStore,
 }
 
 fn now_ms() -> i64 {
@@ -3836,8 +3840,11 @@ async fn receive_loop(state: AppState, agent_mode: Option<AgentModeConfig>) {
               let msg_id = msg.id.clone();
               ts.add_message(msg.clone(), participants);
               emit_message_new(&account, &msg);
-              if let Some(agent_cfg) = agent_mode.clone() {
-                trigger_agent_draft(state.clone(), agent_cfg, ts.clone(), thread_id, msg_id);
+              let ivr_handled = maybe_handle_ivr(&state, &thread_id, &msg.content);
+              if !ivr_handled {
+                if let Some(agent_cfg) = agent_mode.clone() {
+                  trigger_agent_draft(state.clone(), agent_cfg, ts.clone(), thread_id, msg_id);
+                }
               }
             }
           }
@@ -4196,6 +4203,7 @@ fn build_app_state() -> AppState {
     outbox_send_locks: Arc::new(Mutex::new(HashMap::new())),
     outbox_workers: Arc::new(Mutex::new(HashSet::new())),
     auto_reply: AutoReplyStore::new(&app_data_dir),
+    ivr: IvrStore::new(&app_data_dir),
   }
 }
 
@@ -4209,6 +4217,159 @@ fn bootstrap_accounts(state: &AppState) {
   state.alias_manager.load_account(&id);
   state.contact_store.load_account(&id);
   state.group_store.load_account(&id);
+}
+
+/// Returns true when IVR claimed this inbound (skip AI auto-send path).
+fn maybe_handle_ivr(state: &AppState, thread_id: &str, content: &str) -> bool {
+  if thread_id.starts_with("group:") {
+    return false;
+  }
+  let Some(account) = configured_account_id() else {
+    return false;
+  };
+  let settings = state.ivr.get_settings();
+  let now = now_ms();
+  let session = state.ivr.get_or_fresh_session(&account, thread_id, now);
+
+  if session.handed_off {
+    return true;
+  }
+  if !thread_allowed(&settings, thread_id) {
+    return false;
+  }
+
+  let menus = state.ivr.menus();
+  let result = ivr::step(session, content, &menus, now);
+  let _ = state.ivr.save_session(&account, result.session.clone());
+  emit_event(
+    "ivr://session",
+    json!({
+      "thread_id": thread_id,
+      "node_id": result.session.node_id,
+      "handed_off": result.session.handed_off,
+      "slots": result.session.slots,
+    }),
+  );
+
+  if let Some(reply) = result.reply {
+    let (_kind, recipient) = recipient_from_thread_id(thread_id);
+    let _ = queue_outgoing_message(state, thread_id.to_string(), recipient, reply);
+  }
+  result.handled
+}
+
+fn get_ivr_settings(state: &AppState) -> Value {
+  ok_t(state.ivr.get_settings())
+}
+
+fn set_ivr_settings(state: &AppState, settings: IvrSettings) -> Value {
+  match state.ivr.set_settings(settings) {
+    Ok(s) => {
+      emit_event("ivr://settings", s.clone());
+      ok_t(s)
+    }
+    Err(e) => err(e),
+  }
+}
+
+fn get_thread_ivr(state: &AppState, thread_id: String) -> Value {
+  let tid = thread_id.trim().to_string();
+  if tid.is_empty() {
+    return err("thread_id required".to_string());
+  }
+  let settings = state.ivr.get_settings();
+  let on_allowlist = settings.allowlist.iter().any(|t| t == &tid);
+  let account = match configured_account_id() {
+    Some(a) => a,
+    None => {
+      return ok(json!({
+        "thread_id": tid,
+        "enabled": false,
+        "handed_off": false,
+        "node_id": null,
+        "effective": false,
+      }));
+    }
+  };
+  let session = state.ivr.get_session(&account, &tid);
+  let handed_off = session.as_ref().map(|s| s.handed_off).unwrap_or(false);
+  let node_id = session.as_ref().map(|s| s.node_id.clone());
+  let effective = thread_allowed(&settings, &tid) && !handed_off;
+  ok(json!({
+    "thread_id": tid,
+    "enabled": on_allowlist,
+    "handed_off": handed_off,
+    "node_id": node_id,
+    "effective": effective,
+    "global_enabled": settings.enabled,
+  }))
+}
+
+fn set_thread_ivr(state: &AppState, thread_id: String, enabled: bool) -> Value {
+  let tid = thread_id.trim().to_string();
+  if tid.is_empty() {
+    return err("thread_id required".to_string());
+  }
+  if tid.starts_with("group:") {
+    return err("IVR is not available for group threads".to_string());
+  }
+  let account = match require_active_account(state) {
+    Ok(a) => a,
+    Err(v) => return v,
+  };
+  let now = now_ms();
+  match state.ivr.set_thread_enabled(&account, &tid, enabled, now) {
+    Ok(session) => {
+      if enabled {
+        let menus = state.ivr.menus();
+        let prompt = menus
+          .nodes
+          .get(&menus.entry)
+          .map(|n| n.prompt.clone())
+          .unwrap_or_default();
+        if !prompt.is_empty() {
+          let (_k, recipient) = recipient_from_thread_id(&tid);
+          let _ = queue_outgoing_message(state, tid.clone(), recipient, prompt);
+        }
+      }
+      emit_event(
+        "ivr://session",
+        json!({
+          "thread_id": tid,
+          "node_id": session.node_id,
+          "handed_off": session.handed_off,
+        }),
+      );
+      emit_event("ivr://settings", state.ivr.get_settings());
+      get_thread_ivr(state, tid)
+    }
+    Err(e) => err(e),
+  }
+}
+
+fn clear_thread_handoff(state: &AppState, thread_id: String) -> Value {
+  let tid = thread_id.trim().to_string();
+  if tid.is_empty() {
+    return err("thread_id required".to_string());
+  }
+  let account = match require_active_account(state) {
+    Ok(a) => a,
+    Err(v) => return v,
+  };
+  match state.ivr.clear_handoff(&account, &tid, now_ms()) {
+    Ok(session) => {
+      emit_event(
+        "ivr://session",
+        json!({
+          "thread_id": tid,
+          "node_id": session.node_id,
+          "handed_off": false,
+        }),
+      );
+      get_thread_ivr(state, tid)
+    }
+    Err(e) => err(e),
+  }
 }
 
 // --------------------
@@ -4440,6 +4601,26 @@ fn cmd_set_thread_auto_reply(
 fn cmd_get_thread_auto_reply(state: State<'_, AppState>, thread_id: String) -> Value {
   get_thread_auto_reply(&state, thread_id)
 }
+#[tauri::command]
+fn cmd_get_ivr_settings(state: State<'_, AppState>) -> Value {
+  get_ivr_settings(&state)
+}
+#[tauri::command]
+fn cmd_set_ivr_settings(state: State<'_, AppState>, settings: IvrSettings) -> Value {
+  set_ivr_settings(&state, settings)
+}
+#[tauri::command]
+fn cmd_get_thread_ivr(state: State<'_, AppState>, thread_id: String) -> Value {
+  get_thread_ivr(&state, thread_id)
+}
+#[tauri::command]
+fn cmd_set_thread_ivr(state: State<'_, AppState>, thread_id: String, enabled: bool) -> Value {
+  set_thread_ivr(&state, thread_id, enabled)
+}
+#[tauri::command]
+fn cmd_clear_thread_handoff(state: State<'_, AppState>, thread_id: String) -> Value {
+  clear_thread_handoff(&state, thread_id)
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -4514,6 +4695,11 @@ pub fn run() {
       cmd_list_auto_reply_audit,
       cmd_set_thread_auto_reply,
       cmd_get_thread_auto_reply,
+      cmd_get_ivr_settings,
+      cmd_set_ivr_settings,
+      cmd_get_thread_ivr,
+      cmd_set_thread_ivr,
+      cmd_clear_thread_handoff,
     ])
     .run(tauri::generate_context!())
     .expect("error while running SignalX");

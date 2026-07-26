@@ -145,6 +145,21 @@ export interface ThreadAutoReplyStatus {
   effective: boolean;
 }
 
+export interface IvrSettings {
+  enabled: boolean;
+  allowlist: string[];
+  require_allowlist: boolean;
+}
+
+export interface ThreadIvrStatus {
+  thread_id: string;
+  enabled: boolean;
+  handed_off: boolean;
+  node_id?: string | null;
+  effective: boolean;
+  global_enabled?: boolean;
+}
+
 async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<ApiResult<T>> {
   try {
     const raw = await invoke<ApiResult<T>>(cmd, args);
@@ -219,6 +234,15 @@ export const api = {
     call<unknown>("cmd_set_thread_auto_reply", { threadId, enabled }),
   getThreadAutoReply: (threadId: string) =>
     call<ThreadAutoReplyStatus>("cmd_get_thread_auto_reply", { threadId }),
+  getIvrSettings: () => call<IvrSettings>("cmd_get_ivr_settings"),
+  setIvrSettings: (settings: IvrSettings) =>
+    call<IvrSettings>("cmd_set_ivr_settings", { settings }),
+  getThreadIvr: (threadId: string) =>
+    call<ThreadIvrStatus>("cmd_get_thread_ivr", { threadId }),
+  setThreadIvr: (threadId: string, enabled: boolean) =>
+    call<ThreadIvrStatus>("cmd_set_thread_ivr", { threadId, enabled }),
+  clearThreadHandoff: (threadId: string) =>
+    call<ThreadIvrStatus>("cmd_clear_thread_handoff", { threadId }),
 };
 
 export async function onEvent<T>(

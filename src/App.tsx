@@ -10,11 +10,13 @@ import {
   type ContactMeta,
   type Diagnostics,
   type GroupMeta,
+  type IvrSettings,
   type Message,
   type OutboxItem,
   type ReceiveLoopState,
   type SearchResult,
   type ThreadAutoReplyStatus,
+  type ThreadIvrStatus,
   type ThreadSummary,
 } from "./api";
 
@@ -82,7 +84,9 @@ export default function App() {
   const [summaryText, setSummaryText] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [autoSettings, setAutoSettings] = useState<AutoReplySettings | null>(null);
+  const [ivrSettings, setIvrSettings] = useState<IvrSettings | null>(null);
   const [threadAuto, setThreadAuto] = useState<ThreadAutoReplyStatus | null>(null);
+  const [threadIvr, setThreadIvr] = useState<ThreadIvrStatus | null>(null);
   const [audit, setAudit] = useState<AutoReplyAuditEntry[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<string | null>(null);
@@ -104,16 +108,18 @@ export default function App() {
   };
 
   const refreshMeta = async () => {
-    const [c, g, ar, au] = await Promise.all([
+    const [c, g, ar, au, ivr] = await Promise.all([
       api.listContactMeta(),
       api.listGroupMeta(),
       api.getAutoReplySettings(),
       api.listAutoReplyAudit(80),
+      api.getIvrSettings(),
     ]);
     if (c.success) setContacts(c.data);
     if (g.success) setGroups(g.data);
     if (ar.success) setAutoSettings(ar.data);
     if (au.success) setAudit(au.data);
+    if (ivr.success) setIvrSettings(ivr.data);
   };
 
   const bootstrap = async () => {
@@ -178,6 +184,21 @@ export default function App() {
       unsubs.push(
         await onEvent<AutoReplySettings>("auto-reply://settings", (s) => setAutoSettings(s)),
       );
+      unsubs.push(
+        await onEvent<IvrSettings>("ivr://settings", (s) => setIvrSettings(s)),
+      );
+      unsubs.push(
+        await onEvent<{ thread_id?: string; handed_off?: boolean; node_id?: string }>(
+          "ivr://session",
+          (p) => {
+            if (p.thread_id && p.thread_id === selectedRef.current) {
+              void api.getThreadIvr(p.thread_id).then((r) => {
+                if (r.success) setThreadIvr(r.data);
+              });
+            }
+          },
+        ),
+      );
     })();
     const poll = window.setInterval(() => {
       void api.getReceiveLoopState().then((r) => {
@@ -199,12 +220,16 @@ export default function App() {
       setMessages([]);
       setOutbox([]);
       setThreadAuto(null);
+      setThreadIvr(null);
       setSummaryText(null);
       return;
     }
     void refreshMessages(selectedId);
     void api.getThreadAutoReply(selectedId).then((r) => {
       if (r.success) setThreadAuto(r.data);
+    });
+    void api.getThreadIvr(selectedId).then((r) => {
+      if (r.success) setThreadIvr(r.data);
     });
   }, [selectedId]);
 
@@ -313,6 +338,41 @@ export default function App() {
     else setStatus(res.error);
   };
 
+  const saveIvrSettings = async (patch: Partial<IvrSettings>) => {
+    if (!ivrSettings) return;
+    const next = { ...ivrSettings, ...patch };
+    const res = await api.setIvrSettings(next);
+    if (res.success) setIvrSettings(res.data);
+    else setStatus(res.error);
+  };
+
+  const toggleThreadIvr = async (enabled: boolean) => {
+    if (!selectedId) return;
+    if (selectedId.startsWith("group:")) {
+      setStatus("IVR is not available for group threads");
+      return;
+    }
+    const res = await api.setThreadIvr(selectedId, enabled);
+    if (!res.success) {
+      setStatus(res.error);
+      return;
+    }
+    setThreadIvr(res.data);
+    setStatus(enabled ? "IVR on — menu sent to this chat" : "IVR off for this chat");
+    await refreshMeta();
+  };
+
+  const resumeIvrBot = async () => {
+    if (!selectedId) return;
+    const res = await api.clearThreadHandoff(selectedId);
+    if (!res.success) {
+      setStatus(res.error);
+      return;
+    }
+    setThreadIvr(res.data);
+    setStatus("Bot resumed on this chat");
+  };
+
   const tone = healthTone(health);
   const title = selectedId ? threadTitle(selectedId, contacts, groups) : "SignalX";
 
@@ -339,6 +399,9 @@ export default function App() {
 
         {autoSettings?.enabled && (
           <div className="auto-global-banner">Auto-reply ON</div>
+        )}
+        {ivrSettings?.enabled && (
+          <div className="auto-global-banner">IVR menu ON</div>
         )}
 
         <nav className="nav">
@@ -581,6 +644,40 @@ export default function App() {
                 <pre className="allowlist">{autoSettings.allowlist.join("\n") || "(empty — nobody)"}</pre>
               </>
             )}
+
+            <h3>Menu IVR (global)</h3>
+            <p className="hint">
+              Text menus over Signal. Off by default. Enable globally, then opt in per
+              thread. Groups are never handled. Customer “3” hands off to you.
+            </p>
+            {ivrSettings && (
+              <>
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={ivrSettings.enabled}
+                    onChange={(e) => void saveIvrSettings({ enabled: e.target.checked })}
+                  />
+                  Master switch
+                </label>
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={ivrSettings.require_allowlist}
+                    onChange={(e) =>
+                      void saveIvrSettings({ require_allowlist: e.target.checked })
+                    }
+                  />
+                  Require per-thread allowlist
+                </label>
+                <label className="field-label">
+                  IVR allowlist ({ivrSettings.allowlist.length})
+                </label>
+                <pre className="allowlist">
+                  {ivrSettings.allowlist.join("\n") || "(empty — enable per thread)"}
+                </pre>
+              </>
+            )}
           </div>
         </section>
       )}
@@ -602,6 +699,26 @@ export default function App() {
               <div className="convo-actions">
                 {threadAuto?.effective && (
                   <span className="auto-thread-badge">Auto-reply ON</span>
+                )}
+                {threadIvr?.effective && (
+                  <span className="auto-thread-badge">IVR ON</span>
+                )}
+                {threadIvr?.handed_off && (
+                  <span className="auto-thread-badge warn">Handed off</span>
+                )}
+                <label className="toggle compact">
+                  <input
+                    type="checkbox"
+                    checked={!!threadIvr?.enabled}
+                    disabled={!!selectedId?.startsWith("group:")}
+                    onChange={(e) => void toggleThreadIvr(e.target.checked)}
+                  />
+                  Menu IVR
+                </label>
+                {threadIvr?.handed_off && (
+                  <button type="button" className="ghost-btn" onClick={() => void resumeIvrBot()}>
+                    Resume bot
+                  </button>
                 )}
                 <label className="toggle compact">
                   <input

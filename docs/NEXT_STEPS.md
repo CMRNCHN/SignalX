@@ -6,13 +6,10 @@ account and one outbox send path.
 
 ## Remaining product work
 
-1. **Menu responder (IVR)** — text menus / session state; replies via outbox;
-   handoff to human; no groups by default.
-2. **Catalog + customers** — local products (name, price, stock) and customers
-   tied to Signal contacts; IVR “browse products” lights up.
-3. **Orders + invoices in-thread** — create/check orders from menu or GUI;
-   stock adjusts; invoice text via outbox.
-4. **AI polish** — wire drafts/summaries cleanly into the new commerce flows.
+1. ~~Menu responder (IVR)~~ — shipped (text menus, handoff, allowlist)
+2. **Catalog + customers** — local products + customers tied to Signal contacts
+3. **Orders + invoices in-thread**
+4. **AI polish** on commerce flows
 
 ## AI setup (optional)
 
