@@ -25,11 +25,20 @@ import {
 
 type Panel = "threads" | "search" | "contacts" | "groups" | "products" | "customers" | "orders" | "audit" | "settings";
 
+/** Receive polls every ~2s; treat success older than this as stale. */
+const HEALTH_OK_MS = 30_000;
+const HEALTH_STALE_MS = 120_000;
+
 function healthTone(s: ReceiveLoopState | null): "green" | "yellow" | "red" {
   if (!s) return "yellow";
   if (s.cooldown_until && s.cooldown_until > Date.now()) return "red";
   if (s.last_receive_error) return s.consecutive_failures > 3 ? "red" : "yellow";
-  if (s.last_receive_ok_at) return "green";
+  if (s.last_receive_ok_at) {
+    const age = Date.now() - s.last_receive_ok_at;
+    if (age <= HEALTH_OK_MS) return "green";
+    if (age <= HEALTH_STALE_MS) return "yellow";
+    return "red";
+  }
   return "yellow";
 }
 
@@ -37,7 +46,12 @@ function healthLabel(s: ReceiveLoopState | null): string {
   if (!s) return "Connecting…";
   if (s.cooldown_until && s.cooldown_until > Date.now()) return "Self-heal cooldown";
   if (s.last_receive_error) return s.last_receive_error.slice(0, 80);
-  if (s.last_receive_ok_at) return "Receive loop healthy";
+  if (s.last_receive_ok_at) {
+    const age = Date.now() - s.last_receive_ok_at;
+    if (age <= HEALTH_OK_MS) return "Receive loop healthy";
+    if (age <= HEALTH_STALE_MS) return "Receive loop quiet";
+    return "Receive loop stale";
+  }
   return "Waiting for first receive";
 }
 
