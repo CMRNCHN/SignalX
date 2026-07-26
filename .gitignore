@@ -8,26 +8,17 @@
 # Logs
 *.log
 *.log.*
+run-dev.command.log
 
 # Build outputs
-dist/
-build/
-*.dmg
-*.app
-
-# Rust build artifacts
 src-tauri/target/
-**/*.rs.bk
-
-# Node
+dist/
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 
-# Editor directories and files
+# Editor / IDE
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 *~
@@ -43,12 +34,16 @@ signal-link-*.txt
 *-uri.txt
 *.wav
 
-# Bundle files
+# Bundle archives
 SignalX-Cursor-Bundle/
 SignalX-Cursor-Bundle.zip
 
-# Environment files
+# Secrets / local config (use .signalx.env.example)
 .env
 .env.local
 .env.*.local
+.signalx.env
+.signal-cli-link/
 
+# TypeScript incremental
+*.tsbuildinfo

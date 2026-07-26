@@ -1,17 +1,31 @@
 #!/usr/bin/env bash
 set -e
 
-cd /Users/cameroncohen/Developer/apps/signalx
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT"
 
-lsof -tiTCP -sTCP:LISTEN | xargs -r kill -9
+# Load local config (signal-cli + Ollama) if present.
+if [[ -f "$ROOT/.signalx.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT/.signalx.env"
+  set +a
+fi
 
-npm run dev &
-VITE_PID=$!
+# Install frontend deps on first run.
+if [[ ! -d "$ROOT/node_modules" ]]; then
+  echo "Installing frontend dependencies..."
+  npm install
+fi
 
-sleep 3
+# Free Vite's fixed port (vite.config.ts uses strictPort: true).
+if command -v lsof >/dev/null 2>&1; then
+  PID="$(lsof -ti tcp:5173 || true)"
+  if [ -n "$PID" ]; then
+    echo "Killing process on port 5173: $PID"
+    kill -9 $PID || true
+  fi
+fi
 
-cd src-tauri
-. "$HOME/.cargo/env"
-cargo tauri dev
-
-kill $VITE_PID 2>/dev/null || true
+# Launch the Tauri dev shell (starts Vite via beforeDevCommand).
+npm run tauri:dev -- "$@"
