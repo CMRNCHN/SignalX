@@ -151,11 +151,35 @@ textarea {
   text-align: center;
 }
 
+.auto-global-banner.ivr {
+  color: #a7f3d0;
+  background: rgba(52, 211, 153, 0.1);
+  border-color: rgba(52, 211, 153, 0.35);
+}
+
 .nav {
   display: flex;
   flex-direction: column;
   gap: 4px;
   margin-top: 8px;
+}
+
+.nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.nav-count {
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 1.4em;
+  text-align: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(61, 139, 253, 0.25);
+  color: var(--text);
 }
 
 .nav-btn,
@@ -204,6 +228,16 @@ textarea {
   padding: 14px 16px;
   border-bottom: 1px solid var(--border);
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.col-meta {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
 }
 
 .thread-list,
@@ -364,11 +398,128 @@ textarea {
   border-radius: 6px;
 }
 
+.auto-thread-badge.warn {
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.inline-hint {
+  font-size: 11px;
+  max-width: 160px;
+}
+
+.convo-sub.inline {
+  display: inline;
+  margin-left: 6px;
+}
+
 .product-form {
   display: grid;
   gap: 8px;
   padding: 10px 12px 14px;
   border-bottom: 1px solid var(--border);
+}
+
+.product-form .hint,
+.hint.tight {
+  padding: 0;
+}
+
+.order-target {
+  font-size: 13px;
+  color: var(--text-dim);
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.order-target strong {
+  color: var(--text);
+}
+
+.warn-text {
+  color: #fde68a;
+}
+
+.order-id {
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.status-pill {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.status-pill.status-ok {
+  color: #a7f3d0;
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.35);
+}
+
+.status-pill.status-warn {
+  color: #fde68a;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+}
+
+.status-pill.status-danger {
+  color: #fecaca;
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+}
+
+.status-pill.status-muted {
+  color: var(--text-dim);
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.action-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.action-btn.primary {
+  color: #dbeafe;
+  border-color: rgba(61, 139, 253, 0.45);
+  background: rgba(61, 139, 253, 0.15);
+  font-weight: 600;
+}
+
+.action-btn.primary:hover {
+  background: rgba(61, 139, 253, 0.25);
+  color: var(--text);
+}
+
+.product-form select,
+.product-form input,
+.settings-body input[type="number"],
+.settings-body input:not([type="checkbox"]),
+.settings-grid input {
+  width: 100%;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  outline: none;
+}
+
+.product-form select:focus,
+.product-form input:focus {
+  border-color: var(--accent);
 }
 
 .product-row {
@@ -511,6 +662,30 @@ textarea {
   border: 1px solid rgba(251, 191, 36, 0.25);
   color: #fde68a;
   font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.shell-status {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(24, 32, 51, 0.96);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  color: #fde68a;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
 
 .composer {
@@ -577,12 +752,116 @@ textarea {
   padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
   max-width: 520px;
 }
 
+.settings-body.wide-body {
+  max-width: 720px;
+}
+
 .settings-body h3 {
-  margin: 0 0 4px;
+  margin: 0;
+  font-size: 15px;
+}
+
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.settings-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.field-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.diag-grid {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.diag-grid dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.diag-grid dd {
+  margin: 4px 0 0;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-link-uri {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.device-link-uri-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  word-break: break-all;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-3);
+  color: var(--text-dim);
+}
+
+.allowlist-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.allowlist-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.allowlist-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(36, 48, 68, 0.7);
+}
+
+.allowlist-list li:last-child {
+  border-bottom: 0;
 }
 
 @media (max-width: 900px) {
@@ -599,5 +878,9 @@ textarea {
   .auto-global-banner,
   .rail-foot {
     display: none;
+  }
+  .settings-grid,
+  .diag-grid {
+    grid-template-columns: 1fr;
   }
 }

@@ -10,6 +10,8 @@ import {
   type ContactMeta,
   type Customer,
   type Diagnostics,
+  type DeviceLinkStatus,
+  type DeviceLinkUri,
   type GroupMeta,
   type IvrSettings,
   type Message,
@@ -82,9 +84,30 @@ function isOutgoing(m: Message): boolean {
   return d === "outgoing" || d.includes("out");
 }
 
+function money(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function orderStatusTone(status: string): "ok" | "warn" | "danger" | "muted" {
+  const s = status.toLowerCase();
+  if (s === "paid" || s === "completed") return "ok";
+  if (s === "cancelled" || s === "canceled" || s === "failed") return "danger";
+  if (s === "invoiced" || s === "sent" || s === "pending") return "warn";
+  return "muted";
+}
+
+function ivrInactiveReason(ivr: ThreadIvrStatus | null): string | null {
+  if (!ivr || ivr.effective) return null;
+  if (ivr.handed_off) return null;
+  if (ivr.global_enabled === false) return "IVR armed · global switch is off";
+  if (!ivr.enabled) return null;
+  return "IVR armed · waiting to become effective";
+}
+
 export default function App() {
   const [panel, setPanel] = useState<Panel>("threads");
   const [accountNumber, setAccountNumber] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
   const [health, setHealth] = useState<ReceiveLoopState | null>(null);
   const [ai, setAi] = useState<AiStatus | null>(null);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
@@ -116,6 +139,10 @@ export default function App() {
   const [orderProductId, setOrderProductId] = useState("");
   const [orderQty, setOrderQty] = useState("1");
   const [audit, setAudit] = useState<AutoReplyAuditEntry[]>([]);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [linkUri, setLinkUri] = useState<string | null>(null);
+  const [linkStatus, setLinkStatus] = useState<DeviceLinkStatus | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<string | null>(null);
   selectedRef.current = selectedId;
@@ -123,6 +150,11 @@ export default function App() {
   const refreshThreads = async () => {
     const res = await api.getThreads();
     if (res.success) setThreads(res.data);
+  };
+
+  const refreshDiagnostics = async () => {
+    const res = await api.getDiagnostics();
+    if (res.success) setDiagnostics(res.data);
   };
 
   const refreshMessages = async (threadId: string) => {
@@ -166,6 +198,7 @@ export default function App() {
       api.checkAiStatus(),
     ]);
     const d = unwrap(diag, null as unknown as Diagnostics | null);
+    setDiagnostics(d);
     setAccountNumber(d?.number ?? null);
     if (!d?.number) {
       setStatus("Not configured — set SIGNALX_NUMBER and SIGNALX_SIGNALCLI_CONFIG in .signalx.env");
@@ -235,6 +268,21 @@ export default function App() {
             }
           },
         ),
+      );
+      unsubs.push(
+        await onEvent<DeviceLinkUri>("device-link://uri", (p) => {
+          if (p.uri) setLinkUri(p.uri);
+        }),
+      );
+      unsubs.push(
+        await onEvent<DeviceLinkStatus>("device-link://status", (s) => {
+          setLinkStatus(s);
+          setLinkBusy(false);
+          if (s.state === "success") {
+            setStatus("Device linked — set SIGNALX_NUMBER if needed, then restart receive");
+            void refreshDiagnostics();
+          }
+        }),
       );
     })();
     const poll = window.setInterval(() => {
@@ -379,8 +427,93 @@ export default function App() {
     if (!ivrSettings) return;
     const next = { ...ivrSettings, ...patch };
     const res = await api.setIvrSettings(next);
-    if (res.success) setIvrSettings(res.data);
-    else setStatus(res.error);
+    if (res.success) {
+      setIvrSettings(res.data);
+      if (selectedId) {
+        const st = await api.getThreadIvr(selectedId);
+        if (st.success) setThreadIvr(st.data);
+      }
+    } else {
+      setStatus(res.error);
+    }
+  };
+
+  const addToAllowlist = async (kind: "ivr" | "auto", threadId: string | null) => {
+    if (!threadId || threadId.startsWith("group:")) {
+      setStatus("Select a DM thread first");
+      return;
+    }
+    if (kind === "ivr") {
+      if (!ivrSettings) return;
+      if (ivrSettings.allowlist.includes(threadId)) {
+        setStatus("Already on IVR allowlist");
+        return;
+      }
+      await saveIvrSettings({ allowlist: [...ivrSettings.allowlist, threadId] });
+      setStatus(`Added to IVR allowlist: ${threadTitle(threadId, contacts, groups)}`);
+      return;
+    }
+    if (!autoSettings) return;
+    if (autoSettings.allowlist.includes(threadId)) {
+      setStatus("Already on auto-reply allowlist");
+      return;
+    }
+    await saveAutoSettings({ allowlist: [...autoSettings.allowlist, threadId] });
+    setStatus(`Added to auto-reply allowlist: ${threadTitle(threadId, contacts, groups)}`);
+  };
+
+  const removeFromAllowlist = async (kind: "ivr" | "auto", threadId: string) => {
+    if (kind === "ivr") {
+      if (!ivrSettings) return;
+      await saveIvrSettings({
+        allowlist: ivrSettings.allowlist.filter((t) => t !== threadId),
+      });
+      return;
+    }
+    if (!autoSettings) return;
+    await saveAutoSettings({
+      allowlist: autoSettings.allowlist.filter((t) => t !== threadId),
+    });
+  };
+
+  const startDeviceLink = async () => {
+    setLinkCopied(false);
+    setLinkUri(null);
+    setLinkStatus(null);
+    setLinkBusy(true);
+    const res = await api.startDeviceLink();
+    if (!res.success) {
+      setLinkBusy(false);
+      setLinkStatus({ state: "error", message: res.error });
+      setStatus(res.error);
+      return;
+    }
+    setLinkStatus({ state: "waiting", message: "Waiting for phone scan…" });
+  };
+
+  const cancelDeviceLink = async () => {
+    const res = await api.cancelDeviceLink();
+    if (!res.success) {
+      setStatus(res.error);
+      setLinkBusy(false);
+    }
+  };
+
+  const copyLinkUri = async () => {
+    if (!linkUri) return;
+    try {
+      await navigator.clipboard.writeText(linkUri);
+      setLinkCopied(true);
+      window.setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      setStatus("Could not copy URI — select and copy manually");
+    }
+  };
+
+  const orderParty = (o: Order): string => {
+    const cust = customers.find((c) => c.id === o.customer_id || c.thread_id === o.thread_id);
+    if (cust?.display_name) return cust.display_name;
+    return threadTitle(o.thread_id, contacts, groups);
   };
 
   const toggleThreadIvr = async (enabled: boolean) => {
@@ -499,6 +632,7 @@ export default function App() {
 
   const tone = healthTone(health);
   const title = selectedId ? threadTitle(selectedId, contacts, groups) : "SignalX";
+  const ivrHint = ivrInactiveReason(threadIvr);
 
   return (
     <div className="shell">
@@ -525,7 +659,7 @@ export default function App() {
           <div className="auto-global-banner">Auto-reply ON</div>
         )}
         {ivrSettings?.enabled && (
-          <div className="auto-global-banner">IVR menu ON</div>
+          <div className="auto-global-banner ivr">IVR menu ON</div>
         )}
 
         <nav className="nav">
@@ -535,7 +669,7 @@ export default function App() {
               ["search", "Search"],
               ["contacts", "Contacts"],
               ["groups", "Groups"],
-              ["products", "Products"],
+              ["products", "Catalog"],
               ["customers", "Customers"],
               ["orders", "Orders"],
               ["audit", "Auto-reply log"],
@@ -549,6 +683,9 @@ export default function App() {
               onClick={() => setPanel(id)}
             >
               {label}
+              {id === "orders" && orders.length > 0 && (
+                <span className="nav-count">{orders.length}</span>
+              )}
             </button>
           ))}
         </nav>
@@ -686,9 +823,15 @@ export default function App() {
 
       {panel === "products" && (
         <section className="thread-col wide">
-          <header className="col-head">Products</header>
+          <header className="col-head">
+            Catalog
+            <span className="col-meta">{products.length} products</span>
+          </header>
           <div className="settings-body">
             <div className="product-form">
+              <p className="hint tight">
+                Stocked items appear in IVR browse/order menus. Price is USD.
+              </p>
               <input
                 placeholder="Name"
                 value={productForm.name}
@@ -719,10 +862,13 @@ export default function App() {
                   <div className="thread-row-top">
                     <span className="thread-name">{p.name}</span>
                     <span className="thread-time">
-                      ${(p.price_cents / 100).toFixed(2)} · {p.quantity_in_stock} left
+                      {money(p.price_cents)} · {p.quantity_in_stock} left
                     </span>
                   </div>
                   <div className="convo-sub">{p.sku || p.id.slice(0, 8)}</div>
+                  {p.quantity_in_stock <= 0 && (
+                    <span className="badge danger">Out of stock</span>
+                  )}
                   <button type="button" className="ghost-btn" onClick={() => void removeProduct(p.id)}>
                     Delete
                   </button>
@@ -743,32 +889,42 @@ export default function App() {
             </button>
           </header>
           <div className="thread-list">
-            {customers.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                className="thread-row"
-                onClick={() => {
-                  setSelectedId(c.thread_id);
-                  setPanel("threads");
-                }}
-              >
-                <div className="thread-row-top">
-                  <span className="thread-name">{c.display_name || c.thread_id}</span>
-                  <button
-                    type="button"
-                    className="ghost-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void removeCustomer(c.id);
-                    }}
-                  >
-                    Delete
-                  </button>
-                </div>
-                <div className="convo-sub">{c.thread_id}</div>
-              </button>
-            ))}
+            {customers.map((c) => {
+              const orderCount = orders.filter(
+                (o) => o.customer_id === c.id || o.thread_id === c.thread_id,
+              ).length;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={selectedId === c.thread_id ? "thread-row active" : "thread-row"}
+                  onClick={() => {
+                    setSelectedId(c.thread_id);
+                    setPanel("threads");
+                  }}
+                >
+                  <div className="thread-row-top">
+                    <span className="thread-name">{c.display_name || c.thread_id}</span>
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void removeCustomer(c.id);
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                  <div className="convo-sub">{c.thread_id}</div>
+                  <div className="thread-row-meta">
+                    {orderCount > 0 && (
+                      <span className="badge muted">{orderCount} order{orderCount === 1 ? "" : "s"}</span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
             {customers.length === 0 && (
               <p className="hint">Open a DM and use “Link current chat”.</p>
             )}
@@ -778,20 +934,35 @@ export default function App() {
 
       {panel === "orders" && (
         <section className="thread-col wide">
-          <header className="col-head">Orders</header>
-          <div className="settings-body">
+          <header className="col-head">
+            Orders
+            <span className="col-meta">{orders.length} total</span>
+          </header>
+          <div className="settings-body wide-body">
             <div className="product-form">
-              <p className="hint">
-                Creates an order for the selected DM, decrements stock, and can send an invoice
-                over Signal.
+              <p className="hint tight">
+                Creates an order for the selected DM, decrements stock, then you can queue an
+                invoice over Signal (outbox).
               </p>
+              <div className="order-target">
+                {selectedId && !selectedId.startsWith("group:") ? (
+                  <>
+                    Ordering for <strong>{threadTitle(selectedId, contacts, groups)}</strong>
+                    <span className="convo-sub inline">{selectedId}</span>
+                  </>
+                ) : (
+                  <span className="warn-text">Select a DM thread first to place an order.</span>
+                )}
+              </div>
               <select
                 value={orderProductId}
                 onChange={(e) => setOrderProductId(e.target.value)}
+                disabled={products.length === 0}
               >
+                {products.length === 0 && <option value="">No products — add in Catalog</option>}
                 {products.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} (${(p.price_cents / 100).toFixed(2)}, {p.quantity_in_stock} left)
+                    {p.name} ({money(p.price_cents)}, {p.quantity_in_stock} left)
                   </option>
                 ))}
               </select>
@@ -800,44 +971,61 @@ export default function App() {
                 value={orderQty}
                 onChange={(e) => setOrderQty(e.target.value)}
               />
-              <button type="button" className="send-btn" onClick={() => void placeOrder()}>
+              <button
+                type="button"
+                className="send-btn"
+                disabled={!selectedId || selectedId.startsWith("group:") || products.length === 0}
+                onClick={() => void placeOrder()}
+              >
                 Place order on current chat
               </button>
             </div>
             <div className="thread-list">
-              {orders.map((o) => (
-                <div key={o.id} className="thread-row product-row">
-                  <div className="thread-row-top">
-                    <span className="thread-name">
-                      {o.id.slice(0, 8)} · {o.status}
-                    </span>
-                    <span className="thread-time">${(o.total_cents / 100).toFixed(2)}</span>
-                  </div>
-                  <div className="convo-sub">
-                    {o.thread_id} · {o.lines.map((l) => `${l.name}×${l.quantity}`).join(", ")}
-                  </div>
-                  <div className="row-actions">
-                    <button type="button" className="ghost-btn" onClick={() => void sendInvoice(o.id)}>
-                      Send invoice
-                    </button>
-                    {o.status !== "paid" && (
-                      <button type="button" className="ghost-btn" onClick={() => void markOrderPaid(o.id)}>
-                        Mark paid
+              {[...orders]
+                .sort((a, b) => b.created_at - a.created_at)
+                .map((o) => (
+                  <div key={o.id} className="thread-row product-row">
+                    <div className="thread-row-top">
+                      <span className="thread-name">
+                        {orderParty(o)}
+                        <span className="order-id"> · {o.id.slice(0, 8)}</span>
+                      </span>
+                      <span className={`status-pill status-${orderStatusTone(o.status)}`}>
+                        {o.status}
+                      </span>
+                    </div>
+                    <div className="convo-sub">
+                      {money(o.total_cents)} · {o.lines.map((l) => `${l.name}×${l.quantity}`).join(", ")}
+                      {" · "}
+                      {fmtTime(o.created_at)}
+                    </div>
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="action-btn primary"
+                        onClick={() => void sendInvoice(o.id)}
+                        title="Queue invoice text to this chat via outbox"
+                      >
+                        Send invoice
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      className="ghost-btn"
-                      onClick={() => {
-                        setSelectedId(o.thread_id);
-                        setPanel("threads");
-                      }}
-                    >
-                      Open chat
-                    </button>
+                      {o.status !== "paid" && (
+                        <button type="button" className="ghost-btn" onClick={() => void markOrderPaid(o.id)}>
+                          Mark paid
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        onClick={() => {
+                          setSelectedId(o.thread_id);
+                          setPanel("threads");
+                        }}
+                      >
+                        Open chat
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
               {orders.length === 0 && <p className="hint">No orders yet.</p>}
             </div>
           </div>
@@ -867,104 +1055,297 @@ export default function App() {
       {panel === "settings" && (
         <section className="thread-col wide">
           <header className="col-head">Settings</header>
-          <div className="settings-body">
-            <h3>Auto-reply (global)</h3>
-            <p className="hint">
-              Off by default. Even when on, only allowlisted + opted-in threads can auto-send.
-              Groups stay off unless explicitly enabled per thread.
-            </p>
-            {autoSettings && (
-              <>
-                <label className="toggle">
-                  <input
-                    type="checkbox"
-                    checked={autoSettings.enabled}
-                    onChange={(e) => void saveAutoSettings({ enabled: e.target.checked })}
-                  />
-                  Master switch (kill-switch when off)
-                </label>
-                <label className="field-label">Max per thread / window</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={autoSettings.max_per_thread_per_hour}
-                  onChange={(e) =>
-                    void saveAutoSettings({
-                      max_per_thread_per_hour: Number(e.target.value) || 1,
-                    })
-                  }
-                />
-                <label className="field-label">Max global / window</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={autoSettings.max_per_window}
-                  onChange={(e) =>
-                    void saveAutoSettings({ max_per_window: Number(e.target.value) || 1 })
-                  }
-                />
-                <label className="field-label">Quiet hours start (0–23, blank = off)</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={23}
-                  value={autoSettings.quiet_hours_start ?? ""}
-                  onChange={(e) =>
-                    void saveAutoSettings({
-                      quiet_hours_start: e.target.value === "" ? null : Number(e.target.value),
-                    })
-                  }
-                />
-                <label className="field-label">Quiet hours end</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={23}
-                  value={autoSettings.quiet_hours_end ?? ""}
-                  onChange={(e) =>
-                    void saveAutoSettings({
-                      quiet_hours_end: e.target.value === "" ? null : Number(e.target.value),
-                    })
-                  }
-                />
-                <label className="field-label">Allowlist ({autoSettings.allowlist.length})</label>
-                <pre className="allowlist">{autoSettings.allowlist.join("\n") || "(empty — nobody)"}</pre>
-              </>
-            )}
+          <div className="settings-body wide-body">
+            <div className="settings-card">
+              <div className="settings-card-head">
+                <h3>System</h3>
+                <span className={`status-pill status-${diagnostics?.signal_cli_usable ? "ok" : "danger"}`}>
+                  {diagnostics?.signal_cli_usable ? "signal-cli ok" : "signal-cli issue"}
+                </span>
+              </div>
+              <dl className="diag-grid">
+                <div>
+                  <dt>Number</dt>
+                  <dd>{diagnostics?.number || "—"}</dd>
+                </div>
+                <div>
+                  <dt>Receive</dt>
+                  <dd title={healthLabel(health)}>{healthLabel(health)}</dd>
+                </div>
+                <div>
+                  <dt>AI</dt>
+                  <dd>
+                    {ai?.configured
+                      ? ai.ollama_reachable
+                        ? ai.ollama_model || "ollama"
+                        : "unreachable"
+                      : "not configured"}
+                  </dd>
+                </div>
+              </dl>
+              {diagnostics?.signal_cli_last_error && (
+                <p className="hint tight warn-text">{diagnostics.signal_cli_last_error}</p>
+              )}
+            </div>
 
-            <h3>Menu IVR (global)</h3>
-            <p className="hint">
-              Text menus over Signal. Off by default. Enable globally, then opt in per
-              thread. Groups are never handled. Customer “3” hands off to you.
-            </p>
-            {ivrSettings && (
-              <>
-                <label className="toggle">
-                  <input
-                    type="checkbox"
-                    checked={ivrSettings.enabled}
-                    onChange={(e) => void saveIvrSettings({ enabled: e.target.checked })}
-                  />
-                  Master switch
-                </label>
-                <label className="toggle">
-                  <input
-                    type="checkbox"
-                    checked={ivrSettings.require_allowlist}
-                    onChange={(e) =>
-                      void saveIvrSettings({ require_allowlist: e.target.checked })
-                    }
-                  />
-                  Require per-thread allowlist
-                </label>
-                <label className="field-label">
-                  IVR allowlist ({ivrSettings.allowlist.length})
-                </label>
-                <pre className="allowlist">
-                  {ivrSettings.allowlist.join("\n") || "(empty — enable per thread)"}
-                </pre>
-              </>
-            )}
+            <div className="settings-card">
+              <div className="settings-card-head">
+                <h3>Device link</h3>
+                <span
+                  className={`status-pill status-${
+                    linkStatus?.state === "success"
+                      ? "ok"
+                      : linkStatus?.state === "error"
+                        ? "danger"
+                        : linkBusy || linkStatus?.state === "waiting"
+                          ? "warn"
+                          : "muted"
+                  }`}
+                >
+                  {linkBusy || linkStatus?.state === "waiting"
+                    ? "WAITING"
+                    : linkStatus?.state === "success"
+                      ? "LINKED"
+                      : linkStatus?.state === "error"
+                        ? "FAILED"
+                        : linkStatus?.state === "cancelled"
+                          ? "CANCELLED"
+                          : "IDLE"}
+                </span>
+              </div>
+              <p className="hint tight">
+                Link this Mac as a Signal secondary device. Scan the URI from Signal → Linked
+                devices on your phone. Uses the same config as{" "}
+                <code>SIGNALX_SIGNALCLI_CONFIG</code>. Scripts under <code>scripts/</code> remain
+                a fallback.
+              </p>
+              <div className="row-actions">
+                <button
+                  type="button"
+                  className="action-btn primary"
+                  disabled={linkBusy || !diagnostics?.signal_cli_usable}
+                  onClick={() => void startDeviceLink()}
+                >
+                  Start linking
+                </button>
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  disabled={!linkBusy}
+                  onClick={() => void cancelDeviceLink()}
+                >
+                  Cancel
+                </button>
+              </div>
+              {linkUri && (
+                <div className="device-link-uri">
+                  <code className="device-link-uri-text" title={linkUri}>
+                    {linkUri}
+                  </code>
+                  <button type="button" className="action-btn" onClick={() => void copyLinkUri()}>
+                    {linkCopied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+              )}
+              {linkStatus?.message && (
+                <p
+                  className={`hint tight ${
+                    linkStatus.state === "error" ? "warn-text" : ""
+                  }`}
+                >
+                  {linkStatus.message}
+                </p>
+              )}
+              {!diagnostics?.config_path && (
+                <p className="hint tight warn-text">
+                  Set SIGNALX_SIGNALCLI_CONFIG in .signalx.env before linking.
+                </p>
+              )}
+            </div>
+
+            <div className="settings-card">
+              <div className="settings-card-head">
+                <h3>Auto-reply (global)</h3>
+                <span className={`status-pill status-${autoSettings?.enabled ? "warn" : "muted"}`}>
+                  {autoSettings?.enabled ? "ON" : "OFF"}
+                </span>
+              </div>
+              <p className="hint tight">
+                Off by default. Even when on, only allowlisted + opted-in threads can auto-send.
+                Groups stay off unless explicitly enabled per thread.
+              </p>
+              {autoSettings && (
+                <>
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={autoSettings.enabled}
+                      onChange={(e) => void saveAutoSettings({ enabled: e.target.checked })}
+                    />
+                    Master switch (kill-switch when off)
+                  </label>
+                  <div className="settings-grid">
+                    <label className="field-stack">
+                      <span className="field-label">Max per thread / window</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={autoSettings.max_per_thread_per_hour}
+                        onChange={(e) =>
+                          void saveAutoSettings({
+                            max_per_thread_per_hour: Number(e.target.value) || 1,
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="field-stack">
+                      <span className="field-label">Max global / window</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={autoSettings.max_per_window}
+                        onChange={(e) =>
+                          void saveAutoSettings({ max_per_window: Number(e.target.value) || 1 })
+                        }
+                      />
+                    </label>
+                    <label className="field-stack">
+                      <span className="field-label">Quiet hours start (0–23)</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={23}
+                        placeholder="off"
+                        value={autoSettings.quiet_hours_start ?? ""}
+                        onChange={(e) =>
+                          void saveAutoSettings({
+                            quiet_hours_start: e.target.value === "" ? null : Number(e.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="field-stack">
+                      <span className="field-label">Quiet hours end</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={23}
+                        placeholder="off"
+                        value={autoSettings.quiet_hours_end ?? ""}
+                        onChange={(e) =>
+                          void saveAutoSettings({
+                            quiet_hours_end: e.target.value === "" ? null : Number(e.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+                  <div className="allowlist-head">
+                    <span className="field-label">
+                      Allowlist ({autoSettings.allowlist.length})
+                    </span>
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      onClick={() => void addToAllowlist("auto", selectedId)}
+                    >
+                      Add current chat
+                    </button>
+                  </div>
+                  {autoSettings.allowlist.length === 0 ? (
+                    <p className="hint tight">Empty — nobody can auto-send.</p>
+                  ) : (
+                    <ul className="allowlist-list">
+                      {autoSettings.allowlist.map((tid) => (
+                        <li key={tid}>
+                          <div>
+                            <div className="thread-name">{threadTitle(tid, contacts, groups)}</div>
+                            <div className="convo-sub">{tid}</div>
+                          </div>
+                          <button
+                            type="button"
+                            className="ghost-btn"
+                            onClick={() => void removeFromAllowlist("auto", tid)}
+                          >
+                            Remove
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="settings-card">
+              <div className="settings-card-head">
+                <h3>Menu IVR (global)</h3>
+                <span className={`status-pill status-${ivrSettings?.enabled ? "ok" : "muted"}`}>
+                  {ivrSettings?.enabled ? "ON" : "OFF"}
+                </span>
+              </div>
+              <p className="hint tight">
+                Text menus over Signal. Enable globally, then opt in per DM (or add to
+                allowlist below). Groups are never handled. Buyer “3” hands off to you.
+              </p>
+              {ivrSettings && (
+                <>
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={ivrSettings.enabled}
+                      onChange={(e) => void saveIvrSettings({ enabled: e.target.checked })}
+                    />
+                    Master switch
+                  </label>
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={ivrSettings.require_allowlist}
+                      onChange={(e) =>
+                        void saveIvrSettings({ require_allowlist: e.target.checked })
+                      }
+                    />
+                    Require per-thread allowlist
+                  </label>
+                  <div className="allowlist-head">
+                    <span className="field-label">
+                      IVR allowlist ({ivrSettings.allowlist.length})
+                    </span>
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      onClick={() => void addToAllowlist("ivr", selectedId)}
+                    >
+                      Add current chat
+                    </button>
+                  </div>
+                  {ivrSettings.allowlist.length === 0 ? (
+                    <p className="hint tight">
+                      Empty — enable Menu IVR on a DM thread, or add a chat here.
+                    </p>
+                  ) : (
+                    <ul className="allowlist-list">
+                      {ivrSettings.allowlist.map((tid) => (
+                        <li key={tid}>
+                          <div>
+                            <div className="thread-name">{threadTitle(tid, contacts, groups)}</div>
+                            <div className="convo-sub">{tid}</div>
+                          </div>
+                          <button
+                            type="button"
+                            className="ghost-btn"
+                            onClick={() => void removeFromAllowlist("ivr", tid)}
+                          >
+                            Remove
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </section>
       )}
@@ -993,6 +1374,11 @@ export default function App() {
                 {threadIvr?.handed_off && (
                   <span className="auto-thread-badge warn">Handed off</span>
                 )}
+                {ivrHint && (
+                  <span className="auto-thread-badge warn" title={ivrHint}>
+                    {ivrHint}
+                  </span>
+                )}
                 <label className="toggle compact">
                   <input
                     type="checkbox"
@@ -1006,6 +1392,9 @@ export default function App() {
                   <button type="button" className="ghost-btn" onClick={() => void resumeIvrBot()}>
                     Resume bot
                   </button>
+                )}
+                {!threadIvr?.enabled && ivrSettings?.enabled && !selectedId?.startsWith("group:") && (
+                  <span className="convo-sub inline-hint">Enable Menu IVR to allowlist this chat</span>
                 )}
                 <label className="toggle compact">
                   <input
@@ -1075,7 +1464,14 @@ export default function App() {
               <div ref={bottomRef} />
             </div>
 
-            {status && <div className="status-bar">{status}</div>}
+            {status && (
+              <div className="status-bar">
+                <span>{status}</span>
+                <button type="button" className="ghost-btn" onClick={() => setStatus(null)}>
+                  Dismiss
+                </button>
+              </div>
+            )}
 
             <div className="composer">
               <textarea
@@ -1103,6 +1499,20 @@ export default function App() {
         )}
       </main>
       )}
+
+      {status &&
+        (panel === "audit" ||
+          panel === "settings" ||
+          panel === "products" ||
+          panel === "orders" ||
+          !selectedId) && (
+          <div className="shell-status" role="status">
+            <span>{status}</span>
+            <button type="button" className="ghost-btn" onClick={() => setStatus(null)}>
+              Dismiss
+            </button>
+          </div>
+        )}
     </div>
   );
 }

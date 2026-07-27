@@ -54,6 +54,8 @@ pub struct IvrChoice {
 pub struct IvrAfterCapture {
   pub reply: String,
   pub goto: String,
+  #[serde(default)]
+  pub action: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -83,14 +85,18 @@ impl IvrMenus {
     nodes.insert(
       "main".to_string(),
       IvrNode {
-        prompt: "Welcome — reply with a number:\n1 · Browse products\n2 · Leave a note\n3 · Talk to a person\n0 · Main menu".to_string(),
+        prompt: "Welcome — reply with a number:\n1 · Browse products\n2 · Place an order\n3 · Talk to a person\n0 · Main menu".to_string(),
         choices: HashMap::from([
           ("1".into(), IvrChoice {
             goto: Some("browse".into()),
             action: Some("list_catalog".into()),
             reply: None,
           }),
-          ("2".into(), IvrChoice { goto: Some("ask_note".into()), action: None, reply: None }),
+          ("2".into(), IvrChoice {
+            goto: Some("order_pick".into()),
+            action: Some("list_catalog".into()),
+            reply: None,
+          }),
           ("3".into(), IvrChoice {
             goto: None,
             action: Some("handoff".into()),
@@ -108,27 +114,53 @@ impl IvrMenus {
     nodes.insert(
       "browse".to_string(),
       IvrNode {
-        prompt: "Reply 0 for the main menu.".to_string(),
+        prompt: "Reply 2 to order, or 0 for the main menu.".to_string(),
         choices: HashMap::from([
+          ("2".into(), IvrChoice {
+            goto: Some("order_pick".into()),
+            action: Some("list_catalog".into()),
+            reply: None,
+          }),
           ("0".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
           ("menu".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
         ]),
-        on_unknown: Some("Reply 0 for the main menu.".into()),
+        on_unknown: Some("Reply 2 to order, or 0 for the main menu.".into()),
         capture_slot: None,
         after_capture: None,
       },
     );
     nodes.insert(
-      "info".to_string(),
+      "order_pick".to_string(),
       IvrNode {
-        prompt: "SignalX shop bot (demo). Reply 0 for the main menu.".to_string(),
+        prompt: "Reply with the product number from the list (or 0 to cancel).".to_string(),
         choices: HashMap::from([
           ("0".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
           ("menu".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
         ]),
-        on_unknown: Some("Reply 0 for the main menu.".into()),
-        capture_slot: None,
-        after_capture: None,
+        on_unknown: None,
+        capture_slot: Some("order_idx".into()),
+        after_capture: Some(IvrAfterCapture {
+          reply: "How many would you like?".into(),
+          goto: "order_qty".into(),
+          action: None,
+        }),
+      },
+    );
+    nodes.insert(
+      "order_qty".to_string(),
+      IvrNode {
+        prompt: "Reply with a quantity (or 0 to cancel).".to_string(),
+        choices: HashMap::from([
+          ("0".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
+          ("menu".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
+        ]),
+        on_unknown: None,
+        capture_slot: Some("order_qty".into()),
+        after_capture: Some(IvrAfterCapture {
+          reply: "Placing your order…".into(),
+          goto: "main".into(),
+          action: Some("place_order".into()),
+        }),
       },
     );
     nodes.insert(
@@ -141,11 +173,12 @@ impl IvrMenus {
         after_capture: Some(IvrAfterCapture {
           reply: "Got it — thanks.".into(),
           goto: "main".into(),
+          action: None,
         }),
       },
     );
     Self {
-      version: 2,
+      version: 3,
       entry: "main".to_string(),
       session_ttl_ms: 1_800_000,
       nodes,
@@ -248,15 +281,38 @@ pub fn step(mut session: IvrSession, inbound: &str, menus: &IvrMenus, now: i64) 
         return res;
       }
     }
+    // Validate numeric slots used by order flow
+    if slot == "order_idx" || slot == "order_qty" {
+      let ok_num = inbound.trim().parse::<i64>().ok().filter(|n| *n > 0).is_some();
+      if !ok_num {
+        touch(&mut session, menus, now);
+        return IvrStepResult {
+          reply: Some(format!(
+            "Please reply with a positive number.\n\n{}",
+            node.prompt
+          )),
+          session,
+          handled: true,
+          action: None,
+        };
+      }
+    }
     session.slots.insert(slot.clone(), inbound.trim().to_string());
     if let Some(after) = &node.after_capture {
       let ack = after.reply.clone();
+      let action = after.action.clone();
       let next_prompt = apply_goto(&mut session, menus, &after.goto, now);
+      // When placing an order, host replaces the reply; skip appending next menu yet.
+      let reply = if action.as_deref() == Some("place_order") {
+        Some(ack)
+      } else {
+        Some(format!("{}\n\n{}", ack, next_prompt))
+      };
       return IvrStepResult {
-        reply: Some(format!("{}\n\n{}", ack, next_prompt)),
+        reply,
         session,
         handled: true,
-        action: None,
+        action,
       };
     }
     touch(&mut session, menus, now);
@@ -380,7 +436,7 @@ impl IvrStore {
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok());
       match loaded {
-        Some(m) if m.version >= 2 => m,
+        Some(m) if m.version >= 3 => m,
         _ => {
           let m = IvrMenus::default_demo();
           if let Ok(json) = serde_json::to_string_pretty(&m) {
@@ -566,10 +622,10 @@ mod tests {
   #[test]
   fn capture_note_then_main() {
     let m = menus();
-    let s = fresh_session("dm:+1", &m, 1000);
-    let r = step(s, "2", &m, 1000);
-    assert_eq!(r.session.node_id, "ask_note");
-    let r2 = step(r.session, "Need widgets Friday", &m, 1001);
+    // Jump straight into ask_note node (still in menus for optional use)
+    let mut s = fresh_session("dm:+1", &m, 1000);
+    s.node_id = "ask_note".into();
+    let r2 = step(s, "Need widgets Friday", &m, 1001);
     assert_eq!(r2.session.slots.get("note").unwrap(), "Need widgets Friday");
     assert_eq!(r2.session.node_id, "main");
     assert!(r2.reply.unwrap().contains("Got it"));
@@ -588,12 +644,45 @@ mod tests {
   fn expired_session_resets_to_entry() {
     let m = menus();
     let mut s = fresh_session("dm:+1", &m, 1000);
-    s.node_id = "info".into();
+    s.node_id = "browse".into();
     s.expires_at = 1500;
     let r = step(s, "1", &m, 2000);
     // after expiry, fresh session at main, then "1" -> browse + list_catalog
     assert_eq!(r.session.node_id, "browse");
     assert_eq!(r.action.as_deref(), Some("list_catalog"));
+  }
+
+  #[test]
+  fn main_two_starts_order_pick_with_catalog() {
+    let m = menus();
+    let s = fresh_session("dm:+1", &m, 1000);
+    let r = step(s, "2", &m, 1000);
+    assert_eq!(r.session.node_id, "order_pick");
+    assert_eq!(r.action.as_deref(), Some("list_catalog"));
+  }
+
+  #[test]
+  fn order_pick_then_qty_emits_place_order() {
+    let m = menus();
+    let s = fresh_session("dm:+1", &m, 1000);
+    let r = step(s, "2", &m, 1000);
+    let r2 = step(r.session, "1", &m, 1001);
+    assert_eq!(r2.session.node_id, "order_qty");
+    assert_eq!(r2.session.slots.get("order_idx").unwrap(), "1");
+    let r3 = step(r2.session, "2", &m, 1002);
+    assert_eq!(r3.action.as_deref(), Some("place_order"));
+    assert_eq!(r3.session.slots.get("order_qty").unwrap(), "2");
+    assert_eq!(r3.session.node_id, "main");
+  }
+
+  #[test]
+  fn order_pick_rejects_non_numeric() {
+    let m = menus();
+    let s = fresh_session("dm:+1", &m, 1000);
+    let r = step(s, "2", &m, 1000);
+    let r2 = step(r.session, "abc", &m, 1001);
+    assert_eq!(r2.session.node_id, "order_pick");
+    assert!(r2.reply.unwrap().contains("positive number"));
   }
 
   #[test]

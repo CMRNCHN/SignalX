@@ -79,6 +79,21 @@ export interface Diagnostics {
   ollama_last_error?: string | null;
 }
 
+export interface DeviceLinkStart {
+  started: boolean;
+  device_name: string;
+  config_path: string;
+}
+
+export interface DeviceLinkStatus {
+  state: "success" | "error" | "cancelled" | string;
+  message?: string | null;
+}
+
+export interface DeviceLinkUri {
+  uri: string;
+}
+
 export interface ContactMeta {
   contact_id: string;
   display_name?: string | null;
@@ -306,6 +321,8 @@ export const api = {
   setOrderStatus: (id: string, status: string) =>
     call<Order>("cmd_set_order_status", { id, status }),
   sendOrderInvoice: (id: string) => call<Order>("cmd_send_order_invoice", { id }),
+  startDeviceLink: () => call<DeviceLinkStart>("cmd_start_device_link"),
+  cancelDeviceLink: () => call<{ cancelled: boolean }>("cmd_cancel_device_link"),
 };
 
 export async function onEvent<T>(
