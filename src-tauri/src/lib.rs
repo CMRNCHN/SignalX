@@ -14,9 +14,11 @@ use chrono::Timelike;
 mod ivr;
 mod commerce;
 mod orders;
+mod link;
 use ivr::{thread_allowed, IvrSettings, IvrStore};
 use commerce::{format_catalog_list, CommerceStore, Customer, Product};
 use orders::{format_invoice, Order, OrderLineInput, OrderStore};
+use link::{DeviceLinkManager, DeviceLinkStatus};
 
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
@@ -2463,6 +2465,7 @@ struct AppState {
   ivr: IvrStore,
   commerce: CommerceStore,
   orders: OrderStore,
+  device_link: DeviceLinkManager,
 }
 
 fn now_ms() -> i64 {
@@ -4212,6 +4215,7 @@ fn build_app_state() -> AppState {
     ivr: IvrStore::new(&app_data_dir),
     commerce: CommerceStore::new(&app_data_dir),
     orders: OrderStore::new(&app_data_dir),
+    device_link: DeviceLinkManager::new(),
   }
 }
 
@@ -4261,7 +4265,24 @@ fn maybe_handle_ivr(state: &AppState, thread_id: &str, content: &str) -> bool {
 
   let mut reply = result.reply;
   if result.action.as_deref() == Some("list_catalog") {
-    reply = Some(format_catalog_list(&state.commerce.list_products(), 15));
+    let list = format_catalog_list(&state.commerce.list_products(), 15);
+    let follow = menus
+      .nodes
+      .get(&result.session.node_id)
+      .map(|n| n.prompt.as_str())
+      .unwrap_or("");
+    reply = Some(if follow.is_empty() {
+      list
+    } else {
+      format!("{}\n\n{}", list, follow)
+    });
+  } else if result.action.as_deref() == Some("place_order") {
+    reply = Some(ivr_place_order(state, thread_id, &result.session));
+    // Clear order slots after attempt
+    let mut cleared = result.session.clone();
+    cleared.slots.remove("order_idx");
+    cleared.slots.remove("order_qty");
+    let _ = state.ivr.save_session(&account, cleared);
   }
 
   if let Some(reply) = reply {
@@ -4269,6 +4290,77 @@ fn maybe_handle_ivr(state: &AppState, thread_id: &str, content: &str) -> bool {
     let _ = queue_outgoing_message(state, thread_id.to_string(), recipient, reply);
   }
   result.handled
+}
+
+fn ivr_place_order(state: &AppState, thread_id: &str, session: &ivr::IvrSession) -> String {
+  let products = state.commerce.list_products();
+  if products.is_empty() {
+    return "No products available right now. Reply 0 for the main menu.".to_string();
+  }
+  let idx: usize = match session
+    .slots
+    .get("order_idx")
+    .and_then(|s| s.parse::<usize>().ok())
+  {
+    Some(i) if i >= 1 && i <= products.len() => i - 1,
+    _ => {
+      return format!(
+        "That product number isn’t on the list. Reply 2 to try again.\n\n{}",
+        format_catalog_list(&products, 15)
+      );
+    }
+  };
+  let qty: i64 = match session.slots.get("order_qty").and_then(|s| s.parse::<i64>().ok()) {
+    Some(q) if q > 0 => q,
+    _ => return "Quantity must be a positive number. Reply 2 to try again.".to_string(),
+  };
+  let product = &products[idx];
+  let customer = match state.commerce.customer_by_thread(thread_id) {
+    Some(c) => c,
+    None => {
+      match state.commerce.upsert_customer(
+        Customer {
+          id: String::new(),
+          thread_id: thread_id.to_string(),
+          display_name: thread_id.trim_start_matches("dm:").to_string(),
+          notes: String::new(),
+          updated_at: 0,
+        },
+        now_ms(),
+      ) {
+        Ok(c) => c,
+        Err(e) => return format!("Couldn’t save customer: {}. Reply 3 to talk to a person.", e),
+      }
+    }
+  };
+  match state.orders.create(
+    &state.commerce,
+    customer.id,
+    thread_id.to_string(),
+    vec![OrderLineInput {
+      product_id: product.id.clone(),
+      quantity: qty,
+    }],
+    now_ms(),
+  ) {
+    Ok(order) => {
+      emit_event("commerce://orders", state.orders.list());
+      emit_event("commerce://products", state.commerce.list_products());
+      let invoice = format_invoice(&order, "SignalX");
+      let menus = state.ivr.menus();
+      let main_prompt = menus
+        .nodes
+        .get(&menus.entry)
+        .map(|n| n.prompt.clone())
+        .unwrap_or_default();
+      format!(
+        "Order placed.\n\n{}\n\n{}",
+        invoice,
+        main_prompt
+      )
+    }
+    Err(e) => format!("{}. Reply 2 to try again, or 3 to talk to a person.", e),
+  }
 }
 
 fn get_ivr_settings(state: &AppState) -> Value {
@@ -4832,6 +4924,62 @@ fn cmd_send_order_invoice(state: State<'_, AppState>, id: String) -> Value {
   send_order_invoice(&state, id)
 }
 
+fn start_device_link(state: &AppState) -> Value {
+  let Some(config) = get_signal_config() else {
+    return err(
+      "SIGNALX_SIGNALCLI_CONFIG is not set — cannot start device link".into(),
+    );
+  };
+  let cli = state.signal_cli_info.lock().unwrap().clone();
+  if !cli.is_usable {
+    return err(format!(
+      "signal-cli is not usable at {}: {}",
+      cli.bin,
+      cli.last_error.unwrap_or_else(|| "unknown error".into())
+    ));
+  }
+  if state.device_link.is_running() {
+    return err("A device link session is already running".into());
+  }
+
+  let started = state.device_link.start(
+    &cli.bin,
+    &config,
+    |uri| {
+      emit_event("device-link://uri", json!({ "uri": uri }));
+    },
+    |status: DeviceLinkStatus| {
+      emit_event("device-link://status", status);
+    },
+  );
+
+  match started {
+    Ok(()) => ok_t(json!({
+      "started": true,
+      "device_name": "SignalX",
+      "config_path": config,
+    })),
+    Err(e) => err(e),
+  }
+}
+
+fn cancel_device_link(state: &AppState) -> Value {
+  match state.device_link.cancel() {
+    Ok(()) => ok_t(json!({ "cancelled": true })),
+    Err(e) => err(e),
+  }
+}
+
+#[tauri::command]
+fn cmd_start_device_link(state: State<'_, AppState>) -> Value {
+  start_device_link(&state)
+}
+
+#[tauri::command]
+fn cmd_cancel_device_link(state: State<'_, AppState>) -> Value {
+  cancel_device_link(&state)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let state = build_app_state();
@@ -4921,6 +5069,8 @@ pub fn run() {
       cmd_create_order,
       cmd_set_order_status,
       cmd_send_order_invoice,
+      cmd_start_device_link,
+      cmd_cancel_device_link,
     ])
     .run(tauri::generate_context!())
     .expect("error while running SignalX");
