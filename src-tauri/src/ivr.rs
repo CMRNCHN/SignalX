@@ -85,7 +85,7 @@ impl IvrMenus {
     nodes.insert(
       "main".to_string(),
       IvrNode {
-        prompt: "Welcome — reply with a number:\n1 · Browse products\n2 · Place an order\n3 · Talk to a person\n0 · Main menu".to_string(),
+        prompt: "Hi — reply with a number:\n1 · See products\n2 · Place an order\n3 · Talk to us\n0 · Menu".to_string(),
         choices: HashMap::from([
           ("1".into(), IvrChoice {
             goto: Some("browse".into()),
@@ -100,13 +100,13 @@ impl IvrMenus {
           ("3".into(), IvrChoice {
             goto: None,
             action: Some("handoff".into()),
-            reply: Some("A person will take it from here. Hang tight.".into()),
+            reply: Some("Got it — someone will reply here shortly.".into()),
           }),
           ("0".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
           ("menu".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
           ("help".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
         ]),
-        on_unknown: Some("Please reply with 1, 2, 3, or 0.".into()),
+        on_unknown: Some("Reply 1, 2, 3, or 0.".into()),
         capture_slot: None,
         after_capture: None,
       },
@@ -114,7 +114,7 @@ impl IvrMenus {
     nodes.insert(
       "browse".to_string(),
       IvrNode {
-        prompt: "Reply 2 to order, or 0 for the main menu.".to_string(),
+        prompt: "Reply 2 to order, or 0 for the menu.".to_string(),
         choices: HashMap::from([
           ("2".into(), IvrChoice {
             goto: Some("order_pick".into()),
@@ -124,7 +124,7 @@ impl IvrMenus {
           ("0".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
           ("menu".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
         ]),
-        on_unknown: Some("Reply 2 to order, or 0 for the main menu.".into()),
+        on_unknown: Some("Reply 2 to order, or 0 for the menu.".into()),
         capture_slot: None,
         after_capture: None,
       },
@@ -132,7 +132,7 @@ impl IvrMenus {
     nodes.insert(
       "order_pick".to_string(),
       IvrNode {
-        prompt: "Reply with the product number from the list (or 0 to cancel).".to_string(),
+        prompt: "Reply with the product # from the list (or 0 to cancel).".to_string(),
         choices: HashMap::from([
           ("0".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
           ("menu".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
@@ -140,7 +140,7 @@ impl IvrMenus {
         on_unknown: None,
         capture_slot: Some("order_idx".into()),
         after_capture: Some(IvrAfterCapture {
-          reply: "How many would you like?".into(),
+          reply: "How many?".into(),
           goto: "order_qty".into(),
           action: None,
         }),
@@ -157,7 +157,7 @@ impl IvrMenus {
         on_unknown: None,
         capture_slot: Some("order_qty".into()),
         after_capture: Some(IvrAfterCapture {
-          reply: "Placing your order…".into(),
+          reply: "Working on it…".into(),
           goto: "main".into(),
           action: Some("place_order".into()),
         }),
@@ -166,12 +166,12 @@ impl IvrMenus {
     nodes.insert(
       "ask_note".to_string(),
       IvrNode {
-        prompt: "Type your note in one message.".to_string(),
+        prompt: "Send your note in one message.".to_string(),
         choices: HashMap::new(),
         on_unknown: None,
         capture_slot: Some("note".into()),
         after_capture: Some(IvrAfterCapture {
-          reply: "Got it — thanks.".into(),
+          reply: "Noted — thanks.".into(),
           goto: "main".into(),
           action: None,
         }),
@@ -613,7 +613,7 @@ mod tests {
     let s = fresh_session("dm:+1", &m, 1000);
     let r = step(s, "3", &m, 1000);
     assert!(r.session.handed_off);
-    assert!(r.reply.unwrap().contains("person"));
+    assert!(r.reply.unwrap().contains("someone"));
     let r2 = step(r.session, "1", &m, 1001);
     assert!(r2.handled);
     assert!(r2.reply.is_none());
@@ -628,7 +628,7 @@ mod tests {
     let r2 = step(s, "Need widgets Friday", &m, 1001);
     assert_eq!(r2.session.slots.get("note").unwrap(), "Need widgets Friday");
     assert_eq!(r2.session.node_id, "main");
-    assert!(r2.reply.unwrap().contains("Got it"));
+    assert!(r2.reply.unwrap().contains("Noted"));
   }
 
   #[test]
@@ -636,7 +636,7 @@ mod tests {
     let m = menus();
     let s = fresh_session("dm:+1", &m, 1000);
     let r = step(s, "9", &m, 1000);
-    assert!(r.reply.unwrap().contains("Please reply"));
+    assert!(r.reply.unwrap().contains("Reply 1"));
     assert_eq!(r.session.node_id, "main");
   }
 

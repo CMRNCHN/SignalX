@@ -1,9 +1,34 @@
 //! Local product catalog and customers tied to Signal threads.
 
+use crate::uom::{
+  convert_from_base, convert_to_base, from_milli, to_milli, units_compatible,
+};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
+
+/// Allowed UOMs (base / stock / sales / sell-option units).
+pub const MEASURE_UNITS: &[&str] = &["ea", "lb", "kg", "oz", "g", "ml", "l"];
+/// Allowed package / net weight units.
+pub const WEIGHT_UNITS: &[&str] = &["g", "kg", "oz", "lb"];
+
+fn default_measure_unit() -> String {
+  "ea".to_string()
+}
+
+/// Optional pack/size you sell (e.g. “Half oz”, “100 g”).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SellOption {
+  #[serde(default)]
+  pub id: String,
+  pub label: String,
+  pub amount: f64,
+  pub unit: String,
+  /// Fixed pack price in ¢. If omitted, price = base rate × converted amount.
+  #[serde(default)]
+  pub price_cents: Option<i64>,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Product {
@@ -13,9 +38,138 @@ pub struct Product {
   pub description: String,
   #[serde(default)]
   pub sku: String,
+  /// Sell price per **base_unit** (¢).
   pub price_cents: i64,
+  /// Your cost per **base_unit** (¢).
+  #[serde(default)]
+  pub cost_cents: i64,
+  /// Where you got it (supplier / source).
+  #[serde(default)]
+  pub supplier: String,
+  /// Canonical UOM. Inventory truth is `quantity_base_milli`.
+  #[serde(default = "default_measure_unit")]
+  pub base_unit: String,
+  /// Optional inventory UI unit (empty → base).
+  #[serde(default)]
+  pub stock_unit: String,
+  /// Optional default sales unit (empty → base).
+  #[serde(default)]
+  pub sales_unit: String,
+  /// Stock in 1/1000 of `base_unit`.
+  #[serde(default)]
+  pub quantity_base_milli: i64,
+  /// Legacy integer stock (migrated into milli on load/upsert).
+  #[serde(default)]
   pub quantity_in_stock: i64,
+  /// UI stock entry amount in `stock_unit` (or base). When set (≥0 finite), recomputes milli.
+  #[serde(default)]
+  pub stock_qty: Option<f64>,
+  /// Legacy single unit — used when base_unit was never set.
+  #[serde(default = "default_measure_unit")]
+  pub unit: String,
+  /// Optional package/net weight metadata (not the UOM system).
+  #[serde(default)]
+  pub weight: f64,
+  #[serde(default)]
+  pub weight_unit: String,
+  #[serde(default)]
+  pub image_path: String,
+  #[serde(default)]
+  pub sell_options: Vec<SellOption>,
   pub updated_at: i64,
+}
+
+impl Product {
+  pub fn migrate_legacy(&mut self) {
+    if self.base_unit.trim().is_empty() {
+      self.base_unit = if self.unit.trim().is_empty() {
+        "ea".to_string()
+      } else {
+        self.unit.clone()
+      };
+    }
+    if self.quantity_base_milli == 0 && self.quantity_in_stock != 0 {
+      // Interpret legacy stock as whole units of legacy `unit` (== base after migrate).
+      self.quantity_base_milli = self.quantity_in_stock.saturating_mul(1000);
+    }
+  }
+
+  pub fn effective_base_unit(&self) -> String {
+    let b = self.base_unit.trim();
+    if b.is_empty() {
+      format_unit_label(&self.unit)
+    } else {
+      format_unit_label(b)
+    }
+  }
+
+  pub fn effective_stock_unit(&self) -> String {
+    let s = self.stock_unit.trim();
+    if s.is_empty() {
+      self.effective_base_unit()
+    } else {
+      format_unit_label(s)
+    }
+  }
+
+  pub fn effective_sales_unit(&self) -> String {
+    let s = self.sales_unit.trim();
+    if s.is_empty() {
+      self.effective_base_unit()
+    } else {
+      format_unit_label(s)
+    }
+  }
+
+  pub fn stock_display(&self) -> Result<(f64, String), String> {
+    let base = self.effective_base_unit();
+    let stock_u = self.effective_stock_unit();
+    let amt = convert_from_base(from_milli(self.quantity_base_milli), &stock_u, &base)?;
+    Ok((amt, stock_u))
+  }
+
+  /// Price in ¢ for selling `amount` of `unit` (uses sell option fixed price when id matches).
+  pub fn quote_sale(
+    &self,
+    amount: f64,
+    unit: &str,
+    sell_option_id: Option<&str>,
+  ) -> Result<(i64 /*line_total*/, i64 /*base_milli*/), String> {
+    if let Some(oid) = sell_option_id.filter(|s| !s.is_empty()) {
+      let opt = self
+        .sell_options
+        .iter()
+        .find(|o| o.id == oid)
+        .ok_or_else(|| "sell option not found".to_string())?;
+      let base = self.effective_base_unit();
+      let base_amt = convert_to_base(opt.amount, &opt.unit, &base)?;
+      let milli = to_milli(base_amt);
+      let total = if let Some(p) = opt.price_cents {
+        if p < 0 {
+          return Err("sell option price must be >= 0".to_string());
+        }
+        p
+      } else {
+        price_for_base_amount(self.price_cents, base_amt)?
+      };
+      return Ok((total, milli));
+    }
+    let base = self.effective_base_unit();
+    let base_amt = convert_to_base(amount, unit, &base)?;
+    let milli = to_milli(base_amt);
+    let total = price_for_base_amount(self.price_cents, base_amt)?;
+    Ok((total, milli))
+  }
+}
+
+fn price_for_base_amount(price_cents_per_base: i64, base_amt: f64) -> Result<i64, String> {
+  if price_cents_per_base < 0 {
+    return Err("price must be >= 0".to_string());
+  }
+  if !base_amt.is_finite() || base_amt < 0.0 {
+    return Err("amount must be >= 0".to_string());
+  }
+  Ok((price_cents_per_base as f64 * base_amt).round() as i64)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -45,14 +199,86 @@ struct CustomerFile {
 pub struct CommerceStore {
   products_path: PathBuf,
   customers_path: PathBuf,
+  images_dir: PathBuf,
+  app_data_dir: PathBuf,
   products: Arc<Mutex<Vec<Product>>>,
   customers: Arc<Mutex<Vec<Customer>>>,
+}
+
+pub fn normalize_measure_unit(raw: &str) -> Result<String, String> {
+  let u = raw.trim().to_lowercase();
+  let u = if u.is_empty() { "ea".to_string() } else { u };
+  let u = if u == "each" || u == "unit" {
+    "ea".to_string()
+  } else {
+    u
+  };
+  if !MEASURE_UNITS.contains(&u.as_str()) {
+    return Err(format!(
+      "unit must be one of: {}",
+      MEASURE_UNITS.join(", ")
+    ));
+  }
+  Ok(u)
+}
+
+pub fn normalize_weight(weight: f64, weight_unit: &str) -> Result<(f64, String), String> {
+  if !weight.is_finite() || weight < 0.0 {
+    return Err("weight must be >= 0".to_string());
+  }
+  let wu = weight_unit.trim().to_lowercase();
+  if weight == 0.0 {
+    return Ok((0.0, String::new()));
+  }
+  if wu.is_empty() {
+    return Err("weight_unit required when weight > 0 (g, kg, oz, lb)".to_string());
+  }
+  if !WEIGHT_UNITS.contains(&wu.as_str()) {
+    return Err(format!(
+      "weight_unit must be one of: {}",
+      WEIGHT_UNITS.join(", ")
+    ));
+  }
+  Ok((weight, wu))
+}
+
+/// Human label for stock/price unit (e.g. `lb`).
+pub fn format_unit_label(unit: &str) -> String {
+  let u = unit.trim().to_lowercase();
+  if u.is_empty() || u == "ea" {
+    "ea".to_string()
+  } else {
+    u
+  }
+}
+
+/// Short measure + weight snippet for lists / IVR.
+pub fn format_product_measure(p: &Product) -> String {
+  let mut parts = Vec::new();
+  let base = p.effective_base_unit();
+  let sales = p.effective_sales_unit();
+  if sales != base {
+    parts.push(format!("sell {}", sales));
+  } else if base != "ea" {
+    parts.push(format!("per {}", base));
+  }
+  if p.weight > 0.0 && !p.weight_unit.is_empty() {
+    let w = if (p.weight - p.weight.trunc()).abs() < f64::EPSILON {
+      format!("{}", p.weight as i64)
+    } else {
+      format!("{:.2}", p.weight)
+    };
+    parts.push(format!("{} {}", w, p.weight_unit));
+  }
+  parts.join(" · ")
 }
 
 impl CommerceStore {
   pub fn new(app_data_dir: &Path) -> Self {
     let dir = app_data_dir.join("commerce");
+    let images_dir = dir.join("product-images");
     let _ = std::fs::create_dir_all(&dir);
+    let _ = std::fs::create_dir_all(&images_dir);
     let products_path = dir.join("products.json");
     let customers_path = dir.join("customers.json");
 
@@ -60,7 +286,15 @@ impl CommerceStore {
       std::fs::read_to_string(&products_path)
         .ok()
         .and_then(|s| serde_json::from_str::<ProductFile>(&s).ok())
-        .map(|f| f.products)
+        .map(|f| {
+          f.products
+            .into_iter()
+            .map(|mut p| {
+              p.migrate_legacy();
+              p
+            })
+            .collect::<Vec<_>>()
+        })
         .unwrap_or_default()
     } else {
       Vec::new()
@@ -78,6 +312,8 @@ impl CommerceStore {
     Self {
       products_path,
       customers_path,
+      images_dir,
+      app_data_dir: app_data_dir.to_path_buf(),
       products: Arc::new(Mutex::new(products)),
       customers: Arc::new(Mutex::new(customers)),
     }
@@ -105,6 +341,9 @@ impl CommerceStore {
 
   pub fn list_products(&self) -> Vec<Product> {
     let mut v = self.products.lock().unwrap().clone();
+    for p in &mut v {
+      p.migrate_legacy();
+    }
     v.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     v
   }
@@ -114,9 +353,96 @@ impl CommerceStore {
     if p.name.is_empty() {
       return Err("product name required".to_string());
     }
-    if p.price_cents < 0 || p.quantity_in_stock < 0 {
-      return Err("price and stock must be >= 0".to_string());
+    if p.price_cents < 0 || p.cost_cents < 0 {
+      return Err("price and cost must be >= 0".to_string());
     }
+    p.migrate_legacy();
+    p.base_unit = normalize_measure_unit(&p.base_unit)?;
+    p.unit = p.base_unit.clone();
+    p.stock_unit = if p.stock_unit.trim().is_empty() {
+      String::new()
+    } else {
+      let su = normalize_measure_unit(&p.stock_unit)?;
+      if !units_compatible(&su, &p.base_unit) {
+        return Err(format!(
+          "stock_unit {su} incompatible with base_unit {}",
+          p.base_unit
+        ));
+      }
+      su
+    };
+    p.sales_unit = if p.sales_unit.trim().is_empty() {
+      String::new()
+    } else {
+      let su = normalize_measure_unit(&p.sales_unit)?;
+      if !units_compatible(&su, &p.base_unit) {
+        return Err(format!(
+          "sales_unit {su} incompatible with base_unit {}",
+          p.base_unit
+        ));
+      }
+      su
+    };
+    p.supplier = p.supplier.trim().to_string();
+
+    // Prefer stock_qty (UI) → milli; else explicit milli; else legacy quantity_in_stock.
+    if let Some(qty) = p.stock_qty {
+      if !qty.is_finite() || qty < 0.0 {
+        return Err("stock must be >= 0".to_string());
+      }
+      let stock_u = p.effective_stock_unit();
+      let base_amt = convert_to_base(qty, &stock_u, &p.base_unit)?;
+      p.quantity_base_milli = to_milli(base_amt);
+    } else if p.quantity_base_milli < 0 {
+      return Err("stock must be >= 0".to_string());
+    } else if p.quantity_base_milli == 0 && p.quantity_in_stock > 0 {
+      let stock_u = p.effective_stock_unit();
+      let base_amt = convert_to_base(p.quantity_in_stock as f64, &stock_u, &p.base_unit)?;
+      p.quantity_base_milli = to_milli(base_amt);
+    }
+    p.stock_qty = None;
+    // Sync legacy whole-unit field for older UI (floor of stock_unit display).
+    p.quantity_in_stock = p
+      .stock_display()
+      .map(|(amt, _)| amt.floor() as i64)
+      .unwrap_or(0)
+      .max(0);
+
+    let (w, wu) = normalize_weight(p.weight, &p.weight_unit)?;
+    p.weight = w;
+    p.weight_unit = wu;
+    p.sku = p.sku.trim().to_string();
+    p.description = p.description.trim().to_string();
+    p.image_path = p.image_path.trim().to_string();
+
+    let mut opts = Vec::new();
+    for mut opt in p.sell_options.drain(..) {
+      opt.label = opt.label.trim().to_string();
+      if opt.label.is_empty() {
+        continue;
+      }
+      if !opt.amount.is_finite() || opt.amount <= 0.0 {
+        return Err(format!("sell option '{}' amount must be > 0", opt.label));
+      }
+      opt.unit = normalize_measure_unit(&opt.unit)?;
+      if !units_compatible(&opt.unit, &p.base_unit) {
+        return Err(format!(
+          "sell option '{}' unit incompatible with base {}",
+          opt.label, p.base_unit
+        ));
+      }
+      if let Some(pc) = opt.price_cents {
+        if pc < 0 {
+          return Err(format!("sell option '{}' price must be >= 0", opt.label));
+        }
+      }
+      if opt.id.trim().is_empty() {
+        opt.id = Uuid::new_v4().to_string();
+      }
+      opts.push(opt);
+    }
+    p.sell_options = opts;
+
     p.updated_at = now;
     if p.id.trim().is_empty() {
       p.id = Uuid::new_v4().to_string();
@@ -124,6 +450,9 @@ impl CommerceStore {
     {
       let mut list = self.products.lock().unwrap();
       if let Some(existing) = list.iter_mut().find(|x| x.id == p.id) {
+        if p.image_path.is_empty() {
+          p.image_path = existing.image_path.clone();
+        }
         *existing = p.clone();
       } else {
         list.push(p.clone());
@@ -131,6 +460,110 @@ impl CommerceStore {
     }
     self.persist_products()?;
     Ok(p)
+  }
+
+  pub fn set_product_image(
+    &self,
+    product_id: &str,
+    bytes: &[u8],
+    ext: &str,
+    now: i64,
+  ) -> Result<Product, String> {
+    if bytes.is_empty() {
+      return Err("image is empty".to_string());
+    }
+    if bytes.len() > 5_000_000 {
+      return Err("image too large (max 5MB)".to_string());
+    }
+    let ext_lc = ext.trim().trim_start_matches('.').to_lowercase();
+    let ext_norm = match ext_lc.as_str() {
+      "png" => "png",
+      "jpg" | "jpeg" => "jpg",
+      "webp" => "webp",
+      "gif" => "gif",
+      _ => return Err("unsupported image type (use png/jpg/webp/gif)".to_string()),
+    };
+    let id = product_id.trim();
+    if id.is_empty() {
+      return Err("product id required".to_string());
+    }
+    // Ensure product exists
+    {
+      let list = self.products.lock().unwrap();
+      if !list.iter().any(|p| p.id == id) {
+        return Err("product not found".to_string());
+      }
+    }
+    let fname = format!("{}.{}", id.replace('/', "_"), ext_norm);
+    let full = self.images_dir.join(&fname);
+    std::fs::write(&full, bytes).map_err(|e| e.to_string())?;
+    let rel = full
+      .strip_prefix(&self.app_data_dir)
+      .unwrap_or(&full)
+      .to_string_lossy()
+      .to_string();
+    let mut out = None;
+    {
+      let mut list = self.products.lock().unwrap();
+      let p = list
+        .iter_mut()
+        .find(|x| x.id == id)
+        .ok_or_else(|| "product not found".to_string())?;
+      // best-effort remove previous file if different
+      if !p.image_path.is_empty() && p.image_path != rel {
+        let _ = std::fs::remove_file(self.app_data_dir.join(&p.image_path));
+      }
+      p.image_path = rel;
+      p.updated_at = now;
+      out = Some(p.clone());
+    }
+    self.persist_products()?;
+    out.ok_or_else(|| "product not found".to_string())
+  }
+
+  pub fn clear_product_image(&self, product_id: &str, now: i64) -> Result<Product, String> {
+    let mut out = None;
+    {
+      let mut list = self.products.lock().unwrap();
+      let p = list
+        .iter_mut()
+        .find(|x| x.id == product_id)
+        .ok_or_else(|| "product not found".to_string())?;
+      if !p.image_path.is_empty() {
+        let _ = std::fs::remove_file(self.app_data_dir.join(&p.image_path));
+      }
+      p.image_path.clear();
+      p.updated_at = now;
+      out = Some(p.clone());
+    }
+    self.persist_products()?;
+    out.ok_or_else(|| "product not found".to_string())
+  }
+
+  pub fn read_product_image(&self, product_id: &str) -> Result<(Vec<u8>, String), String> {
+    let path = {
+      let list = self.products.lock().unwrap();
+      list
+        .iter()
+        .find(|x| x.id == product_id)
+        .map(|p| p.image_path.clone())
+        .ok_or_else(|| "product not found".to_string())?
+    };
+    if path.is_empty() {
+      return Err("no image".to_string());
+    }
+    let full = self.app_data_dir.join(&path);
+    let bytes = std::fs::read(&full).map_err(|e| e.to_string())?;
+    let mime = if path.ends_with(".png") {
+      "image/png"
+    } else if path.ends_with(".webp") {
+      "image/webp"
+    } else if path.ends_with(".gif") {
+      "image/gif"
+    } else {
+      "image/jpeg"
+    };
+    Ok((bytes, mime.to_string()))
   }
 
   pub fn delete_product(&self, id: &str) -> Result<bool, String> {
@@ -144,7 +577,8 @@ impl CommerceStore {
     Ok(before != self.products.lock().unwrap().len())
   }
 
-  pub fn adjust_stock(&self, id: &str, delta: i64, now: i64) -> Result<Product, String> {
+  /// Adjust stock by a delta measured in **base milli-units**.
+  pub fn adjust_stock_milli(&self, id: &str, delta_milli: i64, now: i64) -> Result<Product, String> {
     let mut out = None;
     {
       let mut list = self.products.lock().unwrap();
@@ -152,16 +586,41 @@ impl CommerceStore {
         .iter_mut()
         .find(|x| x.id == id)
         .ok_or_else(|| "product not found".to_string())?;
-      let next = p.quantity_in_stock + delta;
+      p.migrate_legacy();
+      let next = p.quantity_base_milli + delta_milli;
       if next < 0 {
         return Err("insufficient stock".to_string());
       }
-      p.quantity_in_stock = next;
+      p.quantity_base_milli = next;
+      p.quantity_in_stock = p
+        .stock_display()
+        .map(|(amt, _)| amt.floor() as i64)
+        .unwrap_or(0)
+        .max(0);
       p.updated_at = now;
       out = Some(p.clone());
     }
     self.persist_products()?;
     out.ok_or_else(|| "product not found".to_string())
+  }
+
+  /// Legacy: delta in whole `stock_unit` (or base) amounts.
+  pub fn adjust_stock(&self, id: &str, delta: i64, now: i64) -> Result<Product, String> {
+    let base_unit;
+    let stock_unit;
+    {
+      let list = self.products.lock().unwrap();
+      let p = list
+        .iter()
+        .find(|x| x.id == id)
+        .ok_or_else(|| "product not found".to_string())?;
+      let mut tmp = p.clone();
+      tmp.migrate_legacy();
+      base_unit = tmp.effective_base_unit();
+      stock_unit = tmp.effective_stock_unit();
+    }
+    let base_amt = convert_to_base(delta as f64, &stock_unit, &base_unit)?;
+    self.adjust_stock_milli(id, to_milli(base_amt), now)
   }
 
   pub fn list_customers(&self) -> Vec<Customer> {
@@ -227,13 +686,41 @@ pub fn format_catalog_list(products: &[Product], max_items: usize) -> String {
   }
   let mut lines = vec!["Products:".to_string()];
   for (i, p) in products.iter().take(max_items).enumerate() {
+    let mut p = p.clone();
+    p.migrate_legacy();
+    let base = p.effective_base_unit();
+    let sales = p.effective_sales_unit();
     let dollars = p.price_cents as f64 / 100.0;
+    let price = if base == "ea" {
+      format!("${:.2}", dollars)
+    } else {
+      format!("${:.2}/{}", dollars, base)
+    };
+    let stock = p
+      .stock_display()
+      .map(|(amt, u)| {
+        if (amt - amt.trunc()).abs() < 1e-6 {
+          format!("{} {} left", amt as i64, u)
+        } else {
+          format!("{:.2} {} left", amt, u)
+        }
+      })
+      .unwrap_or_else(|_| "stock ?".into());
+    let mut extra = String::new();
+    if sales != base {
+      extra.push_str(&format!(" · sell by {}", sales));
+    }
+    if !p.sell_options.is_empty() {
+      let labels: Vec<&str> = p.sell_options.iter().map(|o| o.label.as_str()).collect();
+      extra.push_str(&format!(" · packs: {}", labels.join(", ")));
+    }
     lines.push(format!(
-      "{}. {} — ${:.2} ({} left)",
+      "{}. {} — {} ({}){}",
       i + 1,
       p.name,
-      dollars,
-      p.quantity_in_stock
+      price,
+      stock,
+      extra
     ));
   }
   if products.len() > max_items {
@@ -247,6 +734,60 @@ pub fn format_catalog_list(products: &[Product], max_items: usize) -> String {
 mod tests {
   use super::*;
 
+  fn sample_ea() -> Product {
+    Product {
+      id: "1".into(),
+      name: "Widget".into(),
+      description: String::new(),
+      sku: "W1".into(),
+      price_cents: 1299,
+      cost_cents: 400,
+      supplier: String::new(),
+      base_unit: "ea".into(),
+      stock_unit: String::new(),
+      sales_unit: String::new(),
+      quantity_base_milli: 4000,
+      quantity_in_stock: 4,
+      stock_qty: None,
+      unit: "ea".into(),
+      weight: 0.0,
+      weight_unit: String::new(),
+      image_path: String::new(),
+      sell_options: vec![],
+      updated_at: 0,
+    }
+  }
+
+  fn sample_sugar() -> Product {
+    Product {
+      id: "2".into(),
+      name: "Sugar".into(),
+      description: String::new(),
+      sku: String::new(),
+      price_cents: 2, // $0.02 per gram
+      cost_cents: 1,
+      supplier: "Bulk Foods Co".into(),
+      base_unit: "g".into(),
+      stock_unit: "oz".into(),
+      sales_unit: "oz".into(),
+      quantity_base_milli: to_milli(convert_to_base(1.0, "oz", "g").unwrap()), // 1 oz
+      quantity_in_stock: 0,
+      stock_qty: None,
+      unit: "g".into(),
+      weight: 0.0,
+      weight_unit: String::new(),
+      image_path: String::new(),
+      sell_options: vec![SellOption {
+        id: "half".into(),
+        label: "Half oz".into(),
+        amount: 0.5,
+        unit: "oz".into(),
+        price_cents: None,
+      }],
+      updated_at: 0,
+    }
+  }
+
   #[test]
   fn format_empty_catalog() {
     let s = format_catalog_list(&[], 10);
@@ -255,19 +796,70 @@ mod tests {
 
   #[test]
   fn format_lists_price_and_stock() {
-    let products = vec![Product {
-      id: "1".into(),
-      name: "Widget".into(),
-      description: String::new(),
-      sku: "W1".into(),
-      price_cents: 1299,
-      quantity_in_stock: 4,
-      updated_at: 0,
-    }];
-    let s = format_catalog_list(&products, 10);
+    let s = format_catalog_list(&[sample_ea()], 10);
     assert!(s.contains("Widget"));
     assert!(s.contains("$12.99"));
-    assert!(s.contains("4 left"));
+    assert!(s.contains("4 ea left") || s.contains("4 left"));
+  }
+
+  #[test]
+  fn sugar_half_oz_quote_and_stock() {
+    let p = sample_sugar();
+    let (total, milli) = p.quote_sale(0.0, "oz", Some("half")).unwrap();
+    assert!(milli > 14_000 && milli < 15_000);
+    // 0.5 oz ≈ 14.17 g * 2¢ ≈ 28¢
+    assert!((28..=29).contains(&total));
+    let (amt, u) = p.stock_display().unwrap();
+    assert_eq!(u, "oz");
+    assert!(
+      (amt - 1.0).abs() < 1e-3,
+      "expected ~1 oz stock, got {amt}"
+    );
+  }
+
+  #[test]
+  fn normalize_measure_and_weight() {
+    assert_eq!(normalize_measure_unit("").unwrap(), "ea");
+    assert_eq!(normalize_measure_unit("Each").unwrap(), "ea");
+    assert!(normalize_measure_unit("stone").is_err());
+    assert_eq!(normalize_weight(0.0, "").unwrap(), (0.0, String::new()));
+    assert!(normalize_weight(1.0, "").is_err());
+    assert_eq!(normalize_weight(2.5, "KG").unwrap(), (2.5, "kg".into()));
+  }
+
+  #[test]
+  fn upsert_rejects_bad_unit() {
+    let dir = std::env::temp_dir().join(format!("signalx-commerce-u-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let store = CommerceStore::new(&dir);
+    let err = store
+      .upsert_product(
+        Product {
+          id: String::new(),
+          name: "X".into(),
+          description: String::new(),
+          sku: String::new(),
+          price_cents: 100,
+          cost_cents: 0,
+          supplier: String::new(),
+          base_unit: "stone".into(),
+          stock_unit: String::new(),
+          sales_unit: String::new(),
+          quantity_base_milli: 1000,
+          quantity_in_stock: 1,
+          stock_qty: None,
+          unit: "stone".into(),
+          weight: 0.0,
+          weight_unit: String::new(),
+          image_path: String::new(),
+          sell_options: vec![],
+          updated_at: 0,
+        },
+        1,
+      )
+      .unwrap_err();
+    assert!(err.contains("unit") || err.contains("unsupported"));
+    let _ = std::fs::remove_dir_all(&dir);
   }
 
   #[test]
@@ -283,14 +875,29 @@ mod tests {
           description: String::new(),
           sku: String::new(),
           price_cents: 100,
+          cost_cents: 0,
+          supplier: String::new(),
+          base_unit: "ea".into(),
+          stock_unit: String::new(),
+          sales_unit: String::new(),
+          quantity_base_milli: 1000,
           quantity_in_stock: 1,
+          stock_qty: None,
+          unit: "ea".into(),
+          weight: 0.0,
+          weight_unit: String::new(),
+          image_path: String::new(),
+          sell_options: vec![],
           updated_at: 0,
         },
         1,
       )
       .unwrap();
     assert!(store.adjust_stock(&p.id, -2, 2).is_err());
-    assert_eq!(store.adjust_stock(&p.id, -1, 3).unwrap().quantity_in_stock, 0);
+    assert_eq!(
+      store.adjust_stock(&p.id, -1, 3).unwrap().quantity_base_milli,
+      0
+    );
     let _ = std::fs::remove_dir_all(&dir);
   }
 }

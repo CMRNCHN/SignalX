@@ -15,6 +15,7 @@ mod ivr;
 mod commerce;
 mod orders;
 mod link;
+mod uom;
 use ivr::{thread_allowed, IvrSettings, IvrStore};
 use commerce::{format_catalog_list, CommerceStore, Customer, Product};
 use orders::{format_invoice, Order, OrderLineInput, OrderStore};
@@ -38,6 +39,19 @@ fn tokio_block_on<F: std::future::Future>(f: F) -> F::Output {
     .build()
     .expect("failed to start Tokio runtime")
     .block_on(f)
+}
+
+/// Spawn a long-lived daemon future. Prefer the current Tokio runtime (headless);
+/// fall back to Tauri's async runtime when called from GUI setup (no reactor yet).
+fn spawn_daemon_task<F>(fut: F)
+where
+  F: std::future::Future<Output = ()> + Send + 'static,
+{
+  if let Ok(handle) = tokio::runtime::Handle::try_current() {
+    handle.spawn(fut);
+  } else {
+    tauri::async_runtime::spawn(fut);
+  }
 }
 
 
@@ -277,6 +291,9 @@ struct OutboxItem {
   thread_id: String,
   recipient: String,
   content: String,
+  /// Absolute path under `{app_data}/attachments/` when present. Old JSON omits this.
+  #[serde(default)]
+  attachment_path: Option<String>,
   created_at: i64,
   last_attempt_at: Option<i64>,
   attempt_count: u32,
@@ -1966,11 +1983,17 @@ fn draft_reply_for_thread(
   let ctx = format_thread_context(&msgs);
 
   let model = std::env::var("SIGNALX_OLLAMA_MODEL").unwrap();
-  let c = constraints.unwrap_or("short, clear");
+  let c = constraints.unwrap_or("short, clear, Signal-text sized");
+  let system = format!(
+    "You draft replies for a local Signal shop operator (catalog, orders, invoices, text-menu IVR). \
+Constraints: {c}. Prefer plain, friendly sales tone. Help with browse/order questions, invoice follow-ups, \
+and handoff-to-human moments. Never invent prices or stock. Never claim a message was sent. \
+Return only the reply text — no quotes, labels, or preamble."
+  );
   let messages = vec![
     json!({
       "role": "system",
-      "content": format!("You are a business assistant handling Signal messages. Constraints: {}. Return only the reply text, nothing else.", c)
+      "content": system
     }),
     json!({
       "role": "user",
@@ -2686,26 +2709,111 @@ fn list_outbox(state: &AppState, thread_id: Option<String>) -> Value {
   }
 }
 
+fn normalize_attachment_ext(ext: &str) -> Result<String, String> {
+  let e = ext.trim().trim_start_matches('.').to_lowercase();
+  if e.is_empty() || e.len() > 12 {
+    return Err("attachment_ext required (e.g. png, jpg, pdf)".to_string());
+  }
+  if !e.chars().all(|c| c.is_ascii_alphanumeric()) {
+    return Err("attachment_ext must be alphanumeric".to_string());
+  }
+  Ok(e)
+}
+
+fn write_outbox_attachment(
+  app_data_dir: &Path,
+  item_id: &str,
+  bytes: &[u8],
+  ext: &str,
+) -> Result<PathBuf, String> {
+  if bytes.is_empty() {
+    return Err("attachment is empty".to_string());
+  }
+  // Thin cut: keep payloads modest for IPC base64.
+  if bytes.len() > 15_000_000 {
+    return Err("attachment too large (max 15MB)".to_string());
+  }
+  let ext_norm = normalize_attachment_ext(ext)?;
+  let dir = app_data_dir.join("attachments");
+  std::fs::create_dir_all(&dir).map_err(|e| format!("failed to create attachments dir: {}", e))?;
+  let fname = format!("{}.{}", sanitize_filename(item_id), ext_norm);
+  let full = dir.join(fname);
+  std::fs::write(&full, bytes).map_err(|e| format!("failed to write attachment: {}", e))?;
+  Ok(full)
+}
+
 fn queue_outgoing_message(state: &AppState, thread_id: String, recipient: String, content: String) -> Value {
+  queue_outgoing_message_inner(state, thread_id, recipient, content, None, None)
+}
+
+fn queue_outgoing_with_attachment(
+  state: &AppState,
+  thread_id: String,
+  recipient: String,
+  content: String,
+  attachment_b64: String,
+  attachment_ext: String,
+) -> Value {
+  queue_outgoing_message_inner(
+    state,
+    thread_id,
+    recipient,
+    content,
+    Some(attachment_b64),
+    Some(attachment_ext),
+  )
+}
+
+fn queue_outgoing_message_inner(
+  state: &AppState,
+  thread_id: String,
+  recipient: String,
+  content: String,
+  attachment_b64: Option<String>,
+  attachment_ext: Option<String>,
+) -> Value {
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
   };
   let tid = thread_id.trim().to_string();
   let body = content.trim().to_string();
-  if tid.is_empty() || body.is_empty() {
-    return err("thread_id and content are required".to_string());
+  if tid.is_empty() {
+    return err("thread_id is required".to_string());
+  }
+
+  let attach_bytes = match attachment_b64.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+    Some(b64) => match base64::engine::general_purpose::STANDARD.decode(b64) {
+      Ok(b) => Some(b),
+      Err(e) => return err(format!("invalid attachment base64: {}", e)),
+    },
+    None => None,
+  };
+  if body.is_empty() && attach_bytes.is_none() {
+    return err("content or attachment is required".to_string());
   }
 
   let (_kind, derived) = recipient_from_thread_id(&tid);
   let rec = if recipient.trim().is_empty() { derived } else { recipient.trim().to_string() };
 
+  let id = make_outbox_item_id(&account_id, &tid);
+  let attachment_path = if let Some(bytes) = attach_bytes {
+    let ext = attachment_ext.unwrap_or_default();
+    match write_outbox_attachment(&state.app_data_dir, &id, &bytes, &ext) {
+      Ok(path) => Some(path.to_string_lossy().to_string()),
+      Err(e) => return err(e),
+    }
+  } else {
+    None
+  };
+
   let item = OutboxItem {
-    id: make_outbox_item_id(&account_id, &tid),
+    id,
     account_id: account_id.clone(),
     thread_id: tid.clone(),
     recipient: rec,
     content: body,
+    attachment_path,
     created_at: now_ms(),
     last_attempt_at: None,
     attempt_count: 0,
@@ -3419,6 +3527,178 @@ fn draft_reply(
   }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct ThreadActionSuggestion {
+  label: String,
+  kind: String,
+  #[serde(default)]
+  payload: String,
+}
+
+fn thread_action_kind_allowed(kind: &str) -> bool {
+  matches!(
+    kind,
+    "draft" | "summarize" | "send_invoice" | "mark_paid" | "open_orders" | "link_customer" | "compose"
+  )
+}
+
+fn fallback_thread_actions(
+  thread_id: &str,
+  orders: &[Order],
+  has_customer: bool,
+  ai_on: bool,
+) -> Vec<ThreadActionSuggestion> {
+  let mut out = Vec::new();
+  if ai_on {
+    out.push(ThreadActionSuggestion {
+      label: "Refresh summary".into(),
+      kind: "summarize".into(),
+      payload: String::new(),
+    });
+    out.push(ThreadActionSuggestion {
+      label: "Draft reply".into(),
+      kind: "draft".into(),
+      payload: "helpful concise reply".into(),
+    });
+  }
+  if let Some(o) = orders.iter().find(|o| {
+    o.status == "confirmed" || o.status == "draft" || o.status == "invoiced"
+  }) {
+    out.push(ThreadActionSuggestion {
+      label: "Send latest invoice".into(),
+      kind: "send_invoice".into(),
+      payload: o.id.clone(),
+    });
+    out.push(ThreadActionSuggestion {
+      label: "Mark latest paid".into(),
+      kind: "mark_paid".into(),
+      payload: o.id.clone(),
+    });
+  }
+  out.push(ThreadActionSuggestion {
+    label: "Open orders".into(),
+    kind: "open_orders".into(),
+    payload: thread_id.to_string(),
+  });
+  if !has_customer && !thread_id.starts_with("group:") {
+    out.push(ThreadActionSuggestion {
+      label: "Link as customer".into(),
+      kind: "link_customer".into(),
+      payload: String::new(),
+    });
+  }
+  out.truncate(5);
+  out
+}
+
+fn parse_thread_actions_json(raw: &str) -> Option<Vec<ThreadActionSuggestion>> {
+  let trimmed = raw.trim();
+  let json_slice = if let Some(start) = trimmed.find('[') {
+    let end = trimmed.rfind(']')?;
+    &trimmed[start..=end]
+  } else {
+    trimmed
+  };
+  let parsed: Vec<ThreadActionSuggestion> = serde_json::from_str(json_slice).ok()?;
+  let mut out = Vec::new();
+  for mut a in parsed {
+    a.kind = a.kind.trim().to_lowercase();
+    a.label = a.label.trim().to_string();
+    if a.label.is_empty() || !thread_action_kind_allowed(&a.kind) {
+      continue;
+    }
+    out.push(a);
+    if out.len() >= 5 {
+      break;
+    }
+  }
+  if out.is_empty() {
+    None
+  } else {
+    Some(out)
+  }
+}
+
+fn suggest_thread_actions(state: &AppState, thread_id: String, last_n: Option<u32>) -> Value {
+  let account = match state.account_manager.get_active() {
+    Some(a) => a,
+    None => return err("No active account".to_string()),
+  };
+  let ts = state.account_manager.get_or_create(&account);
+  let thread_id = thread_id.trim().to_string();
+  if thread_id.is_empty() {
+    return err("thread_id required".to_string());
+  }
+
+  let orders = state.orders.list_for_thread(&thread_id);
+  let has_customer = state.commerce.customer_by_thread(&thread_id).is_some();
+  let ai_on = ai_enabled();
+  let fallback = fallback_thread_actions(&thread_id, &orders, has_customer, ai_on);
+
+  if !ai_on {
+    return ok_t(fallback);
+  }
+
+  let n = last_n.unwrap_or(40).max(1).min(120) as usize;
+  let msgs = collect_recent_messages(&ts, &thread_id, n);
+  if msgs.is_empty() {
+    return ok_t(fallback);
+  }
+  let ctx = format_thread_context(&msgs);
+  let open_cents: i64 = orders
+    .iter()
+    .filter(|o| o.status == "confirmed" || o.status == "draft" || o.status == "invoiced")
+    .map(|o| o.total_cents)
+    .sum();
+  let last_status = orders
+    .first()
+    .map(|o| o.status.as_str())
+    .unwrap_or("none");
+  let commerce_snap = format!(
+    "orders={} open_cents={} last_status={} customer_linked={}",
+    orders.len(),
+    open_cents,
+    last_status,
+    has_customer
+  );
+
+  let model = match std::env::var("SIGNALX_OLLAMA_MODEL") {
+    Ok(m) => m,
+    Err(_) => return ok_t(fallback),
+  };
+
+  let system = "You suggest operator quick actions for a Signal shop desk. \
+Return ONLY a JSON array of 3 to 5 objects: {\"label\",\"kind\",\"payload\"}. \
+kind must be one of: draft, summarize, send_invoice, mark_paid, open_orders, link_customer, compose. \
+For send_invoice/mark_paid use payload=order id or \"latest\". Never invent order ids. No markdown.";
+
+  let user = format!(
+    "COMMERCE:\n{commerce_snap}\n\nTHREAD:\n{ctx}\n\nSuggest actions for the operator."
+  );
+
+  let messages = vec![
+    json!({ "role": "system", "content": system }),
+    json!({ "role": "user", "content": user }),
+  ];
+
+  let out = tokio_block_on(async move {
+    tokio::task::spawn_blocking(move || call_ollama_chat(&model, messages))
+      .await
+      .unwrap_or_else(|_| Err("AI task join failed".to_string()))
+  });
+
+  match out {
+    Ok(raw) => {
+      if let Some(parsed) = parse_thread_actions_json(&raw) {
+        ok_t(parsed)
+      } else {
+        ok_t(fallback)
+      }
+    }
+    Err(_) => ok_t(fallback),
+  }
+}
+
 fn open_path(state: &AppState, path: String) -> Value {
   use std::process::Command;
 
@@ -3876,7 +4156,7 @@ async fn receive_loop(state: AppState, agent_mode: Option<AgentModeConfig>) {
 }
 
 fn start_receive_loop(state: AppState, agent_mode: Option<AgentModeConfig>) {
-  tokio::spawn(receive_loop(state, agent_mode));
+  spawn_daemon_task(receive_loop(state, agent_mode));
 }
 
 fn outbox_send_lock_for(state: &AppState, account_id: &str) -> Arc<AsyncMutex<()>> {
@@ -3894,7 +4174,7 @@ fn ensure_outbox_worker(state: AppState, account_id: String) {
   set.insert(account_id.clone());
   drop(set);
 
-  tokio::spawn(async move {
+  spawn_daemon_task(async move {
     loop {
       // Claim an eligible item first (this persists "sending" state).
       let claimed = match state.outbox_store.claim_next_for_send_async(&account_id).await {
@@ -3949,14 +4229,42 @@ fn ensure_outbox_worker(state: AppState, account_id: String) {
       let body2 = item.content.clone();
       let raw2 = raw_recipient.clone();
       let kind2 = kind.clone();
+      let attach2 = item
+        .attachment_path
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+      if body2.trim().is_empty() && attach2.is_none() {
+        item.state = "failed".to_string();
+        item.last_error = Some("empty content and no attachment".to_string());
+        let _ = state.outbox_store.update_item_async(&account_id, item.clone()).await;
+        if let Ok(summary) = state.outbox_store.summary_async(&account_id).await {
+          emit_outbox_updated(&account_id, Some(&item.thread_id), summary);
+        }
+        emit_outbox_item_updated(&item);
+        continue;
+      }
 
       let send_res: Result<(), String> = match tokio::task::spawn_blocking(move || {
         let mut cmd = build_signal_command(&cfg2, Some(&num2));
         cmd.arg("send");
         if kind2 == "group" {
-          cmd.arg("-g").arg(&raw2).arg("-m").arg(&body2);
+          cmd.arg("-g").arg(&raw2);
+          if !body2.is_empty() {
+            cmd.arg("-m").arg(&body2);
+          }
+          if let Some(ref path) = attach2 {
+            cmd.arg("-a").arg(path);
+          }
         } else {
-          cmd.arg("-m").arg(&body2).arg(&raw2);
+          if !body2.is_empty() {
+            cmd.arg("-m").arg(&body2);
+          }
+          if let Some(ref path) = attach2 {
+            cmd.arg("-a").arg(path);
+          }
+          cmd.arg(&raw2);
         }
         let out = cmd
           .output()
@@ -4310,8 +4618,8 @@ fn ivr_place_order(state: &AppState, thread_id: &str, session: &ivr::IvrSession)
       );
     }
   };
-  let qty: i64 = match session.slots.get("order_qty").and_then(|s| s.parse::<i64>().ok()) {
-    Some(q) if q > 0 => q,
+  let qty: f64 = match session.slots.get("order_qty").and_then(|s| s.parse::<f64>().ok()) {
+    Some(q) if q.is_finite() && q > 0.0 => q,
     _ => return "Quantity must be a positive number. Reply 2 to try again.".to_string(),
   };
   let product = &products[idx];
@@ -4340,6 +4648,8 @@ fn ivr_place_order(state: &AppState, thread_id: &str, session: &ivr::IvrSession)
     vec![OrderLineInput {
       product_id: product.id.clone(),
       quantity: qty,
+      unit: product.effective_sales_unit(),
+      sell_option_id: String::new(),
     }],
     now_ms(),
   ) {
@@ -4499,6 +4809,190 @@ fn delete_product(state: &AppState, id: String) -> Value {
     }
     Err(e) => err(e),
   }
+}
+
+fn set_product_image(state: &AppState, id: String, bytes_base64: String, ext: String) -> Value {
+  let bytes = match base64::engine::general_purpose::STANDARD.decode(bytes_base64.trim()) {
+    Ok(b) => b,
+    Err(e) => return err(format!("invalid image base64: {}", e)),
+  };
+  match state
+    .commerce
+    .set_product_image(id.trim(), &bytes, &ext, now_ms())
+  {
+    Ok(p) => {
+      emit_event("commerce://products", state.commerce.list_products());
+      ok_t(p)
+    }
+    Err(e) => err(e),
+  }
+}
+
+fn clear_product_image(state: &AppState, id: String) -> Value {
+  match state.commerce.clear_product_image(id.trim(), now_ms()) {
+    Ok(p) => {
+      emit_event("commerce://products", state.commerce.list_products());
+      ok_t(p)
+    }
+    Err(e) => err(e),
+  }
+}
+
+fn get_product_image(state: &AppState, id: String) -> Value {
+  match state.commerce.read_product_image(id.trim()) {
+    Ok((bytes, mime)) => {
+      let bytes_base64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+      ok(json!({ "bytes_base64": bytes_base64, "mime": mime }))
+    }
+    Err(e) => err(e),
+  }
+}
+
+fn normalize_e164_phone(raw: &str) -> Result<String, String> {
+  let s = raw
+    .trim()
+    .chars()
+    .filter(|c| c.is_ascii_digit() || *c == '+')
+    .collect::<String>();
+  if s.starts_with('+')
+    && s.len() >= 8
+    && s.len() <= 17
+    && s[1..].chars().all(|c| c.is_ascii_digit())
+  {
+    return Ok(s);
+  }
+  Err("phone must be E.164 like +15551234567".to_string())
+}
+
+fn parse_created_group_id(stdout: &str) -> Option<String> {
+  let trimmed = stdout.trim();
+  if trimmed.is_empty() {
+    return None;
+  }
+  if let Ok(v) = serde_json::from_str::<Value>(trimmed) {
+    if let Some(id) = v.get("groupId").and_then(|x| x.as_str()) {
+      return Some(id.to_string());
+    }
+    if let Some(arr) = v.get("results").and_then(|x| x.as_array()) {
+      for item in arr {
+        if let Some(id) = item.get("groupId").and_then(|x| x.as_str()) {
+          return Some(id.to_string());
+        }
+      }
+    }
+  }
+  for line in stdout.lines() {
+    let line = line.trim();
+    if line.is_empty() {
+      continue;
+    }
+    if let Ok(v) = serde_json::from_str::<Value>(line) {
+      if let Some(id) = v.get("groupId").and_then(|x| x.as_str()) {
+        return Some(id.to_string());
+      }
+    }
+  }
+  // Last non-empty line that looks like a signal group id (base64-ish)
+  stdout.lines().rev().find_map(|line| {
+    let s = line.trim();
+    if s.len() >= 16
+      && s
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=' || c == '-')
+    {
+      Some(s.to_string())
+    } else {
+      None
+    }
+  })
+}
+
+/// Create a Signal group via `signal-cli updateGroup` (omit `-g`), then seed local group meta.
+fn create_signal_group(state: &AppState, name: String, members: Vec<String>) -> Value {
+  let name = name.trim().to_string();
+  if name.is_empty() {
+    return err("group name required".to_string());
+  }
+  if members.is_empty() {
+    return err("add at least one member phone number".to_string());
+  }
+  let mut normalized = Vec::new();
+  for m in members {
+    match normalize_e164_phone(&m) {
+      Ok(p) => {
+        if !normalized.contains(&p) {
+          normalized.push(p);
+        }
+      }
+      Err(e) => return err(format!("{} ({})", e, m.trim())),
+    }
+  }
+  let config = match get_signal_config() {
+    Some(c) => c,
+    None => return err("SIGNALX_SIGNALCLI_CONFIG is not set".to_string()),
+  };
+  let number = match get_signal_number() {
+    Some(n) => n,
+    None => return err("SIGNALX_NUMBER is not set".to_string()),
+  };
+
+  let mut cmd = build_signal_command(&config, Some(&number));
+  cmd.arg("updateGroup").arg("-n").arg(&name);
+  cmd.arg("-m");
+  for m in &normalized {
+    cmd.arg(m);
+  }
+  let out = match cmd.output() {
+    Ok(o) => o,
+    Err(e) => return err(format!("failed to run signal-cli: {}", e)),
+  };
+  let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+  let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+  if !out.status.success() {
+    return err(format!(
+      "signal-cli updateGroup failed: {}",
+      if stderr.trim().is_empty() {
+        stdout.trim()
+      } else {
+        stderr.trim()
+      }
+    ));
+  }
+  let Some(gid_raw) = parse_created_group_id(&stdout).or_else(|| parse_created_group_id(&stderr))
+  else {
+    return err(format!(
+      "group created but could not parse group id from signal-cli output: {}",
+      stdout.trim()
+    ));
+  };
+  let thread_id = normalize_group_id(&gid_raw);
+  let account_id = match require_active_account(state) {
+    Ok(a) => a,
+    Err(v) => return v,
+  };
+  let meta = match state.group_store.upsert_patch(
+    &account_id,
+    &thread_id,
+    GroupMetaPatch {
+      display_name: Some(Some(name.clone())),
+      categories: None,
+      favorite: None,
+      muted: None,
+      icon: None,
+      custom_fields: None,
+      member_notes: Some(normalized.clone()),
+      auto_reply_enabled: None,
+    },
+  ) {
+    Ok(m) => m,
+    Err(e) => return err(e),
+  };
+  ok(json!({
+    "thread_id": thread_id,
+    "group_id": meta.group_id,
+    "display_name": meta.display_name,
+    "members": normalized,
+  }))
 }
 
 fn list_customers(state: &AppState) -> Value {
@@ -4670,6 +5164,27 @@ fn cmd_queue_outgoing_message(
 ) -> Value {
   queue_outgoing_message(&state, thread_id, recipient, content)
 }
+/// Queue text and/or one outbound attachment via the outbox (no bypass send path).
+/// Frontend invoke args: `{ thread_id, recipient, content, attachment_b64, attachment_ext }`
+/// — `content` may be `""` when attaching; `attachment_b64` is standard base64; `attachment_ext` e.g. `"png"`.
+#[tauri::command]
+fn cmd_queue_outgoing_with_attachment(
+  state: State<'_, AppState>,
+  thread_id: String,
+  recipient: String,
+  content: String,
+  attachment_b64: String,
+  attachment_ext: String,
+) -> Value {
+  queue_outgoing_with_attachment(
+    &state,
+    thread_id,
+    recipient,
+    content,
+    attachment_b64,
+    attachment_ext,
+  )
+}
 #[tauri::command]
 fn cmd_retry_outbox_item(state: State<'_, AppState>, id: String) -> Value {
   retry_outbox_item(&state, id)
@@ -4805,6 +5320,14 @@ fn cmd_draft_reply(
   draft_reply(&state, thread_id, intent, constraints, last_n)
 }
 #[tauri::command]
+fn cmd_suggest_thread_actions(
+  state: State<'_, AppState>,
+  thread_id: String,
+  last_n: Option<u32>,
+) -> Value {
+  suggest_thread_actions(&state, thread_id, last_n)
+}
+#[tauri::command]
 fn cmd_open_path(state: State<'_, AppState>, path: String) -> Value {
   open_path(&state, path)
 }
@@ -4882,6 +5405,31 @@ fn cmd_upsert_product(state: State<'_, AppState>, product: Product) -> Value {
 #[tauri::command]
 fn cmd_delete_product(state: State<'_, AppState>, id: String) -> Value {
   delete_product(&state, id)
+}
+#[tauri::command]
+fn cmd_set_product_image(
+  state: State<'_, AppState>,
+  id: String,
+  bytes_base64: String,
+  ext: String,
+) -> Value {
+  set_product_image(&state, id, bytes_base64, ext)
+}
+#[tauri::command]
+fn cmd_clear_product_image(state: State<'_, AppState>, id: String) -> Value {
+  clear_product_image(&state, id)
+}
+#[tauri::command]
+fn cmd_get_product_image(state: State<'_, AppState>, id: String) -> Value {
+  get_product_image(&state, id)
+}
+#[tauri::command]
+fn cmd_create_signal_group(
+  state: State<'_, AppState>,
+  name: String,
+  members: Vec<String>,
+) -> Value {
+  create_signal_group(&state, name, members)
 }
 #[tauri::command]
 fn cmd_list_customers(state: State<'_, AppState>) -> Value {
@@ -5023,6 +5571,7 @@ pub fn run() {
       cmd_list_outbox,
       cmd_get_outbox_state_summary,
       cmd_queue_outgoing_message,
+      cmd_queue_outgoing_with_attachment,
       cmd_retry_outbox_item,
       cmd_delete_outbox_item,
       cmd_mark_pending_reply_consumed,
@@ -5045,6 +5594,7 @@ pub fn run() {
       cmd_search_messages,
       cmd_summarize_thread,
       cmd_draft_reply,
+      cmd_suggest_thread_actions,
       cmd_open_path,
       cmd_export_thread,
       cmd_export_account,
@@ -5061,6 +5611,10 @@ pub fn run() {
       cmd_list_products,
       cmd_upsert_product,
       cmd_delete_product,
+      cmd_set_product_image,
+      cmd_clear_product_image,
+      cmd_get_product_image,
+      cmd_create_signal_group,
       cmd_list_customers,
       cmd_upsert_customer,
       cmd_delete_customer,
@@ -5118,5 +5672,40 @@ mod foundation_tests {
     assert!(!path_is_under_root(&tmp, &outside));
     let _ = std::fs::remove_dir_all(&tmp);
     let _ = std::fs::remove_file(&outside);
+  }
+
+  #[test]
+  fn e164_and_group_id_parsers() {
+    assert_eq!(normalize_e164_phone("+15551234567").unwrap(), "+15551234567");
+    assert!(normalize_e164_phone("555").is_err());
+    assert_eq!(
+      parse_created_group_id(r#"{"groupId":"abcXYZ+/=="}"#).as_deref(),
+      Some("abcXYZ+/==")
+    );
+    assert_eq!(
+      parse_created_group_id("noise\nYWJjZGVmZ2hpams=\n").as_deref(),
+      Some("YWJjZGVmZ2hpams=")
+    );
+  }
+
+  #[test]
+  fn parse_thread_actions_accepts_allowlisted_kinds() {
+    let raw = r#"[
+      {"label":"Draft thanks","kind":"draft","payload":"thank them"},
+      {"label":"Bad","kind":"hack","payload":"x"},
+      {"label":"Open","kind":"open_orders","payload":"dm:+1"}
+    ]"#;
+    let parsed = parse_thread_actions_json(raw).expect("parse");
+    assert_eq!(parsed.len(), 2);
+    assert_eq!(parsed[0].kind, "draft");
+    assert_eq!(parsed[1].kind, "open_orders");
+  }
+
+  #[test]
+  fn parse_thread_actions_strips_markdown_fence_noise() {
+    let raw = "Here you go:\n```json\n[{\"label\":\"Summarize\",\"kind\":\"summarize\",\"payload\":\"\"}]\n```";
+    let parsed = parse_thread_actions_json(raw).expect("parse");
+    assert_eq!(parsed.len(), 1);
+    assert_eq!(parsed[0].kind, "summarize");
   }
 }

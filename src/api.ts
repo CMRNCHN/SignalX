@@ -38,6 +38,7 @@ export interface OutboxItem {
   attempt_count: number;
   state: string;
   last_error?: string | null;
+  attachment_path?: string | null;
 }
 
 export interface OutboxSummary {
@@ -60,6 +61,12 @@ export interface AiStatus {
   ollama_model?: string | null;
   ollama_reachable: boolean;
   ollama_last_error?: string | null;
+}
+
+export interface ThreadActionSuggestion {
+  label: string;
+  kind: string;
+  payload: string;
 }
 
 export interface Diagnostics {
@@ -175,13 +182,35 @@ export interface ThreadIvrStatus {
   global_enabled?: boolean;
 }
 
+export interface SellOption {
+  id: string;
+  label: string;
+  amount: number;
+  unit: string;
+  price_cents?: number | null;
+}
+
 export interface Product {
   id: string;
   name: string;
   description: string;
   sku: string;
+  /** Sell price per base_unit (¢) */
   price_cents: number;
+  /** Cost per base_unit (¢) */
+  cost_cents: number;
+  supplier: string;
+  base_unit: string;
+  stock_unit: string;
+  sales_unit: string;
+  quantity_base_milli: number;
   quantity_in_stock: number;
+  stock_qty?: number | null;
+  unit: string;
+  weight: number;
+  weight_unit: string;
+  image_path: string;
+  sell_options: SellOption[];
   updated_at: number;
 }
 
@@ -198,6 +227,10 @@ export interface OrderLine {
   name: string;
   quantity: number;
   unit_price_cents: number;
+  unit: string;
+  quantity_base_milli?: number;
+  line_total_cents?: number;
+  sell_option_label?: string;
 }
 
 export interface Order {
@@ -236,6 +269,20 @@ export const api = {
       recipient,
       content,
     }),
+  queueMessageWithAttachment: (
+    threadId: string,
+    content: string,
+    attachmentB64: string,
+    attachmentExt: string,
+    recipient = "",
+  ) =>
+    call<OutboxItem>("cmd_queue_outgoing_with_attachment", {
+      threadId,
+      recipient,
+      content,
+      attachmentB64,
+      attachmentExt,
+    }),
   retryOutbox: (id: string) => call<OutboxItem>("cmd_retry_outbox_item", { id }),
   deleteOutbox: (id: string) => call<boolean>("cmd_delete_outbox_item", { id }),
   markThreadRead: (threadId: string) =>
@@ -250,7 +297,31 @@ export const api = {
       beforeTs: null,
     }),
   listContactMeta: () => call<ContactMeta[]>("cmd_list_contact_meta"),
+  setContactMeta: (
+    contactId: string,
+    patch: {
+      display_name?: string | null;
+      alias?: string | null;
+      favorite?: boolean;
+      muted?: boolean;
+    },
+  ) =>
+    call<ContactMeta>("cmd_set_contact_meta", {
+      contactId,
+      patch,
+    }),
+  deleteContactMeta: (contactId: string) =>
+    call<boolean>("cmd_delete_contact_meta", { contactId }),
   listGroupMeta: () => call<GroupMeta[]>("cmd_list_group_meta"),
+  setGroupMeta: (groupId: string, patch: { display_name?: string | null }) =>
+    call<GroupMeta>("cmd_set_group_meta", { groupId, patch }),
+  createSignalGroup: (name: string, members: string[]) =>
+    call<{
+      thread_id: string;
+      group_id: string;
+      display_name?: string | null;
+      members: string[];
+    }>("cmd_create_signal_group", { name, members }),
   searchContacts: (query: string) =>
     call<unknown>("cmd_search_contacts", { query, filters: null }),
   searchGroups: (query: string) =>
@@ -263,6 +334,11 @@ export const api = {
       intent,
       constraints: constraints ?? null,
       lastN: null,
+    }),
+  suggestThreadActions: (threadId: string, lastN?: number) =>
+    call<ThreadActionSuggestion[]>("cmd_suggest_thread_actions", {
+      threadId,
+      lastN: lastN ?? null,
     }),
   getPendingReplies: (threadId: string) =>
     call<PendingReply[]>("cmd_get_pending_replies", { threadId }),
@@ -298,6 +374,11 @@ export const api = {
   upsertProduct: (product: Product) =>
     call<Product>("cmd_upsert_product", { product }),
   deleteProduct: (id: string) => call<{ deleted: boolean }>("cmd_delete_product", { id }),
+  setProductImage: (id: string, bytesBase64: string, ext: string) =>
+    call<Product>("cmd_set_product_image", { id, bytesBase64, ext }),
+  clearProductImage: (id: string) => call<Product>("cmd_clear_product_image", { id }),
+  getProductImage: (id: string) =>
+    call<{ bytes_base64: string; mime: string }>("cmd_get_product_image", { id }),
   listCustomers: () => call<Customer[]>("cmd_list_customers"),
   upsertCustomer: (customer: Customer) =>
     call<Customer>("cmd_upsert_customer", { customer }),
@@ -310,12 +391,22 @@ export const api = {
     }),
   listOrders: (threadId?: string) =>
     call<Order[]>("cmd_list_orders", { threadId: threadId ?? null }),
-  createOrder: (threadId: string, lines: { productId: string; quantity: number }[]) =>
+  createOrder: (
+    threadId: string,
+    lines: {
+      productId: string;
+      quantity: number;
+      unit?: string;
+      sellOptionId?: string;
+    }[],
+  ) =>
     call<Order>("cmd_create_order", {
       threadId,
       lines: lines.map((l) => ({
         product_id: l.productId,
         quantity: l.quantity,
+        unit: l.unit ?? "",
+        sell_option_id: l.sellOptionId ?? "",
       })),
     }),
   setOrderStatus: (id: string, status: string) =>

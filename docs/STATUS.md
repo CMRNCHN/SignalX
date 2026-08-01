@@ -20,8 +20,13 @@ drafts / guarded auto-reply, with a Tauri + React GUI on a Rust daemon
 2. Catalog + customers
 3. Orders + invoices (GUI + IVR place-order → invoice via outbox)
 4. Operator GUI polish (Settings allowlists, order status clarity, IVR armed hints)
-5. In-app device link (Settings → Device link; CLI scripts under `scripts/` remain fallback)
-6. Next: optional AI polish for order/IVR copy
+5. In-app device link (Settings → Device link QR + URI; CLI scripts under `scripts/` remain fallback)
+6. Dark Bonsai shell + soft NotRegistered/setup banner + commerce/IVR AI + static copy polish
+7. Order lifecycle (paid / fulfilled / cancelled), Outbox cockpit, outbound attachments (outbox-only)
+8. Profile context rail + AI quick actions (Messages 4-column shell; orders-backed standing/ledger; suggest chips)
 
-See `docs/superpowers/specs/2026-07-26-foundation-hardening-design.md` and
+Backup/migrate design: `docs/superpowers/specs/2026-07-30-backup-migrate-design.md`
+
+See `docs/superpowers/specs/2026-07-28-bonsai-shell-setup-ai-design.md`,
+`docs/superpowers/specs/2026-07-31-profile-context-rail-design.md`, and
 `docs/NEXT_STEPS.md`.
