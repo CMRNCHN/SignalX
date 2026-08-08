@@ -445,6 +445,11 @@ textarea {
   background: rgba(248, 113, 113, 0.2);
   color: #fecaca;
 }
+.badge.warn,
+.low-stock-badge {
+  background: rgba(251, 191, 36, 0.18);
+  color: #fde68a;
+}
 
 .snippet,
 .reason {
@@ -1507,6 +1512,50 @@ textarea {
   color: var(--muted);
 }
 
+.backup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.backup-import {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.restart-gate {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.restart-gate p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.restart-banner {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: rgba(180, 120, 40, 0.18);
+  font-size: 13px;
+}
+
 @media (max-width: 1100px) {
   .shell.shell-with-profile {
     grid-template-columns: 212px 280px 1fr;
@@ -1557,4 +1606,81 @@ textarea {
   .diag-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Sales panel + IVR menus editor */
+.sales-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.sales-totals {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.sales-totals strong {
+  display: block;
+  font-size: 1.25rem;
+  margin-top: 2px;
+}
+.sales-by-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.sales-top-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sales-top-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+.ivr-menus-editor {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ivr-menus-json {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+.ivr-preview-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+}
+.ivr-preview-reply {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.file-pick-btn {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
 }

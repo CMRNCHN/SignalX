@@ -13,13 +13,17 @@ use chrono::Timelike;
 
 mod ivr;
 mod commerce;
+mod commerce_audit;
 mod orders;
 mod link;
 mod uom;
-use ivr::{thread_allowed, IvrSettings, IvrStore};
+mod backup;
+use ivr::{thread_allowed, IvrMenus, IvrSettings, IvrStore};
 use commerce::{format_catalog_list, CommerceStore, Customer, Product};
-use orders::{format_invoice, Order, OrderLineInput, OrderStore};
+use commerce_audit::CommerceAuditStore;
+use orders::{format_invoice, format_order_status, format_quote, Order, OrderLineInput, OrderStore};
 use link::{DeviceLinkManager, DeviceLinkStatus};
+use backup::{export_data_bundle, import_data_bundle, ImportMode};
 
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
@@ -2488,6 +2492,7 @@ struct AppState {
   ivr: IvrStore,
   commerce: CommerceStore,
   orders: OrderStore,
+  commerce_audit: CommerceAuditStore,
   device_link: DeviceLinkManager,
 }
 
@@ -3538,7 +3543,14 @@ struct ThreadActionSuggestion {
 fn thread_action_kind_allowed(kind: &str) -> bool {
   matches!(
     kind,
-    "draft" | "summarize" | "send_invoice" | "mark_paid" | "open_orders" | "link_customer" | "compose"
+    "draft"
+      | "summarize"
+      | "send_invoice"
+      | "send_quote"
+      | "mark_paid"
+      | "open_orders"
+      | "link_customer"
+      | "compose"
   )
 }
 
@@ -3561,9 +3573,14 @@ fn fallback_thread_actions(
       payload: "helpful concise reply".into(),
     });
   }
-  if let Some(o) = orders.iter().find(|o| {
-    o.status == "confirmed" || o.status == "draft" || o.status == "invoiced"
-  }) {
+  if let Some(o) = orders.iter().find(|o| o.status == "draft") {
+    out.push(ThreadActionSuggestion {
+      label: "Send latest quote".into(),
+      kind: "send_quote".into(),
+      payload: o.id.clone(),
+    });
+  }
+  if let Some(o) = orders.iter().find(|o| o.status == "confirmed" || o.status == "invoiced") {
     out.push(ThreadActionSuggestion {
       label: "Send latest invoice".into(),
       kind: "send_invoice".into(),
@@ -3669,8 +3686,8 @@ fn suggest_thread_actions(state: &AppState, thread_id: String, last_n: Option<u3
 
   let system = "You suggest operator quick actions for a Signal shop desk. \
 Return ONLY a JSON array of 3 to 5 objects: {\"label\",\"kind\",\"payload\"}. \
-kind must be one of: draft, summarize, send_invoice, mark_paid, open_orders, link_customer, compose. \
-For send_invoice/mark_paid use payload=order id or \"latest\". Never invent order ids. No markdown.";
+kind must be one of: draft, summarize, send_invoice, send_quote, mark_paid, open_orders, link_customer, compose. \
+For send_invoice/send_quote/mark_paid use payload=order id or \"latest\". Never invent order ids. No markdown.";
 
   let user = format!(
     "COMMERCE:\n{commerce_snap}\n\nTHREAD:\n{ctx}\n\nSuggest actions for the operator."
@@ -3933,6 +3950,84 @@ fn export_account(state: &AppState, format: String, from_ts: Option<i64>, to_ts:
     "format": format,
     "message_count": all.len()
   }))
+}
+
+fn export_data_bundle_cmd(state: &AppState) -> Value {
+  let account = match state.account_manager.get_active() {
+    Some(a) => a,
+    None => return err("No active account".to_string()),
+  };
+  let version = env!("CARGO_PKG_VERSION");
+  match export_data_bundle(
+    &state.app_data_dir,
+    &state.export_dir,
+    &account,
+    now_ms(),
+    version,
+  ) {
+    Ok((path, bytes, counts)) => ok(json!({
+      "path": path.to_string_lossy(),
+      "bytes": bytes,
+      "counts": {
+        "files": counts.files,
+        "attachments": counts.attachments,
+      }
+    })),
+    Err(e) => err(e),
+  }
+}
+
+fn import_data_bundle_cmd(
+  state: &AppState,
+  path: Option<String>,
+  bytes_base64: Option<String>,
+  mode: String,
+) -> Value {
+  let account = match state.account_manager.get_active() {
+    Some(a) => a,
+    None => return err("No active account".to_string()),
+  };
+  let mode = match ImportMode::parse(&mode) {
+    Ok(m) => m,
+    Err(e) => return err(e),
+  };
+
+  let zip_path = if let Some(b64) = bytes_base64.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+    let bytes = match base64::engine::general_purpose::STANDARD.decode(b64) {
+      Ok(b) => b,
+      Err(e) => return err(format!("invalid bundle base64: {e}")),
+    };
+    if bytes.len() < 4 || &bytes[0..2] != b"PK" {
+      return err("uploaded file does not look like a zip".to_string());
+    }
+    let _ = std::fs::create_dir_all(&state.export_dir);
+    let staged = state
+      .export_dir
+      .join(format!("import-upload-{}.zip", now_ms()));
+    if let Err(e) = std::fs::write(&staged, &bytes) {
+      return err(format!("failed to stage bundle: {e}"));
+    }
+    staged
+  } else {
+    let p = path.unwrap_or_default();
+    let candidate = PathBuf::from(p.trim());
+    if !candidate.is_file() {
+      return err("bundle zip not found".to_string());
+    }
+    candidate
+  };
+
+  match import_data_bundle(
+    &state.app_data_dir,
+    &state.export_dir,
+    &zip_path,
+    &account,
+    mode,
+    now_ms(),
+  ) {
+    Ok(v) => ok(v),
+    Err(e) => err(e),
+  }
 }
 
 // --------------------
@@ -4523,6 +4618,7 @@ fn build_app_state() -> AppState {
     ivr: IvrStore::new(&app_data_dir),
     commerce: CommerceStore::new(&app_data_dir),
     orders: OrderStore::new(&app_data_dir),
+    commerce_audit: CommerceAuditStore::new(&app_data_dir),
     device_link: DeviceLinkManager::new(),
   }
 }
@@ -4573,7 +4669,7 @@ fn maybe_handle_ivr(state: &AppState, thread_id: &str, content: &str) -> bool {
 
   let mut reply = result.reply;
   if result.action.as_deref() == Some("list_catalog") {
-    let list = format_catalog_list(&state.commerce.list_products(), 15);
+    let list = format_catalog_list(&ivr_catalog_products(state), 15);
     let follow = menus
       .nodes
       .get(&result.session.node_id)
@@ -4591,6 +4687,8 @@ fn maybe_handle_ivr(state: &AppState, thread_id: &str, content: &str) -> bool {
     cleared.slots.remove("order_idx");
     cleared.slots.remove("order_qty");
     let _ = state.ivr.save_session(&account, cleared);
+  } else if result.action.as_deref() == Some("order_status") {
+    reply = Some(ivr_order_status(state, thread_id));
   }
 
   if let Some(reply) = reply {
@@ -4600,8 +4698,34 @@ fn maybe_handle_ivr(state: &AppState, thread_id: &str, content: &str) -> bool {
   result.handled
 }
 
+fn ivr_catalog_products(state: &AppState) -> Vec<Product> {
+  let mut products = state.commerce.list_products();
+  if state.ivr.get_settings().hide_zero_stock {
+    products.retain(|p| {
+      let mut p = p.clone();
+      p.migrate_legacy();
+      p.quantity_base_milli > 0
+    });
+  }
+  products
+}
+
+fn ivr_order_status(state: &AppState, thread_id: &str) -> String {
+  let orders = state.orders.list_for_thread(thread_id);
+  let latest = orders.into_iter().find(|o| {
+    o.status == "confirmed"
+      || o.status == "paid"
+      || o.status == "fulfilled"
+      || o.status == "draft"
+  });
+  match latest {
+    Some(o) => format_order_status(&o),
+    None => "No orders on file for this chat yet. Reply 0 for the menu.".to_string(),
+  }
+}
+
 fn ivr_place_order(state: &AppState, thread_id: &str, session: &ivr::IvrSession) -> String {
-  let products = state.commerce.list_products();
+  let products = ivr_catalog_products(state);
   if products.is_empty() {
     return "No products available right now. Reply 0 for the main menu.".to_string();
   }
@@ -4654,6 +4778,14 @@ fn ivr_place_order(state: &AppState, thread_id: &str, session: &ivr::IvrSession)
     now_ms(),
   ) {
     Ok(order) => {
+      state.commerce_audit.record(
+        "order_created",
+        &format!("IVR order {} confirmed", &order.id[..8.min(order.id.len())]),
+        Some(order.id.clone()),
+        None,
+        Some(thread_id.to_string()),
+        now_ms(),
+      );
       emit_event("commerce://orders", state.orders.list());
       emit_event("commerce://products", state.commerce.list_products());
       let invoice = format_invoice(&order, "SignalX");
@@ -4685,6 +4817,34 @@ fn set_ivr_settings(state: &AppState, settings: IvrSettings) -> Value {
     }
     Err(e) => err(e),
   }
+}
+
+fn get_ivr_menus(state: &AppState) -> Value {
+  ok_t(state.ivr.menus())
+}
+
+fn set_ivr_menus(state: &AppState, menus: IvrMenus) -> Value {
+  match state.ivr.set_menus(menus) {
+    Ok(m) => {
+      emit_event("ivr://menus", m.clone());
+      ok_t(m)
+    }
+    Err(e) => err(e),
+  }
+}
+
+fn reset_ivr_menus(state: &AppState) -> Value {
+  match state.ivr.reset_menus_to_demo() {
+    Ok(m) => {
+      emit_event("ivr://menus", m.clone());
+      ok_t(m)
+    }
+    Err(e) => err(e),
+  }
+}
+
+fn preview_ivr_path(state: &AppState, inputs: Vec<String>) -> Value {
+  ok_t(state.ivr.preview_path(&inputs, now_ms()))
 }
 
 fn get_thread_ivr(state: &AppState, thread_id: String) -> Value {
@@ -5053,6 +5213,7 @@ fn create_order(
   state: &AppState,
   thread_id: String,
   lines: Vec<OrderLineInput>,
+  as_draft: Option<bool>,
 ) -> Value {
   let tid = thread_id.trim().to_string();
   if tid.is_empty() {
@@ -5080,13 +5241,102 @@ fn create_order(
       }
     }
   };
+  let draft = as_draft.unwrap_or(false);
+  match state.orders.create_with_mode(
+    &state.commerce,
+    customer.id,
+    tid.clone(),
+    lines,
+    draft,
+    now_ms(),
+  ) {
+    Ok(order) => {
+      state.commerce_audit.record(
+        if draft {
+          "order_draft"
+        } else {
+          "order_created"
+        },
+        &format!(
+          "{} {} · ${:.2}",
+          if draft { "Quote" } else { "Order" },
+          &order.id[..8.min(order.id.len())],
+          order.total_cents as f64 / 100.0
+        ),
+        Some(order.id.clone()),
+        None,
+        Some(tid),
+        now_ms(),
+      );
+      emit_event("commerce://orders", state.orders.list());
+      if !draft {
+        emit_event("commerce://products", state.commerce.list_products());
+      }
+      ok_t(order)
+    }
+    Err(e) => err(e),
+  }
+}
+
+fn update_draft_order_lines(
+  state: &AppState,
+  id: String,
+  lines: Vec<OrderLineInput>,
+) -> Value {
   match state
     .orders
-    .create(&state.commerce, customer.id, tid.clone(), lines, now_ms())
+    .update_draft_lines(&state.commerce, id.trim(), lines, now_ms())
   {
     Ok(order) => {
+      state.commerce_audit.record(
+        "order_draft_updated",
+        &format!("Draft {} lines updated", &order.id[..8.min(order.id.len())]),
+        Some(order.id.clone()),
+        None,
+        Some(order.thread_id.clone()),
+        now_ms(),
+      );
+      emit_event("commerce://orders", state.orders.list());
+      ok_t(order)
+    }
+    Err(e) => err(e),
+  }
+}
+
+fn confirm_order(state: &AppState, id: String) -> Value {
+  match state.orders.confirm(&state.commerce, id.trim(), now_ms()) {
+    Ok(order) => {
+      state.commerce_audit.record(
+        "order_confirmed",
+        &format!("Confirmed {}", &order.id[..8.min(order.id.len())]),
+        Some(order.id.clone()),
+        None,
+        Some(order.thread_id.clone()),
+        now_ms(),
+      );
       emit_event("commerce://orders", state.orders.list());
       emit_event("commerce://products", state.commerce.list_products());
+      ok_t(order)
+    }
+    Err(e) => err(e),
+  }
+}
+
+fn duplicate_order_as_draft(state: &AppState, id: String) -> Value {
+  match state
+    .orders
+    .duplicate_as_draft(&state.commerce, id.trim(), now_ms())
+  {
+    Ok(order) => {
+      state.commerce_audit.record(
+        "order_duplicated",
+        &format!("Duplicated as draft {}", &order.id[..8.min(order.id.len())]),
+        Some(order.id.clone()),
+        None,
+        Some(order.thread_id.clone()),
+        now_ms(),
+      );
+      emit_event("commerce://orders", state.orders.list());
       ok_t(order)
     }
     Err(e) => err(e),
@@ -5096,6 +5346,14 @@ fn create_order(
 fn set_order_status(state: &AppState, id: String, status: String) -> Value {
   match state.orders.set_status(id.trim(), status.trim(), now_ms()) {
     Ok(order) => {
+      state.commerce_audit.record(
+        "order_status",
+        &format!("{} → {}", &order.id[..8.min(order.id.len())], order.status),
+        Some(order.id.clone()),
+        None,
+        Some(order.thread_id.clone()),
+        now_ms(),
+      );
       emit_event("commerce://orders", state.orders.list());
       ok_t(order)
     }
@@ -5108,12 +5366,225 @@ fn send_order_invoice(state: &AppState, id: String) -> Value {
     Some(o) => o,
     None => return err("order not found".to_string()),
   };
+  if order.status == "draft" {
+    return err("confirm the quote before sending an invoice (or use Send quote)".into());
+  }
   let body = format_invoice(&order, "SignalX");
   let (_k, recipient) = recipient_from_thread_id(&order.thread_id);
   match queue_outgoing_message(state, order.thread_id.clone(), recipient, body) {
-    v if v.get("success").and_then(|x| x.as_bool()).unwrap_or(false) => ok_t(order),
+    v if v.get("success").and_then(|x| x.as_bool()).unwrap_or(false) => {
+      state.commerce_audit.record(
+        "invoice_sent",
+        &format!("Invoice queued for {}", &order.id[..8.min(order.id.len())]),
+        Some(order.id.clone()),
+        None,
+        Some(order.thread_id.clone()),
+        now_ms(),
+      );
+      ok_t(order)
+    }
     v => v,
   }
+}
+
+fn send_order_quote(state: &AppState, id: String) -> Value {
+  let order = match state.orders.get(id.trim()) {
+    Some(o) => o,
+    None => return err("order not found".to_string()),
+  };
+  if order.status != "draft" {
+    return err("Send quote is for draft quotes only".into());
+  }
+  let body = format_quote(&order, "SignalX");
+  let (_k, recipient) = recipient_from_thread_id(&order.thread_id);
+  match queue_outgoing_message(state, order.thread_id.clone(), recipient, body) {
+    v if v.get("success").and_then(|x| x.as_bool()).unwrap_or(false) => {
+      state.commerce_audit.record(
+        "quote_sent",
+        &format!("Quote queued for {}", &order.id[..8.min(order.id.len())]),
+        Some(order.id.clone()),
+        None,
+        Some(order.thread_id.clone()),
+        now_ms(),
+      );
+      ok_t(order)
+    }
+    v => v,
+  }
+}
+
+fn adjust_product_stock(
+  state: &AppState,
+  id: String,
+  delta: f64,
+  reason: Option<String>,
+) -> Value {
+  let pid = id.trim();
+  if pid.is_empty() {
+    return err("product id required".into());
+  }
+  if !delta.is_finite() || delta == 0.0 {
+    return err("delta must be a non-zero number".into());
+  }
+  // Interpret delta in stock_unit display units.
+  let base_unit;
+  let stock_unit;
+  {
+    let Some(p) = state.commerce.list_products().into_iter().find(|x| x.id == pid) else {
+      return err("product not found".into());
+    };
+    let mut tmp = p;
+    tmp.migrate_legacy();
+    base_unit = tmp.effective_base_unit();
+    stock_unit = tmp.effective_stock_unit();
+  }
+  let base_amt = match crate::uom::convert_to_base(delta, &stock_unit, &base_unit) {
+    Ok(v) => v,
+    Err(e) => return err(e),
+  };
+  let milli = crate::uom::to_milli(base_amt);
+  match state.commerce.adjust_stock_milli_with_reason(
+    pid,
+    milli,
+    reason.as_deref().unwrap_or(""),
+    now_ms(),
+  ) {
+    Ok(p) => {
+      state.commerce_audit.record(
+        "stock_adjust",
+        &format!("{} Δ{} {}", p.name, delta, stock_unit),
+        None,
+        Some(p.id.clone()),
+        None,
+        now_ms(),
+      );
+      emit_event("commerce://products", state.commerce.list_products());
+      ok_t(p)
+    }
+    Err(e) => err(e),
+  }
+}
+
+fn export_products_csv(state: &AppState) -> Value {
+  let csv = state.commerce.export_products_csv();
+  let path = state
+    .export_dir
+    .join(format!("products-{}.csv", now_ms()));
+  match std::fs::write(&path, &csv) {
+    Ok(()) => ok(json!({
+      "path": path.to_string_lossy(),
+      "bytes": csv.len(),
+      "csv": csv,
+    })),
+    Err(e) => err(e.to_string()),
+  }
+}
+
+fn import_products_csv(state: &AppState, csv: String, dry_run: bool) -> Value {
+  match state
+    .commerce
+    .import_products_csv(&csv, dry_run, now_ms())
+  {
+    Ok(preview) => {
+      if !dry_run {
+        emit_event("commerce://products", state.commerce.list_products());
+        state.commerce_audit.record(
+          "catalog_import",
+          &format!(
+            "CSV import: {} upserts, {} creates",
+            preview.upserts, preview.creates
+          ),
+          None,
+          None,
+          None,
+          now_ms(),
+        );
+      }
+      ok_t(preview)
+    }
+    Err(e) => err(e),
+  }
+}
+
+fn list_commerce_audit(state: &AppState, limit: Option<u32>) -> Value {
+  ok_t(state.commerce_audit.list(limit.unwrap_or(100) as usize))
+}
+
+fn sales_summary(
+  state: &AppState,
+  since_ms: Option<i64>,
+  until_ms: Option<i64>,
+  thread_id: Option<String>,
+  status: Option<String>,
+) -> Value {
+  let since = since_ms.unwrap_or(0);
+  let until = until_ms.unwrap_or(i64::MAX);
+  let status_filter = status.unwrap_or_else(|| "all".into());
+  let thread_filter = thread_id.unwrap_or_default();
+  let mut orders = state.orders.list();
+  orders.retain(|o| {
+    o.created_at >= since
+      && o.created_at <= until
+      && (thread_filter.is_empty() || o.thread_id == thread_filter)
+      && (status_filter == "all" || o.status == status_filter)
+  });
+  let mut by_status: HashMap<String, (usize, i64)> = HashMap::new();
+  let mut product_qty: HashMap<String, (String, f64, i64)> = HashMap::new();
+  let mut total_cents = 0i64;
+  for o in &orders {
+    let e = by_status.entry(o.status.clone()).or_insert((0, 0));
+    e.0 += 1;
+    e.1 += o.total_cents;
+    if o.status != "cancelled" && o.status != "draft" {
+      total_cents += o.total_cents;
+    }
+    for line in &o.lines {
+      let e = product_qty
+        .entry(line.product_id.clone())
+        .or_insert((line.name.clone(), 0.0, 0));
+      e.1 += line.quantity;
+      e.2 += if line.line_total_cents > 0 {
+        line.line_total_cents
+      } else {
+        (line.unit_price_cents as f64 * line.quantity).round() as i64
+      };
+    }
+  }
+  let mut top_products: Vec<Value> = product_qty
+    .into_iter()
+    .map(|(id, (name, qty, cents))| {
+      json!({
+        "product_id": id,
+        "name": name,
+        "quantity": qty,
+        "revenue_cents": cents,
+      })
+    })
+    .collect();
+  top_products.sort_by(|a, b| {
+    b.get("revenue_cents")
+      .and_then(|x| x.as_i64())
+      .unwrap_or(0)
+      .cmp(
+        &a.get("revenue_cents")
+          .and_then(|x| x.as_i64())
+          .unwrap_or(0),
+      )
+  });
+  top_products.truncate(10);
+  let status_rows: Vec<Value> = by_status
+    .into_iter()
+    .map(|(status, (count, cents))| {
+      json!({ "status": status, "count": count, "total_cents": cents })
+    })
+    .collect();
+  ok(json!({
+    "order_count": orders.len(),
+    "revenue_cents": total_cents,
+    "by_status": status_rows,
+    "top_products": top_products,
+    "orders": orders,
+  }))
 }
 
 // --------------------
@@ -5351,6 +5822,19 @@ fn cmd_export_account(
   export_account(&state, format, from_ts, to_ts)
 }
 #[tauri::command]
+fn cmd_export_data_bundle(state: State<'_, AppState>) -> Value {
+  export_data_bundle_cmd(&state)
+}
+#[tauri::command]
+fn cmd_import_data_bundle(
+  state: State<'_, AppState>,
+  path: Option<String>,
+  bytes_base64: Option<String>,
+  mode: String,
+) -> Value {
+  import_data_bundle_cmd(&state, path, bytes_base64, mode)
+}
+#[tauri::command]
 fn cmd_get_auto_reply_settings(state: State<'_, AppState>) -> Value {
   get_auto_reply_settings(&state)
 }
@@ -5381,6 +5865,22 @@ fn cmd_get_ivr_settings(state: State<'_, AppState>) -> Value {
 #[tauri::command]
 fn cmd_set_ivr_settings(state: State<'_, AppState>, settings: IvrSettings) -> Value {
   set_ivr_settings(&state, settings)
+}
+#[tauri::command]
+fn cmd_get_ivr_menus(state: State<'_, AppState>) -> Value {
+  get_ivr_menus(&state)
+}
+#[tauri::command]
+fn cmd_set_ivr_menus(state: State<'_, AppState>, menus: IvrMenus) -> Value {
+  set_ivr_menus(&state, menus)
+}
+#[tauri::command]
+fn cmd_reset_ivr_menus(state: State<'_, AppState>) -> Value {
+  reset_ivr_menus(&state)
+}
+#[tauri::command]
+fn cmd_preview_ivr_path(state: State<'_, AppState>, inputs: Vec<String>) -> Value {
+  preview_ivr_path(&state, inputs)
 }
 #[tauri::command]
 fn cmd_get_thread_ivr(state: State<'_, AppState>, thread_id: String) -> Value {
@@ -5460,8 +5960,25 @@ fn cmd_create_order(
   state: State<'_, AppState>,
   thread_id: String,
   lines: Vec<OrderLineInput>,
+  as_draft: Option<bool>,
 ) -> Value {
-  create_order(&state, thread_id, lines)
+  create_order(&state, thread_id, lines, as_draft)
+}
+#[tauri::command]
+fn cmd_update_draft_order_lines(
+  state: State<'_, AppState>,
+  id: String,
+  lines: Vec<OrderLineInput>,
+) -> Value {
+  update_draft_order_lines(&state, id, lines)
+}
+#[tauri::command]
+fn cmd_confirm_order(state: State<'_, AppState>, id: String) -> Value {
+  confirm_order(&state, id)
+}
+#[tauri::command]
+fn cmd_duplicate_order_as_draft(state: State<'_, AppState>, id: String) -> Value {
+  duplicate_order_as_draft(&state, id)
 }
 #[tauri::command]
 fn cmd_set_order_status(state: State<'_, AppState>, id: String, status: String) -> Value {
@@ -5470,6 +5987,41 @@ fn cmd_set_order_status(state: State<'_, AppState>, id: String, status: String) 
 #[tauri::command]
 fn cmd_send_order_invoice(state: State<'_, AppState>, id: String) -> Value {
   send_order_invoice(&state, id)
+}
+#[tauri::command]
+fn cmd_send_order_quote(state: State<'_, AppState>, id: String) -> Value {
+  send_order_quote(&state, id)
+}
+#[tauri::command]
+fn cmd_adjust_product_stock(
+  state: State<'_, AppState>,
+  id: String,
+  delta: f64,
+  reason: Option<String>,
+) -> Value {
+  adjust_product_stock(&state, id, delta, reason)
+}
+#[tauri::command]
+fn cmd_export_products_csv(state: State<'_, AppState>) -> Value {
+  export_products_csv(&state)
+}
+#[tauri::command]
+fn cmd_import_products_csv(state: State<'_, AppState>, csv: String, dry_run: bool) -> Value {
+  import_products_csv(&state, csv, dry_run)
+}
+#[tauri::command]
+fn cmd_list_commerce_audit(state: State<'_, AppState>, limit: Option<u32>) -> Value {
+  list_commerce_audit(&state, limit)
+}
+#[tauri::command]
+fn cmd_sales_summary(
+  state: State<'_, AppState>,
+  since_ms: Option<i64>,
+  until_ms: Option<i64>,
+  thread_id: Option<String>,
+  status: Option<String>,
+) -> Value {
+  sales_summary(&state, since_ms, until_ms, thread_id, status)
 }
 
 fn start_device_link(state: &AppState) -> Value {
@@ -5598,6 +6150,8 @@ pub fn run() {
       cmd_open_path,
       cmd_export_thread,
       cmd_export_account,
+      cmd_export_data_bundle,
+      cmd_import_data_bundle,
       cmd_get_auto_reply_settings,
       cmd_set_auto_reply_settings,
       cmd_list_auto_reply_audit,
@@ -5605,6 +6159,10 @@ pub fn run() {
       cmd_get_thread_auto_reply,
       cmd_get_ivr_settings,
       cmd_set_ivr_settings,
+      cmd_get_ivr_menus,
+      cmd_set_ivr_menus,
+      cmd_reset_ivr_menus,
+      cmd_preview_ivr_path,
       cmd_get_thread_ivr,
       cmd_set_thread_ivr,
       cmd_clear_thread_handoff,
@@ -5614,6 +6172,9 @@ pub fn run() {
       cmd_set_product_image,
       cmd_clear_product_image,
       cmd_get_product_image,
+      cmd_adjust_product_stock,
+      cmd_export_products_csv,
+      cmd_import_products_csv,
       cmd_create_signal_group,
       cmd_list_customers,
       cmd_upsert_customer,
@@ -5621,8 +6182,14 @@ pub fn run() {
       cmd_ensure_customer_for_thread,
       cmd_list_orders,
       cmd_create_order,
+      cmd_update_draft_order_lines,
+      cmd_confirm_order,
+      cmd_duplicate_order_as_draft,
       cmd_set_order_status,
       cmd_send_order_invoice,
+      cmd_send_order_quote,
+      cmd_list_commerce_audit,
+      cmd_sales_summary,
       cmd_start_device_link,
       cmd_cancel_device_link,
     ])

@@ -1,7 +1,7 @@
 # SignalX — backup / migrate (local-first)
 
 Date: 2026-07-30  
-Status: design only (no feature code in this pass)  
+Status: implemented (v1)  
 Related: plan §4 in `docs/superpowers/plans/2026-07-30-order-outbox-attach-backup.md`
 
 ## Goal

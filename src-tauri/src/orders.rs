@@ -154,12 +154,56 @@ impl OrderStore {
     lines_in: Vec<OrderLineInput>,
     now: i64,
   ) -> Result<Order, String> {
+    self.create_with_mode(commerce, customer_id, thread_id, lines_in, false, now)
+  }
+
+  /// `as_draft`: no stock decrement; status `draft`. Otherwise confirmed + decrement (legacy).
+  pub fn create_with_mode(
+    &self,
+    commerce: &CommerceStore,
+    customer_id: String,
+    thread_id: String,
+    lines_in: Vec<OrderLineInput>,
+    as_draft: bool,
+    now: i64,
+  ) -> Result<Order, String> {
+    let (lines, total) = Self::build_lines(commerce, &lines_in, !as_draft)?;
+    if !as_draft {
+      for line in &lines {
+        commerce.adjust_stock_milli(&line.product_id, -line.quantity_base_milli, now)?;
+      }
+    }
+    let order = Order {
+      id: Uuid::new_v4().to_string(),
+      customer_id,
+      thread_id,
+      status: if as_draft {
+        "draft".to_string()
+      } else {
+        "confirmed".to_string()
+      },
+      lines,
+      total_cents: total,
+      created_at: now,
+      updated_at: now,
+    };
+    self.orders.lock().unwrap().push(order.clone());
+    self.persist()?;
+    Ok(order)
+  }
+
+  fn build_lines(
+    commerce: &CommerceStore,
+    lines_in: &[OrderLineInput],
+    require_stock: bool,
+  ) -> Result<(Vec<OrderLine>, i64), String> {
     if lines_in.is_empty() {
       return Err("order needs at least one line".to_string());
     }
     let products = commerce.list_products();
-    let mut planned: Vec<(OrderLine, i64)> = Vec::new();
-    for line in &lines_in {
+    let mut lines = Vec::new();
+    let mut total = 0i64;
+    for line in lines_in {
       let p = products
         .iter()
         .find(|x| x.id == line.product_id)
@@ -200,7 +244,7 @@ impl OrderStore {
       if base_milli <= 0 {
         return Err(format!("sale quantity too small for {}", p.name));
       }
-      if p.quantity_base_milli < base_milli {
+      if require_stock && p.quantity_base_milli < base_milli {
         return Err(format!("insufficient stock for {}", p.name));
       }
       let unit_price = if sale_qty > 0.0 {
@@ -208,44 +252,138 @@ impl OrderStore {
       } else {
         line_total
       };
-      planned.push((
-        OrderLine {
-          product_id: p.id.clone(),
-          name: p.name.clone(),
-          quantity: sale_qty,
-          unit_price_cents: unit_price,
-          unit: sale_unit,
-          quantity_base_milli: base_milli,
-          line_total_cents: line_total,
-          sell_option_label: opt_label,
-        },
-        base_milli,
+      total += line_total;
+      lines.push(OrderLine {
+        product_id: p.id.clone(),
+        name: p.name.clone(),
+        quantity: sale_qty,
+        unit_price_cents: unit_price,
+        unit: sale_unit,
+        quantity_base_milli: base_milli,
+        line_total_cents: line_total,
+        sell_option_label: opt_label,
+      });
+    }
+    Ok((lines, total))
+  }
+
+  /// Replace lines on a draft order only (no stock movement).
+  pub fn update_draft_lines(
+    &self,
+    commerce: &CommerceStore,
+    id: &str,
+    lines_in: Vec<OrderLineInput>,
+    now: i64,
+  ) -> Result<Order, String> {
+    let (lines, total) = Self::build_lines(commerce, &lines_in, false)?;
+    let mut out = None;
+    {
+      let mut list = self.orders.lock().unwrap();
+      let o = list
+        .iter_mut()
+        .find(|x| x.id == id)
+        .ok_or_else(|| "order not found".to_string())?;
+      if o.status != "draft" {
+        return Err("only draft orders can be edited".to_string());
+      }
+      o.lines = lines;
+      o.total_cents = total;
+      o.updated_at = now;
+      out = Some(o.clone());
+    }
+    self.persist()?;
+    out.ok_or_else(|| "order not found".to_string())
+  }
+
+  /// Draft → confirmed with stock decrement. Idempotent if already confirmed.
+  pub fn confirm(
+    &self,
+    commerce: &CommerceStore,
+    id: &str,
+    now: i64,
+  ) -> Result<Order, String> {
+    let existing = self
+      .get(id)
+      .ok_or_else(|| "order not found".to_string())?;
+    if existing.status == "confirmed" {
+      return Ok(existing);
+    }
+    if existing.status != "draft" {
+      return Err(format!(
+        "cannot confirm order in status '{}'",
+        existing.status
       ));
     }
-
-    let mut lines = Vec::new();
-    let mut total = 0i64;
-    for (oline, milli) in planned {
-      commerce.adjust_stock_milli(&oline.product_id, -milli, now)?;
-      total += oline.line_total_cents;
-      lines.push(oline);
+    // Re-check stock against live catalog
+    let products = commerce.list_products();
+    for line in &existing.lines {
+      let p = products
+        .iter()
+        .find(|x| x.id == line.product_id)
+        .ok_or_else(|| format!("product not found: {}", line.product_id))?;
+      let mut p = p.clone();
+      p.migrate_legacy();
+      if p.quantity_base_milli < line.quantity_base_milli {
+        return Err(format!("insufficient stock for {}", p.name));
+      }
     }
-    let order = Order {
-      id: Uuid::new_v4().to_string(),
-      customer_id,
-      thread_id,
-      status: "confirmed".to_string(),
-      lines,
-      total_cents: total,
-      created_at: now,
-      updated_at: now,
-    };
-    self.orders.lock().unwrap().push(order.clone());
+    for line in &existing.lines {
+      commerce.adjust_stock_milli(&line.product_id, -line.quantity_base_milli, now)?;
+    }
+    let mut out = None;
+    {
+      let mut list = self.orders.lock().unwrap();
+      let o = list
+        .iter_mut()
+        .find(|x| x.id == id)
+        .ok_or_else(|| "order not found".to_string())?;
+      validate_status_transition(&o.status, "confirmed")?;
+      o.status = "confirmed".to_string();
+      o.updated_at = now;
+      out = Some(o.clone());
+    }
     self.persist()?;
-    Ok(order)
+    out.ok_or_else(|| "order not found".to_string())
+  }
+
+  /// Copy an order as a new draft (no stock change).
+  pub fn duplicate_as_draft(
+    &self,
+    commerce: &CommerceStore,
+    id: &str,
+    now: i64,
+  ) -> Result<Order, String> {
+    let src = self
+      .get(id)
+      .ok_or_else(|| "order not found".to_string())?;
+    let lines_in: Vec<OrderLineInput> = src
+      .lines
+      .iter()
+      .map(|l| OrderLineInput {
+        product_id: l.product_id.clone(),
+        quantity: l.quantity,
+        unit: l.unit.clone(),
+        sell_option_id: String::new(),
+      })
+      .collect();
+    self.create_with_mode(
+      commerce,
+      src.customer_id.clone(),
+      src.thread_id.clone(),
+      lines_in,
+      true,
+      now,
+    )
   }
 
   pub fn set_status(&self, id: &str, status: &str, now: i64) -> Result<Order, String> {
+    // draft → confirmed must go through confirm() so stock is decremented once.
+    if status == "confirmed" {
+      let cur = self.get(id).ok_or_else(|| "order not found".to_string())?;
+      if cur.status == "draft" {
+        return Err("use confirm_order to move draft → confirmed (decrements stock)".into());
+      }
+    }
     let mut out = None;
     {
       let mut list = self.orders.lock().unwrap();
@@ -264,8 +402,18 @@ impl OrderStore {
 }
 
 pub fn format_invoice(order: &Order, business_name: &str) -> String {
+  format_order_document(order, business_name, "Invoice")
+}
+
+pub fn format_quote(order: &Order, business_name: &str) -> String {
+  let mut body = format_order_document(order, business_name, "Quote");
+  body.push_str("\nThis is a quote — not yet confirmed.");
+  body
+}
+
+fn format_order_document(order: &Order, business_name: &str, kind: &str) -> String {
   let mut lines = vec![
-    format!("{} — Invoice", business_name),
+    format!("{} — {}", business_name, kind),
     format!("Order {}", &order.id[..8.min(order.id.len())]),
     String::new(),
   ];

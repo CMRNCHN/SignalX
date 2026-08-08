@@ -76,6 +76,9 @@ pub struct Product {
   pub image_path: String,
   #[serde(default)]
   pub sell_options: Vec<SellOption>,
+  /// Alert when `quantity_base_milli` is at or below this (0 = no threshold).
+  #[serde(default)]
+  pub low_stock_threshold_milli: i64,
   pub updated_at: i64,
 }
 
@@ -126,6 +129,11 @@ impl Product {
     let stock_u = self.effective_stock_unit();
     let amt = convert_from_base(from_milli(self.quantity_base_milli), &stock_u, &base)?;
     Ok((amt, stock_u))
+  }
+
+  pub fn is_low_stock(&self) -> bool {
+    self.low_stock_threshold_milli > 0
+      && self.quantity_base_milli <= self.low_stock_threshold_milli
   }
 
   /// Price in ¢ for selling `amount` of `unit` (uses sell option fixed price when id matches).
@@ -195,14 +203,40 @@ struct CustomerFile {
   customers: Vec<Customer>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StockLedgerEntry {
+  pub id: String,
+  pub product_id: String,
+  pub delta_milli: i64,
+  #[serde(default)]
+  pub reason: String,
+  pub created_at: i64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+struct StockLedgerFile {
+  version: u32,
+  entries: Vec<StockLedgerEntry>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CsvImportPreview {
+  pub upserts: usize,
+  pub creates: usize,
+  pub errors: Vec<String>,
+  pub sample: Vec<String>,
+}
+
 #[derive(Clone)]
 pub struct CommerceStore {
   products_path: PathBuf,
   customers_path: PathBuf,
+  stock_ledger_path: PathBuf,
   images_dir: PathBuf,
   app_data_dir: PathBuf,
   products: Arc<Mutex<Vec<Product>>>,
   customers: Arc<Mutex<Vec<Customer>>>,
+  stock_ledger: Arc<Mutex<Vec<StockLedgerEntry>>>,
 }
 
 pub fn normalize_measure_unit(raw: &str) -> Result<String, String> {
@@ -309,14 +343,37 @@ impl CommerceStore {
       Vec::new()
     };
 
+    let stock_ledger_path = dir.join("stock_ledger.json");
+    let stock_ledger = if stock_ledger_path.is_file() {
+      std::fs::read_to_string(&stock_ledger_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<StockLedgerFile>(&s).ok())
+        .map(|f| f.entries)
+        .unwrap_or_default()
+    } else {
+      Vec::new()
+    };
+
     Self {
       products_path,
       customers_path,
+      stock_ledger_path,
       images_dir,
       app_data_dir: app_data_dir.to_path_buf(),
       products: Arc::new(Mutex::new(products)),
       customers: Arc::new(Mutex::new(customers)),
+      stock_ledger: Arc::new(Mutex::new(stock_ledger)),
     }
+  }
+
+  fn persist_stock_ledger(&self) -> Result<(), String> {
+    let entries = self.stock_ledger.lock().unwrap().clone();
+    let file = StockLedgerFile {
+      version: 1,
+      entries,
+    };
+    let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
+    std::fs::write(&self.stock_ledger_path, json).map_err(|e| e.to_string())
   }
 
   fn persist_products(&self) -> Result<(), String> {
@@ -579,6 +636,16 @@ impl CommerceStore {
 
   /// Adjust stock by a delta measured in **base milli-units**.
   pub fn adjust_stock_milli(&self, id: &str, delta_milli: i64, now: i64) -> Result<Product, String> {
+    self.adjust_stock_milli_with_reason(id, delta_milli, "", now)
+  }
+
+  pub fn adjust_stock_milli_with_reason(
+    &self,
+    id: &str,
+    delta_milli: i64,
+    reason: &str,
+    now: i64,
+  ) -> Result<Product, String> {
     let mut out = None;
     {
       let mut list = self.products.lock().unwrap();
@@ -601,11 +668,45 @@ impl CommerceStore {
       out = Some(p.clone());
     }
     self.persist_products()?;
+    {
+      let mut ledger = self.stock_ledger.lock().unwrap();
+      ledger.push(StockLedgerEntry {
+        id: Uuid::new_v4().to_string(),
+        product_id: id.to_string(),
+        delta_milli,
+        reason: reason.trim().to_string(),
+        created_at: now,
+      });
+      if ledger.len() > 5000 {
+        let drain = ledger.len() - 5000;
+        ledger.drain(0..drain);
+      }
+    }
+    let _ = self.persist_stock_ledger();
     out.ok_or_else(|| "product not found".to_string())
+  }
+
+  pub fn list_stock_ledger(&self, product_id: Option<&str>, limit: usize) -> Vec<StockLedgerEntry> {
+    let mut v = self.stock_ledger.lock().unwrap().clone();
+    if let Some(pid) = product_id {
+      v.retain(|e| e.product_id == pid);
+    }
+    v.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    v.into_iter().take(limit.max(1)).collect()
   }
 
   /// Legacy: delta in whole `stock_unit` (or base) amounts.
   pub fn adjust_stock(&self, id: &str, delta: i64, now: i64) -> Result<Product, String> {
+    self.adjust_stock_with_reason(id, delta, "", now)
+  }
+
+  pub fn adjust_stock_with_reason(
+    &self,
+    id: &str,
+    delta: i64,
+    reason: &str,
+    now: i64,
+  ) -> Result<Product, String> {
     let base_unit;
     let stock_unit;
     {
@@ -620,7 +721,181 @@ impl CommerceStore {
       stock_unit = tmp.effective_stock_unit();
     }
     let base_amt = convert_to_base(delta as f64, &stock_unit, &base_unit)?;
-    self.adjust_stock_milli(id, to_milli(base_amt), now)
+    self.adjust_stock_milli_with_reason(id, to_milli(base_amt), reason, now)
+  }
+
+  pub fn export_products_csv(&self) -> String {
+    let mut out = String::from(
+      "id,sku,name,description,price_cents,cost_cents,supplier,base_unit,stock_unit,sales_unit,quantity_base_milli,low_stock_threshold_milli\n",
+    );
+    for p in self.list_products() {
+      let mut p = p;
+      p.migrate_legacy();
+      out.push_str(&format!(
+        "{},{},{},{},{},{},{},{},{},{},{},{}\n",
+        csv_escape(&p.id),
+        csv_escape(&p.sku),
+        csv_escape(&p.name),
+        csv_escape(&p.description),
+        p.price_cents,
+        p.cost_cents,
+        csv_escape(&p.supplier),
+        csv_escape(&p.base_unit),
+        csv_escape(&p.stock_unit),
+        csv_escape(&p.sales_unit),
+        p.quantity_base_milli,
+        p.low_stock_threshold_milli,
+      ));
+    }
+    out
+  }
+
+  /// Parse CSV; dry_run=true returns preview without writing.
+  pub fn import_products_csv(&self, csv: &str, dry_run: bool, now: i64) -> Result<CsvImportPreview, String> {
+    let mut lines = csv.lines().filter(|l| !l.trim().is_empty());
+    let header = lines
+      .next()
+      .ok_or_else(|| "CSV is empty".to_string())?
+      .to_lowercase();
+    let cols: Vec<String> = split_csv_line(&header);
+    let idx = |name: &str| cols.iter().position(|c| c.as_str() == name);
+    let i_id = idx("id");
+    let i_sku = idx("sku");
+    let i_name = idx("name").ok_or_else(|| "CSV needs a name column".to_string())?;
+    let i_desc = idx("description");
+    let i_price = idx("price_cents");
+    let i_cost = idx("cost_cents");
+    let i_supplier = idx("supplier");
+    let i_base = idx("base_unit");
+    let i_stock_u = idx("stock_unit");
+    let i_sales_u = idx("sales_unit");
+    let i_qty = idx("quantity_base_milli");
+    let i_low = idx("low_stock_threshold_milli");
+
+    let existing = self.list_products();
+    let mut upserts = 0usize;
+    let mut creates = 0usize;
+    let mut errors = Vec::new();
+    let mut sample = Vec::new();
+    let mut pending: Vec<Product> = Vec::new();
+
+    for (row_i, line) in lines.enumerate() {
+      let row = split_csv_line(line);
+      let get = |i: Option<usize>| -> String {
+        i.and_then(|ix| row.get(ix).cloned()).unwrap_or_default()
+      };
+      let name = get(Some(i_name)).trim().to_string();
+      if name.is_empty() {
+        errors.push(format!("row {}: name required", row_i + 2));
+        continue;
+      }
+      let id = get(i_id).trim().to_string();
+      let sku = get(i_sku).trim().to_string();
+      let match_existing = existing.iter().find(|p| {
+        (!id.is_empty() && p.id == id) || (!sku.is_empty() && !p.sku.is_empty() && p.sku == sku)
+      });
+      let mut product = match match_existing {
+        Some(p) => {
+          upserts += 1;
+          p.clone()
+        }
+        None => {
+          creates += 1;
+          Product {
+            id: if id.is_empty() {
+              Uuid::new_v4().to_string()
+            } else {
+              id.clone()
+            },
+            name: name.clone(),
+            description: String::new(),
+            sku: sku.clone(),
+            price_cents: 0,
+            cost_cents: 0,
+            supplier: String::new(),
+            base_unit: "ea".into(),
+            stock_unit: String::new(),
+            sales_unit: String::new(),
+            quantity_base_milli: 0,
+            quantity_in_stock: 0,
+            stock_qty: None,
+            unit: "ea".into(),
+            weight: 0.0,
+            weight_unit: String::new(),
+            image_path: String::new(),
+            sell_options: vec![],
+            low_stock_threshold_milli: 0,
+            updated_at: now,
+          }
+        }
+      };
+      product.name = name;
+      if !sku.is_empty() {
+        product.sku = sku;
+      }
+      if let Some(d) = i_desc {
+        product.description = get(Some(d));
+      }
+      if let Some(px) = i_price {
+        if let Ok(v) = get(Some(px)).parse::<i64>() {
+          product.price_cents = v;
+        }
+      }
+      if let Some(cx) = i_cost {
+        if let Ok(v) = get(Some(cx)).parse::<i64>() {
+          product.cost_cents = v;
+        }
+      }
+      if let Some(sx) = i_supplier {
+        product.supplier = get(Some(sx));
+      }
+      if let Some(bx) = i_base {
+        let b = get(Some(bx));
+        if !b.is_empty() {
+          if let Ok(u) = normalize_measure_unit(&b) {
+            product.base_unit = u;
+          }
+        }
+      }
+      if let Some(su) = i_stock_u {
+        product.stock_unit = get(Some(su));
+      }
+      if let Some(su) = i_sales_u {
+        product.sales_unit = get(Some(su));
+      }
+      if let Some(qx) = i_qty {
+        if let Ok(v) = get(Some(qx)).parse::<i64>() {
+          product.quantity_base_milli = v.max(0);
+        }
+      }
+      if let Some(lx) = i_low {
+        if let Ok(v) = get(Some(lx)).parse::<i64>() {
+          product.low_stock_threshold_milli = v.max(0);
+        }
+      }
+      product.migrate_legacy();
+      if sample.len() < 5 {
+        sample.push(format!("{} ({})", product.name, product.sku));
+      }
+      pending.push(product);
+    }
+
+    let preview = CsvImportPreview {
+      upserts,
+      creates,
+      errors: errors.clone(),
+      sample,
+    };
+    if dry_run {
+      return Ok(preview);
+    }
+    if !errors.is_empty() && pending.is_empty() {
+      return Err(errors.join("; "));
+    }
+    for p in pending {
+      self.upsert_product(p, now)?;
+    }
+    Ok(preview)
   }
 
   pub fn list_customers(&self) -> Vec<Customer> {
@@ -677,6 +952,40 @@ impl CommerceStore {
       .find(|c| c.thread_id == thread_id)
       .cloned()
   }
+}
+
+fn csv_escape(s: &str) -> String {
+  if s.contains(',') || s.contains('"') || s.contains('\n') {
+    format!("\"{}\"", s.replace('"', "\"\""))
+  } else {
+    s.to_string()
+  }
+}
+
+fn split_csv_line(line: &str) -> Vec<String> {
+  let mut out = Vec::new();
+  let mut cur = String::new();
+  let mut in_quotes = false;
+  let mut chars = line.chars().peekable();
+  while let Some(c) = chars.next() {
+    match c {
+      '"' => {
+        if in_quotes && chars.peek() == Some(&'"') {
+          cur.push('"');
+          chars.next();
+        } else {
+          in_quotes = !in_quotes;
+        }
+      }
+      ',' if !in_quotes => {
+        out.push(cur);
+        cur = String::new();
+      }
+      _ => cur.push(c),
+    }
+  }
+  out.push(cur);
+  out
 }
 
 /// Format catalog for IVR SMS-style reply (keep short).
@@ -754,6 +1063,7 @@ mod tests {
       weight_unit: String::new(),
       image_path: String::new(),
       sell_options: vec![],
+      low_stock_threshold_milli: 0,
       updated_at: 0,
     }
   }
@@ -784,6 +1094,7 @@ mod tests {
         unit: "oz".into(),
         price_cents: None,
       }],
+      low_stock_threshold_milli: 0,
       updated_at: 0,
     }
   }
@@ -853,6 +1164,7 @@ mod tests {
           weight_unit: String::new(),
           image_path: String::new(),
           sell_options: vec![],
+          low_stock_threshold_milli: 0,
           updated_at: 0,
         },
         1,
@@ -888,6 +1200,7 @@ mod tests {
           weight_unit: String::new(),
           image_path: String::new(),
           sell_options: vec![],
+          low_stock_threshold_milli: 0,
           updated_at: 0,
         },
         1,

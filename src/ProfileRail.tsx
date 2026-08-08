@@ -43,7 +43,13 @@ export function computeStanding(orders: Order[]): {
     .filter((o) => o.status === "paid" || o.status === "fulfilled")
     .reduce((s, o) => s + o.total_cents, 0);
   const openCents = open.reduce((s, o) => s + o.total_cents, 0);
-  if (cancelled >= 2) return { label: "At risk", tone: "danger", lifetimeCents, openCents };
+  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+  const staleConfirmed = orders.some(
+    (o) => o.status === "confirmed" && Date.now() - o.created_at > sevenDaysMs,
+  );
+  if (staleConfirmed || cancelled >= 2) {
+    return { label: "At risk", tone: "danger", lifetimeCents, openCents };
+  }
   if (openCents > 0) return { label: "Open balance", tone: "warn", lifetimeCents, openCents };
   if (orders.length === 0) return { label: "New", tone: "muted", lifetimeCents, openCents };
   return { label: "Good", tone: "ok", lifetimeCents, openCents };
@@ -55,17 +61,25 @@ function fallbackActions(
   hasCustomer: boolean,
   aiConfigured: boolean,
 ): ThreadActionSuggestion[] {
-  const latestOpen = orders.find(
-    (o) => o.status === "confirmed" || o.status === "draft" || o.status === "invoiced",
+  const latestDraft = orders.find((o) => o.status === "draft");
+  const latestInvoiceable = orders.find(
+    (o) => o.status === "confirmed" || o.status === "invoiced",
   );
   const out: ThreadActionSuggestion[] = [];
   if (aiConfigured) {
     out.push({ label: "Refresh summary", kind: "summarize", payload: "" });
     out.push({ label: "Draft reply", kind: "draft", payload: "helpful concise reply" });
   }
-  if (latestOpen) {
-    out.push({ label: "Send latest invoice", kind: "send_invoice", payload: latestOpen.id });
-    out.push({ label: "Mark latest paid", kind: "mark_paid", payload: latestOpen.id });
+  if (latestDraft) {
+    out.push({ label: "Send latest quote", kind: "send_quote", payload: latestDraft.id });
+  }
+  if (latestInvoiceable) {
+    out.push({
+      label: "Send latest invoice",
+      kind: "send_invoice",
+      payload: latestInvoiceable.id,
+    });
+    out.push({ label: "Mark latest paid", kind: "mark_paid", payload: latestInvoiceable.id });
   }
   out.push({ label: "Open orders", kind: "open_orders", payload: threadId });
   if (!hasCustomer && !threadId.startsWith("group:")) {
@@ -91,6 +105,7 @@ type Props = {
   onLinkCustomer: () => void;
   onOpenOrders: () => void;
   onSendInvoice: (orderId: string) => void;
+  onSendQuote?: (orderId: string) => void;
   onMarkPaid: (orderId: string) => void;
   onToggleFavorite: (next: boolean) => void;
   onToggleMute: (next: boolean) => void;
@@ -115,6 +130,7 @@ export function ProfileRail(props: Props) {
     onLinkCustomer,
     onOpenOrders,
     onSendInvoice,
+    onSendQuote,
     onMarkPaid,
     onToggleFavorite,
     onToggleMute,
@@ -130,11 +146,11 @@ export function ProfileRail(props: Props) {
     [],
   );
 
-  const standing = useMemo(() => computeStanding(orders), [orders]);
   const threadOrders = useMemo(
     () => orders.filter((o) => o.thread_id === threadId).sort((a, b) => b.created_at - a.created_at),
     [orders, threadId],
   );
+  const standing = useMemo(() => computeStanding(threadOrders), [threadOrders]);
 
   useEffect(() => {
     setNotes(customer?.notes ?? "");
@@ -215,6 +231,7 @@ export function ProfileRail(props: Props) {
     const latestOpen = threadOrders.find(
       (o) => o.status === "confirmed" || o.status === "draft" || o.status === "invoiced",
     );
+    const latestDraft = threadOrders.find((o) => o.status === "draft");
     const resolveOrderId = () => {
       if (payload && payload !== "latest") return payload;
       return latestOpen?.id ?? threadOrders[0]?.id ?? "";
@@ -229,6 +246,14 @@ export function ProfileRail(props: Props) {
       case "compose":
         if (payload) onSetComposer(payload);
         break;
+      case "send_quote": {
+        const id =
+          payload && payload !== "latest" ? payload : latestDraft?.id ?? resolveOrderId();
+        if (!id) onStatus("No draft quote to send");
+        else if (onSendQuote) onSendQuote(id);
+        else onStatus("Send quote not available");
+        break;
+      }
       case "send_invoice": {
         const id = resolveOrderId();
         if (!id) onStatus("No order to invoice");
@@ -408,9 +433,17 @@ export function ProfileRail(props: Props) {
                     Paid
                   </button>
                 )}
-                <button type="button" className="ghost-btn" onClick={() => onSendInvoice(o.id)}>
-                  Invoice
-                </button>
+                {o.status === "draft" ? (
+                  onSendQuote && (
+                    <button type="button" className="ghost-btn" onClick={() => onSendQuote(o.id)}>
+                      Quote
+                    </button>
+                  )
+                ) : (
+                  <button type="button" className="ghost-btn" onClick={() => onSendInvoice(o.id)}>
+                    Invoice
+                  </button>
+                )}
               </div>
             </li>
           ))}
