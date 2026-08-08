@@ -28,3 +28,4 @@ dirs-next = "2"
 base64 = "0.22"
 uuid = { version = "1.11", features = ["v4", "serde"] }
 ureq = { version = "2", features = ["json"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }

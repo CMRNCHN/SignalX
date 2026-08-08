@@ -28,14 +28,17 @@ SIGNALX_SIGNALCLI_BIN=/opt/homebrew/bin/signal-cli
 ## 🧪 Testing Features
 
 ### Quick Smoke Test (5 minutes)
-1. **Launch app**: `./SignalX-Dev.command`
+1. **Launch app**: `./run-dev.sh` or `./SignalX-Dev.command`
 2. **Verify**:
-   - [ ] Active account appears in dropdown
+   - [ ] Dark modular shell (rail + list + chat panels)
+   - [ ] Account number or **Link this Mac** setup banner if not registered
    - [ ] Health badge shows in sidebar (green/yellow/red)
-   - [ ] Threads list loads
+   - [ ] Threads list loads (or empty state with quick actions)
    - [ ] Can select a thread and see messages
-   - [ ] Can send a message
+   - [ ] Can send a message (outbox)
    - [ ] Incoming message appears (from another device)
+   - [ ] Settings → Device link shows QR after Start linking
+   - [ ] Draft reply fills composer only (if AI configured)
 
 ### Feature Verification
 Run the verification script:

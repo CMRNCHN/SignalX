@@ -12,6 +12,9 @@ pub struct IvrSettings {
   pub allowlist: Vec<String>,
   #[serde(default = "default_require_allowlist")]
   pub require_allowlist: bool,
+  /// When true, IVR catalog browse / order pick omit zero-stock products.
+  #[serde(default)]
+  pub hide_zero_stock: bool,
 }
 
 fn default_require_allowlist() -> bool {
@@ -24,8 +27,78 @@ impl Default for IvrSettings {
       enabled: false,
       allowlist: vec![],
       require_allowlist: true,
+      hide_zero_stock: false,
     }
   }
+}
+
+/// Host actions the IVR engine may emit (validated on menu save).
+pub const ALLOWED_IVR_ACTIONS: &[&str] = &[
+  "list_catalog",
+  "place_order",
+  "handoff",
+  "order_status",
+];
+
+/// Validate menu graph before persist. Returns Ok(()) or a clear error.
+pub fn validate_menus(menus: &IvrMenus) -> Result<(), String> {
+  if menus.entry.trim().is_empty() {
+    return Err("menus.entry is required".into());
+  }
+  if menus.session_ttl_ms < 60_000 {
+    return Err("session_ttl_ms must be at least 60000 (1 minute)".into());
+  }
+  if menus.nodes.is_empty() {
+    return Err("menus.nodes must not be empty".into());
+  }
+  if !menus.nodes.contains_key(&menus.entry) {
+    return Err(format!("entry node '{}' is missing from nodes", menus.entry));
+  }
+  for (id, node) in &menus.nodes {
+    if node.prompt.trim().is_empty() {
+      return Err(format!("node '{}': prompt is required", id));
+    }
+    for (key, choice) in &node.choices {
+      if let Some(goto) = &choice.goto {
+        if !menus.nodes.contains_key(goto) {
+          return Err(format!(
+            "node '{}' choice '{}': goto '{}' not found",
+            id, key, goto
+          ));
+        }
+      }
+      if let Some(action) = &choice.action {
+        if !ALLOWED_IVR_ACTIONS.contains(&action.as_str()) {
+          return Err(format!(
+            "node '{}' choice '{}': unknown action '{}' (allowed: {})",
+            id,
+            key,
+            action,
+            ALLOWED_IVR_ACTIONS.join(", ")
+          ));
+        }
+      }
+    }
+    if let Some(after) = &node.after_capture {
+      if !menus.nodes.contains_key(&after.goto) {
+        return Err(format!(
+          "node '{}': after_capture.goto '{}' not found",
+          id, after.goto
+        ));
+      }
+      if let Some(action) = &after.action {
+        if !ALLOWED_IVR_ACTIONS.contains(&action.as_str()) {
+          return Err(format!(
+            "node '{}': after_capture unknown action '{}' (allowed: {})",
+            id,
+            action,
+            ALLOWED_IVR_ACTIONS.join(", ")
+          ));
+        }
+      }
+    }
+  }
+  Ok(())
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -85,7 +158,7 @@ impl IvrMenus {
     nodes.insert(
       "main".to_string(),
       IvrNode {
-        prompt: "Welcome — reply with a number:\n1 · Browse products\n2 · Place an order\n3 · Talk to a person\n0 · Main menu".to_string(),
+        prompt: "Hi — reply with a number:\n1 · See products\n2 · Place an order\n3 · Talk to us\n4 · Check order\n0 · Menu".to_string(),
         choices: HashMap::from([
           ("1".into(), IvrChoice {
             goto: Some("browse".into()),
@@ -100,13 +173,18 @@ impl IvrMenus {
           ("3".into(), IvrChoice {
             goto: None,
             action: Some("handoff".into()),
-            reply: Some("A person will take it from here. Hang tight.".into()),
+            reply: Some("Got it — someone will reply here shortly.".into()),
+          }),
+          ("4".into(), IvrChoice {
+            goto: Some("main".into()),
+            action: Some("order_status".into()),
+            reply: None,
           }),
           ("0".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
           ("menu".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
           ("help".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
         ]),
-        on_unknown: Some("Please reply with 1, 2, 3, or 0.".into()),
+        on_unknown: Some("Reply 1, 2, 3, 4, or 0.".into()),
         capture_slot: None,
         after_capture: None,
       },
@@ -114,7 +192,7 @@ impl IvrMenus {
     nodes.insert(
       "browse".to_string(),
       IvrNode {
-        prompt: "Reply 2 to order, or 0 for the main menu.".to_string(),
+        prompt: "Reply 2 to order, or 0 for the menu.".to_string(),
         choices: HashMap::from([
           ("2".into(), IvrChoice {
             goto: Some("order_pick".into()),
@@ -124,7 +202,7 @@ impl IvrMenus {
           ("0".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
           ("menu".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
         ]),
-        on_unknown: Some("Reply 2 to order, or 0 for the main menu.".into()),
+        on_unknown: Some("Reply 2 to order, or 0 for the menu.".into()),
         capture_slot: None,
         after_capture: None,
       },
@@ -132,7 +210,7 @@ impl IvrMenus {
     nodes.insert(
       "order_pick".to_string(),
       IvrNode {
-        prompt: "Reply with the product number from the list (or 0 to cancel).".to_string(),
+        prompt: "Reply with the product # from the list (or 0 to cancel).".to_string(),
         choices: HashMap::from([
           ("0".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
           ("menu".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
@@ -140,7 +218,7 @@ impl IvrMenus {
         on_unknown: None,
         capture_slot: Some("order_idx".into()),
         after_capture: Some(IvrAfterCapture {
-          reply: "How many would you like?".into(),
+          reply: "How many?".into(),
           goto: "order_qty".into(),
           action: None,
         }),
@@ -157,7 +235,7 @@ impl IvrMenus {
         on_unknown: None,
         capture_slot: Some("order_qty".into()),
         after_capture: Some(IvrAfterCapture {
-          reply: "Placing your order…".into(),
+          reply: "Working on it…".into(),
           goto: "main".into(),
           action: Some("place_order".into()),
         }),
@@ -166,24 +244,53 @@ impl IvrMenus {
     nodes.insert(
       "ask_note".to_string(),
       IvrNode {
-        prompt: "Type your note in one message.".to_string(),
+        prompt: "Send your note in one message.".to_string(),
         choices: HashMap::new(),
         on_unknown: None,
         capture_slot: Some("note".into()),
         after_capture: Some(IvrAfterCapture {
-          reply: "Got it — thanks.".into(),
+          reply: "Noted — thanks.".into(),
           goto: "main".into(),
           action: None,
         }),
       },
     );
     Self {
-      version: 3,
+      version: 4,
       entry: "main".to_string(),
       session_ttl_ms: 1_800_000,
       nodes,
     }
   }
+}
+
+fn migrate_menus(mut m: IvrMenus) -> IvrMenus {
+  if m.version >= 4 {
+    return m;
+  }
+  // Soft upgrade: ensure Check order on main when still on demo-shaped v3.
+  if let Some(main) = m.nodes.get_mut("main") {
+    if !main.choices.contains_key("4") {
+      main.choices.insert(
+        "4".into(),
+        IvrChoice {
+          goto: Some("main".into()),
+          action: Some("order_status".into()),
+          reply: None,
+        },
+      );
+      if !main.prompt.contains("Check order") {
+        main.prompt = format!("{}\n4 · Check order", main.prompt.trim_end());
+      }
+      if let Some(u) = main.on_unknown.as_mut() {
+        if u.contains("1, 2, 3") && !u.contains("4") {
+          *u = u.replace("1, 2, 3", "1, 2, 3, 4");
+        }
+      }
+    }
+  }
+  m.version = 4;
+  m
 }
 
 #[derive(Clone, Debug)]
@@ -360,7 +467,7 @@ fn apply_choice(
         action: Some("handoff".into()),
       });
     }
-    if action == "list_catalog" {
+    if action == "list_catalog" || action == "order_status" {
       if let Some(goto) = &choice.goto {
         session.node_id = goto.clone();
         touch(session, menus, now);
@@ -369,7 +476,7 @@ fn apply_choice(
         reply: None,
         session: session.clone(),
         handled: true,
-        action: Some("list_catalog".into()),
+        action: Some(action.clone()),
       });
     }
   }
@@ -399,6 +506,16 @@ pub fn thread_allowed(settings: &IvrSettings, thread_id: &str) -> bool {
     return true;
   }
   settings.allowlist.iter().any(|t| t == thread_id)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct IvrPreviewStep {
+  pub input: String,
+  pub node_id: String,
+  pub reply: Option<String>,
+  pub action: Option<String>,
+  pub handed_off: bool,
+  pub slots: HashMap<String, String>,
 }
 
 #[derive(Clone)]
@@ -436,7 +553,13 @@ impl IvrStore {
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok());
       match loaded {
-        Some(m) if m.version >= 3 => m,
+        Some(m) if m.version >= 3 => {
+          let m = migrate_menus(m);
+          if let Ok(json) = serde_json::to_string_pretty(&m) {
+            let _ = std::fs::write(&menus_path, json);
+          }
+          m
+        }
         _ => {
           let m = IvrMenus::default_demo();
           if let Ok(json) = serde_json::to_string_pretty(&m) {
@@ -478,6 +601,40 @@ impl IvrStore {
 
   pub fn menus(&self) -> IvrMenus {
     self.menus.lock().unwrap().clone()
+  }
+
+  pub fn set_menus(&self, menus: IvrMenus) -> Result<IvrMenus, String> {
+    validate_menus(&menus)?;
+    {
+      *self.menus.lock().unwrap() = menus.clone();
+    }
+    let json = serde_json::to_string_pretty(&menus).map_err(|e| e.to_string())?;
+    std::fs::write(&self.menus_path, json).map_err(|e| e.to_string())?;
+    Ok(menus)
+  }
+
+  pub fn reset_menus_to_demo(&self) -> Result<IvrMenus, String> {
+    self.set_menus(IvrMenus::default_demo())
+  }
+
+  /// Dry-run a path of inputs from a fresh session; returns reply/action steps.
+  pub fn preview_path(&self, inputs: &[String], now: i64) -> Vec<IvrPreviewStep> {
+    let menus = self.menus();
+    let mut session = fresh_session("dm:+preview", &menus, now);
+    let mut out = Vec::new();
+    for (i, inbound) in inputs.iter().enumerate() {
+      let result = step(session, inbound, &menus, now + i as i64);
+      out.push(IvrPreviewStep {
+        input: inbound.clone(),
+        node_id: result.session.node_id.clone(),
+        reply: result.reply.clone(),
+        action: result.action.clone(),
+        handed_off: result.session.handed_off,
+        slots: result.session.slots.clone(),
+      });
+      session = result.session;
+    }
+    out
   }
 
   fn sessions_path(&self, account_id: &str) -> PathBuf {
@@ -613,7 +770,7 @@ mod tests {
     let s = fresh_session("dm:+1", &m, 1000);
     let r = step(s, "3", &m, 1000);
     assert!(r.session.handed_off);
-    assert!(r.reply.unwrap().contains("person"));
+    assert!(r.reply.unwrap().contains("someone"));
     let r2 = step(r.session, "1", &m, 1001);
     assert!(r2.handled);
     assert!(r2.reply.is_none());
@@ -628,7 +785,7 @@ mod tests {
     let r2 = step(s, "Need widgets Friday", &m, 1001);
     assert_eq!(r2.session.slots.get("note").unwrap(), "Need widgets Friday");
     assert_eq!(r2.session.node_id, "main");
-    assert!(r2.reply.unwrap().contains("Got it"));
+    assert!(r2.reply.unwrap().contains("Noted"));
   }
 
   #[test]
@@ -636,7 +793,7 @@ mod tests {
     let m = menus();
     let s = fresh_session("dm:+1", &m, 1000);
     let r = step(s, "9", &m, 1000);
-    assert!(r.reply.unwrap().contains("Please reply"));
+    assert!(r.reply.unwrap().contains("Reply 1"));
     assert_eq!(r.session.node_id, "main");
   }
 
@@ -683,6 +840,50 @@ mod tests {
     let r2 = step(r.session, "abc", &m, 1001);
     assert_eq!(r2.session.node_id, "order_pick");
     assert!(r2.reply.unwrap().contains("positive number"));
+  }
+
+  #[test]
+  fn main_four_emits_order_status() {
+    let m = menus();
+    let s = fresh_session("dm:+1", &m, 1000);
+    let r = step(s, "4", &m, 1000);
+    assert_eq!(r.action.as_deref(), Some("order_status"));
+    assert_eq!(r.session.node_id, "main");
+  }
+
+  #[test]
+  fn validate_menus_rejects_bad_goto() {
+    let mut m = menus();
+    m.nodes.get_mut("main").unwrap().choices.insert(
+      "9".into(),
+      IvrChoice {
+        goto: Some("missing".into()),
+        action: None,
+        reply: None,
+      },
+    );
+    let err = validate_menus(&m).unwrap_err();
+    assert!(err.contains("missing"), "{err}");
+  }
+
+  #[test]
+  fn validate_menus_rejects_unknown_action() {
+    let mut m = menus();
+    m.nodes.get_mut("main").unwrap().choices.insert(
+      "9".into(),
+      IvrChoice {
+        goto: None,
+        action: Some("explode".into()),
+        reply: None,
+      },
+    );
+    let err = validate_menus(&m).unwrap_err();
+    assert!(err.contains("explode"), "{err}");
+  }
+
+  #[test]
+  fn validate_demo_ok() {
+    assert!(validate_menus(&menus()).is_ok());
   }
 
   #[test]

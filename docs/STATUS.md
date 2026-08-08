@@ -2,7 +2,8 @@
 
 SignalX is a single-number Signal desktop client: messenger, optional local AI
 drafts / guarded auto-reply, with a Tauri + React GUI on a Rust daemon
-(`signal-cli` + optional Ollama).
+(`signal-cli` + optional Ollama). Local sales console: catalog, IVR menus,
+quotes/orders/invoices, inventory, and Sales summary — all outbox-gated.
 
 ## Current reality
 
@@ -20,8 +21,14 @@ drafts / guarded auto-reply, with a Tauri + React GUI on a Rust daemon
 2. Catalog + customers
 3. Orders + invoices (GUI + IVR place-order → invoice via outbox)
 4. Operator GUI polish (Settings allowlists, order status clarity, IVR armed hints)
-5. In-app device link (Settings → Device link; CLI scripts under `scripts/` remain fallback)
-6. Next: optional AI polish for order/IVR copy
+5. In-app device link (Settings → Device link QR + URI; CLI scripts under `scripts/` remain fallback)
+6. Dark Bonsai shell + soft NotRegistered/setup banner + commerce/IVR AI + static copy polish
+7. Order lifecycle (paid / fulfilled / cancelled), Outbox cockpit, outbound attachments (outbox-only)
+8. Profile context rail + AI quick actions (Messages 4-column shell; orders-backed standing/ledger; suggest chips)
+9. Backup / migrate v1 (Settings → System; zip export/import of app data; restart required after import)
+10. IVR commerce editor (menus IPC + Settings JSON editor; `order_status`; hide zero-stock)
+11. Quotes / draft orders (no stock until Confirm; Send quote vs Send invoice)
+12. Inventory ops (stock adjust + ledger, low-stock threshold, CSV import/export)
+13. Sales console (Sales nav, totals/top products, commerce audit, Duplicate as draft)
 
-See `docs/superpowers/specs/2026-07-26-foundation-hardening-design.md` and
-`docs/NEXT_STEPS.md`.
+See `docs/NEXT_STEPS.md` for smoke checklists and the long-term backlog.
