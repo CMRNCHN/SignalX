@@ -3147,8 +3147,8 @@ export default function App() {
                   <h3>Backup &amp; migrate</h3>
                 </div>
                 <p className="hint tight">
-                  Bundles cover catalog, customers, orders, IVR, threads, and outbox — not Signal
-                  registration. Re-link on a new machine.
+                  Bundles cover your catalog, customers, orders, buyer menu, chats, and outbox —
+                  not your Signal login. Re-link Signal on a new computer.
                 </p>
                 <div className="backup-actions">
                   <button
