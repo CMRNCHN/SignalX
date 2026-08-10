@@ -8,14 +8,30 @@ import type {
 } from "./api";
 
 const IVR_ACTIONS = [
-  { id: "", label: "None" },
-  { id: "list_catalog", label: "List catalog" },
-  { id: "place_order", label: "Place order" },
-  { id: "order_status", label: "Order status" },
-  { id: "handoff", label: "Hand off to human" },
+  { id: "", label: "Nothing extra" },
+  { id: "list_catalog", label: "Send the product list" },
+  { id: "place_order", label: "Create their order" },
+  { id: "order_status", label: "Send order status" },
+  { id: "handoff", label: "Hand off to you" },
 ] as const;
 
-const CAPTURE_PRESETS = ["", "order_idx", "order_qty", "note"] as const;
+const CAPTURE_PRESETS: { id: string; label: string }[] = [
+  { id: "", label: "No — only number replies" },
+  { id: "order_idx", label: "Ask which product # they want" },
+  { id: "order_qty", label: "Ask how many they want" },
+  { id: "note", label: "Ask them to type a note" },
+];
+
+function actionLabel(id: string): string {
+  return IVR_ACTIONS.find((a) => a.id === id)?.label ?? id;
+}
+
+function captureBadge(slot: string): string {
+  if (slot === "order_idx") return "asks product #";
+  if (slot === "order_qty") return "asks quantity";
+  if (slot === "note") return "asks for a note";
+  return "asks a question";
+}
 
 type ChoiceRow = {
   key: string;
@@ -206,9 +222,9 @@ export function IvrMenuComposer({
     const id = `${base}_${n}`;
     patchMenus((m) => {
       m.nodes[id] = {
-        prompt: "New menu — tell the buyer what to reply.",
+        prompt: "Tell the buyer what to reply with (for example: 1 for products, 0 for the main menu).",
         choices: { "0": { goto: m.entry } },
-        on_unknown: "Reply with a number from the menu.",
+        on_unknown: "Please reply with one of the numbers on the menu.",
       };
     });
     setSelectedId(id);
@@ -216,10 +232,10 @@ export function IvrMenuComposer({
 
   const deleteNode = (id: string) => {
     if (id === working.entry) {
-      window.alert("Can't delete the entry node. Change Entry first.");
+      window.alert("This is the first screen buyers see. Pick a different starting screen first.");
       return;
     }
-    if (!window.confirm(`Delete node “${id}”?`)) return;
+    if (!window.confirm(`Remove the “${id}” screen from this menu?`)) return;
     patchMenus((m) => {
       delete m.nodes[id];
       for (const node of Object.values(m.nodes)) {
@@ -240,7 +256,7 @@ export function IvrMenuComposer({
     const to = slugifyNodeId(toRaw);
     if (!to || to === from) return;
     if (working.nodes[to]) {
-      window.alert(`Node “${to}” already exists.`);
+      window.alert(`A screen named “${to}” already exists. Pick another name.`);
       return;
     }
     patchMenus((m) => {
@@ -308,7 +324,7 @@ export function IvrMenuComposer({
       <div className="ivr-composer-toolbar">
         <div className="ivr-composer-toolbar-main">
           <label className="field-stack compact">
-            <span className="field-label">Entry</span>
+            <span className="field-label">First screen</span>
             <select
               value={working.entry}
               disabled={busy}
@@ -326,12 +342,13 @@ export function IvrMenuComposer({
             </select>
           </label>
           <label className="field-stack compact">
-            <span className="field-label">Session (min)</span>
+            <span className="field-label">Remember for (min)</span>
             <input
               type="number"
               min={1}
               value={ttlMinutes}
               disabled={busy}
+              title="How long a chat stays in this menu before starting over"
               onChange={(e) =>
                 patchMenus((m) => {
                   m.session_ttl_ms = Math.max(1, Number(e.target.value) || 1) * 60_000;
@@ -340,18 +357,18 @@ export function IvrMenuComposer({
             />
           </label>
           <div className="ivr-composer-stat">
-            <span>{ids.length}</span> nodes · <span>{edges.length}</span> branches
+            <span>{ids.length}</span> screens · <span>{edges.length}</span> choices
           </div>
         </div>
         <div className="row-actions">
           <button type="button" className="ghost-btn" disabled={busy} onClick={onReload}>
-            Reload
+            Discard edits
           </button>
           <button type="button" className="ghost-btn" disabled={busy} onClick={onResetDemo}>
-            Reset demo
+            Start from demo
           </button>
           <button type="button" className="action-btn primary" disabled={busy} onClick={onSave}>
-            {busy ? "Saving…" : "Save menus"}
+            {busy ? "Saving…" : "Save menu"}
           </button>
         </div>
       </div>
@@ -363,11 +380,11 @@ export function IvrMenuComposer({
       )}
 
       <div className="ivr-composer-layout">
-        <aside className="ivr-node-rail" aria-label="Menu nodes">
+        <aside className="ivr-node-rail" aria-label="Menu screens">
           <div className="ivr-node-rail-head">
-            <span className="field-label">Nodes</span>
+            <span className="field-label">Screens</span>
             <button type="button" className="ghost-btn" disabled={busy} onClick={addNode}>
-              + Node
+              + Screen
             </button>
           </div>
           <ul className="ivr-node-list">
@@ -386,15 +403,17 @@ export function IvrMenuComposer({
                     <div className="ivr-node-item-top">
                       <strong>{id}</strong>
                       <div className="ivr-node-badges">
-                        {id === working.entry && <span className="ivr-badge entry">entry</span>}
+                        {id === working.entry && <span className="ivr-badge entry">start</span>}
                         {n?.capture_slot && (
-                          <span className="ivr-badge capture">{n.capture_slot}</span>
+                          <span className="ivr-badge capture">
+                            {captureBadge(n.capture_slot)}
+                          </span>
                         )}
                       </div>
                     </div>
                     <div className="ivr-node-item-sub">
-                      {(n?.prompt || "").split("\n")[0].slice(0, 48) || "Empty prompt"}
-                      {choiceCount > 0 ? ` · ${choiceCount} keys` : ""}
+                      {(n?.prompt || "").split("\n")[0].slice(0, 48) || "No message yet"}
+                      {choiceCount > 0 ? ` · ${choiceCount} choices` : ""}
                     </div>
                   </button>
                 </li>
@@ -405,16 +424,17 @@ export function IvrMenuComposer({
 
         <div className="ivr-inspector">
           {!selected ? (
-            <p className="hint">Select or add a node.</p>
+            <p className="hint">Pick a screen on the left, or add a new one.</p>
           ) : (
             <>
               <div className="ivr-inspector-head">
                 <label className="field-stack">
-                  <span className="field-label">Node id</span>
+                  <span className="field-label">Screen name</span>
                   <input
                     key={selectedId}
                     defaultValue={selectedId}
                     disabled={busy}
+                    placeholder="e.g. main, browse, checkout"
                     onBlur={(e) => renameNode(selectedId, e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
@@ -429,27 +449,28 @@ export function IvrMenuComposer({
                   disabled={busy || selectedId === working.entry}
                   onClick={() => deleteNode(selectedId)}
                 >
-                  Delete
+                  Remove
                 </button>
               </div>
 
               <label className="field-stack">
-                <span className="field-label">Prompt (what the buyer sees)</span>
+                <span className="field-label">Message to the buyer</span>
                 <textarea
                   className="ivr-prompt"
                   rows={5}
                   value={selected.prompt}
                   disabled={busy}
+                  placeholder={"Hi — reply with a number:\n1 · See products\n2 · Place an order\n0 · Main menu"}
                   onChange={(e) => patchNode(selectedId, { prompt: e.target.value })}
                 />
               </label>
 
               <label className="field-stack">
-                <span className="field-label">If they type something unknown</span>
+                <span className="field-label">If they type something that isn’t on the menu</span>
                 <input
                   value={selected.on_unknown ?? ""}
                   disabled={busy}
-                  placeholder="Hint text"
+                  placeholder="e.g. Please reply with 1, 2, or 0."
                   onChange={(e) =>
                     patchNode(selectedId, {
                       on_unknown: e.target.value || null,
@@ -458,17 +479,17 @@ export function IvrMenuComposer({
                 />
               </label>
 
-              <div className="settings-section-label">Digit branches</div>
+              <div className="settings-section-label">When they reply with a number</div>
               <p className="hint tight">
-                Each key the buyer can press. Inspired by DTMF menu nodes in visual IVR builders —
-                digit → destination (+ optional action / reply).
+                Map each number to the next screen and (optionally) something SignalX should do —
+                like sending the catalog or creating an order.
               </p>
               <div className="ivr-choice-table" role="table">
                 <div className="ivr-choice-row head" role="row">
-                  <span>Key</span>
-                  <span>Go to</span>
-                  <span>Action</span>
-                  <span>Reply override</span>
+                  <span>They type</span>
+                  <span>Next screen</span>
+                  <span>Also do</span>
+                  <span>Custom reply</span>
                   <span />
                 </div>
                 {choiceRows.map((row, idx) => (
@@ -476,7 +497,7 @@ export function IvrMenuComposer({
                     <input
                       value={row.digit}
                       disabled={busy}
-                      aria-label="Digit"
+                      aria-label="What they type"
                       onChange={(e) => {
                         const next = [...choiceRows];
                         next[idx] = { ...row, digit: e.target.value };
@@ -486,14 +507,14 @@ export function IvrMenuComposer({
                     <select
                       value={row.goto}
                       disabled={busy}
-                      aria-label="Go to node"
+                      aria-label="Next screen"
                       onChange={(e) => {
                         const next = [...choiceRows];
                         next[idx] = { ...row, goto: e.target.value };
                         setChoiceRows(next);
                       }}
                     >
-                      <option value="">(stay / action only)</option>
+                      <option value="">Stay here</option>
                       {ids.map((id) => (
                         <option key={id} value={id}>
                           {id}
@@ -503,7 +524,7 @@ export function IvrMenuComposer({
                     <select
                       value={row.action}
                       disabled={busy}
-                      aria-label="Action"
+                      aria-label="Also do"
                       onChange={(e) => {
                         const next = [...choiceRows];
                         next[idx] = { ...row, action: e.target.value };
@@ -519,8 +540,8 @@ export function IvrMenuComposer({
                     <input
                       value={row.reply}
                       disabled={busy}
-                      placeholder="Optional"
-                      aria-label="Reply"
+                      placeholder="Optional text"
+                      aria-label="Custom reply"
                       onChange={(e) => {
                         const next = [...choiceRows];
                         next[idx] = { ...row, reply: e.target.value };
@@ -540,26 +561,25 @@ export function IvrMenuComposer({
                 ))}
               </div>
               <button type="button" className="ghost-btn" disabled={busy} onClick={addChoice}>
-                + Add key
+                + Add a number choice
               </button>
 
-              <div className="settings-section-label">Capture (free text)</div>
+              <div className="settings-section-label">Or ask them a question</div>
               <p className="hint tight">
-                Like “collect input” nodes in flow builders — store the next message in a slot,
-                then jump.
+                Instead of (or after) number choices, wait for their next message — for example
+                which product number or how many they want — then move on.
               </p>
               <div className="settings-grid">
                 <label className="field-stack">
-                  <span className="field-label">Slot</span>
+                  <span className="field-label">What to collect</span>
                   <select
                     value={selected.capture_slot ?? ""}
                     disabled={busy}
                     onChange={(e) => setCapture(e.target.value)}
                   >
-                    <option value="">Off</option>
-                    {CAPTURE_PRESETS.filter(Boolean).map((s) => (
-                      <option key={s} value={s}>
-                        {s}
+                    {CAPTURE_PRESETS.map((s) => (
+                      <option key={s.id || "off"} value={s.id}>
+                        {s.label}
                       </option>
                     ))}
                   </select>
@@ -567,7 +587,7 @@ export function IvrMenuComposer({
                 {selected.capture_slot && selected.after_capture && (
                   <>
                     <label className="field-stack">
-                      <span className="field-label">After → node</span>
+                      <span className="field-label">Then go to screen</span>
                       <select
                         value={selected.after_capture.goto}
                         disabled={busy}
@@ -588,7 +608,7 @@ export function IvrMenuComposer({
                       </select>
                     </label>
                     <label className="field-stack">
-                      <span className="field-label">After action</span>
+                      <span className="field-label">Then also</span>
                       <select
                         value={selected.after_capture.action ?? ""}
                         disabled={busy}
@@ -609,10 +629,11 @@ export function IvrMenuComposer({
                       </select>
                     </label>
                     <label className="field-stack" style={{ gridColumn: "1 / -1" }}>
-                      <span className="field-label">After reply</span>
+                      <span className="field-label">Quick reply after they answer</span>
                       <input
                         value={selected.after_capture.reply}
                         disabled={busy}
+                        placeholder="e.g. Got it — one moment…"
                         onChange={(e) =>
                           patchNode(selectedId, {
                             after_capture: {
@@ -632,11 +653,13 @@ export function IvrMenuComposer({
 
         <aside className="ivr-side-panel">
           <div className="ivr-flow-map">
-            <div className="field-label">Flow map</div>
-            <p className="hint tight">Branches from each node — scan for dead ends.</p>
+            <div className="field-label">How it connects</div>
+            <p className="hint tight">
+              A quick map of every choice. Tap a row to jump to that screen.
+            </p>
             <ul className="ivr-edge-list">
               {edges.length === 0 ? (
-                <li className="hint tight">No branches yet.</li>
+                <li className="hint tight">No choices yet — add numbers on the middle panel.</li>
               ) : (
                 edges.map((e, i) => (
                   <li key={`${e.from}-${e.digit}-${e.to}-${i}`}>
@@ -648,8 +671,12 @@ export function IvrMenuComposer({
                       <code>{e.from}</code>
                       <span className="ivr-edge-digit">{e.digit}</span>
                       <span className="ivr-edge-arrow">→</span>
-                      <code>{e.to}</code>
-                      {e.action ? <span className="ivr-badge">{e.action}</span> : null}
+                      <code>{e.to === "·" ? "stay" : e.to}</code>
+                      {e.action ? (
+                        <span className="ivr-badge" title={e.action}>
+                          {actionLabel(e.action)}
+                        </span>
+                      ) : null}
                     </button>
                   </li>
                 ))
@@ -658,12 +685,12 @@ export function IvrMenuComposer({
           </div>
 
           <div className="ivr-sim">
-            <div className="field-label">Try path</div>
+            <div className="field-label">Test as a buyer</div>
             <p className="hint tight">
-              Softphone-style preview (saved menus on server). Path:{" "}
-              {simPath.length ? simPath.join(" → ") : "—"}
+              Tap numbers like a customer would. Uses the <strong>last saved</strong> menu.
+              {simPath.length ? ` Path: ${simPath.join(" → ")}` : ""}
             </p>
-            <div className="ivr-dialpad" role="group" aria-label="Preview dial pad">
+            <div className="ivr-dialpad" role="group" aria-label="Test number pad">
               {["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"].map((d) => (
                 <button
                   key={d}
@@ -678,7 +705,7 @@ export function IvrMenuComposer({
             </div>
             <div className="row-actions">
               <button type="button" className="ghost-btn" onClick={clearSim}>
-                Clear
+                Start over
               </button>
               <button
                 type="button"
@@ -686,7 +713,7 @@ export function IvrMenuComposer({
                 disabled={busy || simPath.length === 0}
                 onClick={() => onPreview(simPath)}
               >
-                Replay
+                Run again
               </button>
             </div>
             {previewSteps.length > 0 && (
@@ -699,8 +726,8 @@ export function IvrMenuComposer({
                       onClick={() => setSelectedId(step.node_id)}
                     >
                       <strong>{step.input || "·"}</strong> → {step.node_id}
-                      {step.action ? ` · ${step.action}` : ""}
-                      {step.handed_off ? " · handoff" : ""}
+                      {step.action ? ` · ${actionLabel(step.action)}` : ""}
+                      {step.handed_off ? " · handed to you" : ""}
                     </button>
                     {step.reply ? <pre className="ivr-preview-reply">{step.reply}</pre> : null}
                   </li>
@@ -716,9 +743,10 @@ export function IvrMenuComposer({
         open={showJson}
         onToggle={(e) => setShowJson((e.target as HTMLDetailsElement).open)}
       >
-        <summary>Advanced JSON</summary>
+        <summary>Expert edit (raw file)</summary>
         <p className="hint tight">
-          For bulk edits or pasting. Apply writes into the composer; Save still persists to SignalX.
+          For power users who want to paste or tweak the whole menu at once. Apply loads it into
+          this editor — then press <strong>Save menu</strong> to go live.
         </p>
         <textarea
           className="ivr-menus-json"
@@ -728,7 +756,7 @@ export function IvrMenuComposer({
           onChange={(e) => setJsonDraft(e.target.value)}
         />
         <button type="button" className="ghost-btn" onClick={applyJsonDraft}>
-          Apply JSON to composer
+          Load into editor
         </button>
       </details>
     </div>

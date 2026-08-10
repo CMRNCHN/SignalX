@@ -263,9 +263,9 @@ function orderStatusTone(status: string): "ok" | "warn" | "danger" | "muted" {
 function ivrInactiveReason(ivr: ThreadIvrStatus | null): string | null {
   if (!ivr || ivr.effective) return null;
   if (ivr.handed_off) return null;
-  if (ivr.global_enabled === false) return "IVR armed · global switch is off";
+  if (ivr.global_enabled === false) return "Buyer menu ready · turn it on in Settings";
   if (!ivr.enabled) return null;
-  return "IVR armed · waiting to become effective";
+  return "Buyer menu ready · waiting to activate";
 }
 
 function includesQ(hay: string, q: string): boolean {
@@ -721,11 +721,11 @@ export default function App() {
     if (kind === "ivr") {
       if (!ivrSettings) return;
       if (ivrSettings.allowlist.includes(threadId)) {
-        setStatus("Already on IVR allowlist");
+        setStatus("This chat is already approved for the buyer menu");
         return;
       }
       await saveIvrSettings({ allowlist: [...ivrSettings.allowlist, threadId] });
-      setStatus(`Added to IVR allowlist: ${threadTitle(threadId, contacts, groups)}`);
+      setStatus(`Buyer menu approved for ${threadTitle(threadId, contacts, groups)}`);
       return;
     }
     if (!autoSettings) return;
@@ -794,7 +794,7 @@ export default function App() {
   const toggleThreadIvr = async (enabled: boolean) => {
     if (!selectedId) return;
     if (selectedId.startsWith("group:")) {
-      setStatus("IVR is not available for group threads");
+      setStatus("Buyer menus only work in 1:1 chats, not groups");
       return;
     }
     const res = await api.setThreadIvr(selectedId, enabled);
@@ -803,7 +803,7 @@ export default function App() {
       return;
     }
     setThreadIvr(res.data);
-    setStatus(enabled ? "IVR on — menu sent to this chat" : "IVR off for this chat");
+    setStatus(enabled ? "Buyer menu on for this chat" : "Buyer menu off for this chat");
     await refreshMeta();
   };
 
@@ -1297,14 +1297,14 @@ export default function App() {
         return;
       }
       setIvrMenusDraft(res.data);
-      setStatus("IVR menus saved");
+      setStatus("Buyer menu saved");
     } finally {
       setIvrMenusBusy(false);
     }
   };
 
   const resetIvrMenusDemo = async () => {
-    if (!window.confirm("Reset IVR menus to the built-in demo?")) return;
+    if (!window.confirm("Replace your menu with the built-in starter demo?")) return;
     setIvrMenusBusy(true);
     const res = await api.resetIvrMenus();
     setIvrMenusBusy(false);
@@ -1315,7 +1315,7 @@ export default function App() {
     }
     setIvrMenusDraft(res.data);
     setIvrMenusError(null);
-    setStatus("IVR menus reset to demo");
+    setStatus("Starter demo menu loaded — save if you want to keep it");
   };
 
   const previewIvrPath = async (inputs: string[]) => {
@@ -1614,7 +1614,7 @@ export default function App() {
           <div className="auto-global-banner">Auto-reply ON</div>
         )}
         {ivrSettings?.enabled && (
-          <div className="auto-global-banner ivr">IVR menu ON</div>
+          <div className="auto-global-banner ivr">Buyer menu ON</div>
         )}
 
         <nav className="nav">
@@ -2956,10 +2956,10 @@ export default function App() {
             <div>
               <div>Settings</div>
               <div className="col-head-sub">
-                {settingsTab === "account" && "Link Signal and check receive health"}
-                {settingsTab === "ivr" && "Compose prompts, digit branches, and try the path"}
-                {settingsTab === "auto" && "Guarded AI replies — off unless you allowlist"}
-                {settingsTab === "backup" && "Export or import catalog, orders, and chats"}
+                {settingsTab === "account" && "Link Signal and check that messages are flowing"}
+                {settingsTab === "ivr" && "Let buyers text a number — you write the menu"}
+                {settingsTab === "auto" && "Optional AI replies — only for chats you allow"}
+                {settingsTab === "backup" && "Copy your catalog, orders, and chats to a file"}
               </div>
             </div>
           </header>
@@ -2967,7 +2967,7 @@ export default function App() {
             {(
               [
                 ["account", "Account"],
-                ["ivr", "IVR"],
+                ["ivr", "Buyer menu"],
                 ["auto", "Auto-reply"],
                 ["backup", "Backup"],
               ] as const
@@ -3088,9 +3088,8 @@ export default function App() {
                     </span>
                   </div>
                   <p className="hint tight">
-                    Link this Mac as a Signal linked device. After LINKED, set{" "}
-                    <code>SIGNALX_NUMBER</code> in <code>.signalx.env</code> to your account and
-                    restart.
+                    Link this Mac to your Signal phone. After it says Linked, put your phone number
+                    in the account settings file and restart SignalX.
                   </p>
                   <div className="row-actions">
                     <button
@@ -3235,8 +3234,8 @@ export default function App() {
                   </span>
                 </div>
                 <p className="hint tight">
-                  Kill-switch below. Even when on, only allowlisted chats that opted in can
-                  auto-send. Groups stay off unless enabled per thread.
+                  Optional AI drafts that can send on their own. Keep this off unless you trust it —
+                  and only for chats you approve. Groups stay off unless you turn them on one by one.
                 </p>
                 {autoSettings && (
                   <>
@@ -3246,12 +3245,12 @@ export default function App() {
                         checked={autoSettings.enabled}
                         onChange={(e) => void saveAutoSettings({ enabled: e.target.checked })}
                       />
-                      Enable auto-reply globally
+                      Turn on auto-reply for this account
                     </label>
-                    <div className="settings-section-label">Limits</div>
+                    <div className="settings-section-label">Safety limits</div>
                     <div className="settings-grid">
                       <label className="field-stack">
-                        <span className="field-label">Max per thread / hour</span>
+                        <span className="field-label">Max replies per chat / hour</span>
                         <input
                           type="number"
                           min={1}
@@ -3347,14 +3346,15 @@ export default function App() {
               <>
                 <div className="settings-card">
                   <div className="settings-card-head">
-                    <h3>Menu IVR</h3>
+                    <h3>Buyer text menu</h3>
                     <span className={`status-pill status-${ivrSettings?.enabled ? "ok" : "muted"}`}>
                       {ivrSettings?.enabled ? "ON" : "OFF"}
                     </span>
                   </div>
                   <p className="hint tight">
-                    Buyers reply with numbers (catalog, order, status). Enable globally, then opt
-                    in per DM. Groups are never handled.
+                    When it’s on, buyers can text a number (1 for products, 2 to order, and so on)
+                    and SignalX answers for you. Turn it on here, then turn it on for each chat you
+                    want. Group chats are never automated.
                   </p>
                   {ivrSettings && (
                     <>
@@ -3364,7 +3364,7 @@ export default function App() {
                           checked={ivrSettings.enabled}
                           onChange={(e) => void saveIvrSettings({ enabled: e.target.checked })}
                         />
-                        Enable IVR globally
+                        Turn on buyer menus for this account
                       </label>
                       <label className="toggle">
                         <input
@@ -3374,7 +3374,7 @@ export default function App() {
                             void saveIvrSettings({ require_allowlist: e.target.checked })
                           }
                         />
-                        Require allowlist (recommended)
+                        Only chats I approve (recommended)
                       </label>
                       <label className="toggle">
                         <input
@@ -3384,23 +3384,24 @@ export default function App() {
                             void saveIvrSettings({ hide_zero_stock: e.target.checked })
                           }
                         />
-                        Hide zero-stock products in catalog replies
+                        Don’t show products that are out of stock
                       </label>
                       <div className="allowlist-head">
                         <span className="field-label">
-                          Allowed chats ({ivrSettings.allowlist.length})
+                          Approved chats ({ivrSettings.allowlist.length})
                         </span>
                         <button
                           type="button"
                           className="ghost-btn"
                           onClick={() => void addToAllowlist("ivr", selectedId)}
                         >
-                          Add current chat
+                          Add this chat
                         </button>
                       </div>
                       {ivrSettings.allowlist.length === 0 ? (
                         <p className="hint tight">
-                          Empty — turn on Menu IVR on a DM, or add a chat here.
+                          None yet — open a 1:1 chat and turn on the buyer menu there, or add it
+                          here.
                         </p>
                       ) : (
                         <ul className="allowlist-list">
@@ -3427,11 +3428,11 @@ export default function App() {
 
                 <div className="settings-card">
                   <div className="settings-card-head">
-                    <h3>Menu composer</h3>
+                    <h3>Build the menu</h3>
                   </div>
                   <p className="hint tight">
-                    Visual flow builder — pick a node, set the prompt and digit branches, try the
-                    path on the dial pad. Save writes the live IVR graph.
+                    Write what buyers see, decide what each number does, and test it before it goes
+                    live. Save when you’re happy.
                   </p>
                   <IvrMenuComposer
                     menus={ivrMenusDraft}
@@ -3493,10 +3494,10 @@ export default function App() {
                   <span className="auto-thread-badge">Auto-reply ON</span>
                 )}
                 {threadIvr?.effective && (
-                  <span className="auto-thread-badge">IVR ON</span>
+                  <span className="auto-thread-badge">Buyer menu ON</span>
                 )}
                 {threadIvr?.handed_off && (
-                  <span className="auto-thread-badge warn">Handed off</span>
+                  <span className="auto-thread-badge warn">Waiting on you</span>
                 )}
                 {ivrHint && (
                   <span className="auto-thread-badge warn" title={ivrHint}>
@@ -3510,15 +3511,15 @@ export default function App() {
                     disabled={!!selectedId?.startsWith("group:")}
                     onChange={(e) => void toggleThreadIvr(e.target.checked)}
                   />
-                  Menu IVR
+                  Buyer menu
                 </label>
                 {threadIvr?.handed_off && (
                   <button type="button" className="ghost-btn" onClick={() => void resumeIvrBot()}>
-                    Resume bot
+                    Resume menu
                   </button>
                 )}
                 {!threadIvr?.enabled && ivrSettings?.enabled && !selectedId?.startsWith("group:") && (
-                  <span className="convo-sub inline-hint">Enable Menu IVR to allowlist this chat</span>
+                  <span className="convo-sub inline-hint">Turn on to let this chat use the menu</span>
                 )}
                 <label className="toggle compact">
                   <input
