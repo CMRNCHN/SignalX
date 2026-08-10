@@ -57,7 +57,7 @@ type Panel =
   | "outbox"
   | "audit"
   | "settings";
-type SettingsTab = "system" | "device" | "auto" | "ivr";
+type SettingsTab = "account" | "ivr" | "auto" | "backup";
 
 type SellPackRow = {
   key: string;
@@ -345,7 +345,7 @@ export default function App() {
   const [linkUri, setLinkUri] = useState<string | null>(null);
   const [linkStatus, setLinkStatus] = useState<DeviceLinkStatus | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>("system");
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("account");
   const [importMode, setImportMode] = useState<"replace" | "merge">("replace");
   const [backupBusy, setBackupBusy] = useState(false);
   const [restartRequired, setRestartRequired] = useState(false);
@@ -1574,7 +1574,7 @@ export default function App() {
 
   const openDeviceLinkSetup = () => {
     setPanel("settings");
-    setSettingsTab("device");
+    setSettingsTab("account");
   };
 
   return (
@@ -1630,7 +1630,7 @@ export default function App() {
               className={panel === id ? "nav-btn active" : "nav-btn"}
               onClick={() => {
                 setPanel(id);
-                if (id === "settings" && setupNeeded) setSettingsTab("device");
+                if (id === "settings" && setupNeeded) setSettingsTab("account");
               }}
             >
               <span className="nav-btn-label">
@@ -2957,14 +2957,24 @@ export default function App() {
 
       {panel === "settings" && (
         <section className="thread-col wide">
-          <header className="col-head">Settings</header>
+          <header className="col-head">
+            <div>
+              <div>Settings</div>
+              <div className="col-head-sub">
+                {settingsTab === "account" && "Link Signal and check receive health"}
+                {settingsTab === "ivr" && "Text menus buyers can dial over Signal"}
+                {settingsTab === "auto" && "Guarded AI replies — off unless you allowlist"}
+                {settingsTab === "backup" && "Export or import catalog, orders, and chats"}
+              </div>
+            </div>
+          </header>
           <div className="work-tabs" role="tablist" aria-label="Settings sections">
             {(
               [
-                ["system", "System"],
-                ["device", "Device link"],
+                ["account", "Account"],
                 ["ivr", "IVR"],
                 ["auto", "Auto-reply"],
+                ["backup", "Backup"],
               ] as const
             ).map(([id, label]) => (
               <button
@@ -2980,55 +2990,176 @@ export default function App() {
             ))}
           </div>
           <div className="settings-body wide-body">
-            {settingsTab === "system" && (
-              <div className="settings-card">
-                <div className="settings-card-head">
-                  <h3>System</h3>
-                  <span className={`status-pill status-${diagnostics?.signal_cli_usable ? "ok" : "danger"}`}>
-                    {diagnostics?.signal_cli_usable ? "signal-cli ok" : "signal-cli issue"}
-                  </span>
+            {settingsTab === "account" && (
+              <>
+                <div className="settings-card">
+                  <div className="settings-card-head">
+                    <h3>Status</h3>
+                    <span
+                      className={`status-pill status-${
+                        setupNeeded
+                          ? "warn"
+                          : diagnostics?.signal_cli_usable
+                            ? "ok"
+                            : "danger"
+                      }`}
+                    >
+                      {setupNeeded
+                        ? "Needs link"
+                        : diagnostics?.signal_cli_usable
+                          ? "Ready"
+                          : "signal-cli issue"}
+                    </span>
+                  </div>
+                  <dl className="diag-grid diag-grid-4">
+                    <div>
+                      <dt>Account</dt>
+                      <dd title={diagnostics?.number || undefined}>
+                        {diagnostics?.number || "Not set"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Receive</dt>
+                      <dd title={healthLabel(health)}>{healthLabel(health)}</dd>
+                    </div>
+                    <div>
+                      <dt>signal-cli</dt>
+                      <dd>
+                        {diagnostics?.signal_cli_usable
+                          ? diagnostics.signal_cli_version || "ok"
+                          : "broken"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>AI</dt>
+                      <dd>
+                        {ai?.configured
+                          ? ai.ollama_reachable
+                            ? ai.ollama_model || "ollama"
+                            : "unreachable"
+                          : "off"}
+                      </dd>
+                    </div>
+                  </dl>
+                  {diagnostics?.signal_cli_last_error && (
+                    <p className="hint tight warn-text">{diagnostics.signal_cli_last_error}</p>
+                  )}
+                  <details className="settings-details">
+                    <summary>Paths &amp; diagnostics</summary>
+                    <dl className="diag-list">
+                      <div>
+                        <dt>Config</dt>
+                        <dd>{diagnostics?.config_path || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>Env file</dt>
+                        <dd>{diagnostics?.env_path || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>signal-cli bin</dt>
+                        <dd>{diagnostics?.signal_cli_path || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>App data</dt>
+                        <dd>{diagnostics?.app_data_dir || "—"}</dd>
+                      </div>
+                    </dl>
+                  </details>
                 </div>
-                <dl className="diag-grid">
-                  <div>
-                    <dt>Number</dt>
-                    <dd>{diagnostics?.number || "—"}</dd>
+
+                <div className="settings-card">
+                  <div className="settings-card-head">
+                    <h3>Device link</h3>
+                    <span
+                      className={`status-pill status-${
+                        linkStatus?.state === "success"
+                          ? "ok"
+                          : linkStatus?.state === "error"
+                            ? "danger"
+                            : linkBusy || linkStatus?.state === "waiting"
+                              ? "warn"
+                              : "muted"
+                      }`}
+                    >
+                      {linkBusy || linkStatus?.state === "waiting"
+                        ? "WAITING"
+                        : linkStatus?.state === "success"
+                          ? "LINKED"
+                          : linkStatus?.state === "error"
+                            ? "FAILED"
+                            : linkStatus?.state === "cancelled"
+                              ? "CANCELLED"
+                              : "IDLE"}
+                    </span>
                   </div>
-                  <div>
-                    <dt>Receive</dt>
-                    <dd title={healthLabel(health)}>{healthLabel(health)}</dd>
+                  <p className="hint tight">
+                    Link this Mac as a Signal linked device. After LINKED, set{" "}
+                    <code>SIGNALX_NUMBER</code> in <code>.signalx.env</code> to your account and
+                    restart.
+                  </p>
+                  <div className="row-actions">
+                    <button
+                      type="button"
+                      className="action-btn primary"
+                      disabled={linkBusy || !diagnostics?.signal_cli_usable}
+                      onClick={() => void startDeviceLink()}
+                    >
+                      Start linking
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      disabled={!linkBusy}
+                      onClick={() => void cancelDeviceLink()}
+                    >
+                      Cancel
+                    </button>
                   </div>
-                  <div>
-                    <dt>AI</dt>
-                    <dd>
-                      {ai?.configured
-                        ? ai.ollama_reachable
-                          ? ai.ollama_model || "ollama"
-                          : "unreachable"
-                        : "not configured"}
-                    </dd>
-                  </div>
-                </dl>
-                {diagnostics?.signal_cli_last_error && (
-                  <p className="hint tight warn-text">{diagnostics.signal_cli_last_error}</p>
-                )}
-              </div>
+                  {linkUri && (
+                    <div className="device-link-panel">
+                      <DeviceLinkQr uri={linkUri} />
+                      <div className="device-link-uri">
+                        <code className="device-link-uri-text" title={linkUri}>
+                          {linkUri}
+                        </code>
+                        <button type="button" className="action-btn" onClick={() => void copyLinkUri()}>
+                          {linkCopied ? "Copied" : "Copy"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {linkStatus?.message && (
+                    <p
+                      className={`hint tight ${
+                        linkStatus.state === "error" ? "warn-text" : ""
+                      }`}
+                    >
+                      {linkStatus.message}
+                    </p>
+                  )}
+                  {!diagnostics?.config_path && (
+                    <p className="hint tight warn-text">
+                      Set <code>SIGNALX_SIGNALCLI_CONFIG</code> in <code>.signalx.env</code> before
+                      linking.
+                    </p>
+                  )}
+                </div>
+              </>
             )}
 
-            {settingsTab === "system" && (
+            {settingsTab === "backup" && (
               <div className="settings-card">
                 <div className="settings-card-head">
-                  <h3>Backup</h3>
+                  <h3>Backup &amp; migrate</h3>
                 </div>
                 <p className="hint tight">
-                  Data bundles include catalog, customers, orders, IVR, threads, outbox, and local
-                  contact/group meta for this account. They do <strong>not</strong> include Signal
-                  registration, <code>.signalx.env</code>, or signal-cli keys — re-link on a new
-                  machine.
+                  Bundles cover catalog, customers, orders, IVR, threads, and outbox — not Signal
+                  registration. Re-link on a new machine.
                 </p>
                 <div className="backup-actions">
                   <button
                     type="button"
-                    className="action-btn"
+                    className="action-btn primary"
                     disabled={backupBusy || restartRequired}
                     onClick={() => void onExportDataBundle()}
                   >
@@ -3045,11 +3176,11 @@ export default function App() {
                       })
                     }
                   >
-                    Export chat (messages)
+                    Export chat only
                   </button>
                 </div>
                 <div className="backup-import">
-                  <div className="profile-section-title">Import mode</div>
+                  <div className="profile-section-title">Import</div>
                   <div className="profile-toggles">
                     <label className="toggle compact">
                       <input
@@ -3059,7 +3190,7 @@ export default function App() {
                         disabled={restartRequired}
                         onChange={() => setImportMode("replace")}
                       />
-                      Replace (migrate)
+                      Replace
                     </label>
                     <label className="toggle compact">
                       <input
@@ -3073,7 +3204,7 @@ export default function App() {
                     </label>
                   </div>
                   <label className="field-stack">
-                    <span className="field-label">Import data bundle (.zip)</span>
+                    <span className="field-label">Choose .zip bundle</span>
                     <input
                       type="file"
                       accept=".zip,application/zip"
@@ -3089,8 +3220,8 @@ export default function App() {
                 {restartRequired && (
                   <div className="restart-gate">
                     <p>
-                      Restart SignalX to apply imported data. Write actions stay locked until you
-                      quit and reopen.
+                      Restart SignalX to apply imported data. Writes stay locked until you quit and
+                      reopen.
                     </p>
                     <button type="button" className="action-btn primary" onClick={() => void quitForRestart()}>
                       Quit now
@@ -3100,104 +3231,17 @@ export default function App() {
               </div>
             )}
 
-            {settingsTab === "device" && (
-              <div className="settings-card">
-                <div className="settings-card-head">
-                  <h3>Device link</h3>
-                  <span
-                    className={`status-pill status-${
-                      linkStatus?.state === "success"
-                        ? "ok"
-                        : linkStatus?.state === "error"
-                          ? "danger"
-                          : linkBusy || linkStatus?.state === "waiting"
-                            ? "warn"
-                            : "muted"
-                    }`}
-                  >
-                    {linkBusy || linkStatus?.state === "waiting"
-                      ? "WAITING"
-                      : linkStatus?.state === "success"
-                        ? "LINKED"
-                        : linkStatus?.state === "error"
-                          ? "FAILED"
-                          : linkStatus?.state === "cancelled"
-                            ? "CANCELLED"
-                            : "IDLE"}
-                  </span>
-                </div>
-                <ol className="setup-steps">
-                  <li>Start linking below.</li>
-                  <li>Scan the QR in Signal → Linked devices (or Copy the URI).</li>
-                  <li>Wait for LINKED.</li>
-                  <li>
-                    If first link, set <code>SIGNALX_NUMBER</code> in <code>.signalx.env</code> and
-                    restart.
-                  </li>
-                </ol>
-                <p className="hint tight">
-                  Uses <code>SIGNALX_SIGNALCLI_CONFIG</code>. Scripts under <code>scripts/</code> remain
-                  a fallback.
-                </p>
-                <div className="row-actions">
-                  <button
-                    type="button"
-                    className="action-btn primary"
-                    disabled={linkBusy || !diagnostics?.signal_cli_usable}
-                    onClick={() => void startDeviceLink()}
-                  >
-                    Start linking
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-btn"
-                    disabled={!linkBusy}
-                    onClick={() => void cancelDeviceLink()}
-                  >
-                    Cancel
-                  </button>
-                </div>
-                {linkUri && (
-                  <div className="device-link-panel">
-                    <DeviceLinkQr uri={linkUri} />
-                    <div className="device-link-uri">
-                      <code className="device-link-uri-text" title={linkUri}>
-                        {linkUri}
-                      </code>
-                      <button type="button" className="action-btn" onClick={() => void copyLinkUri()}>
-                        {linkCopied ? "Copied" : "Copy"}
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {linkStatus?.message && (
-                  <p
-                    className={`hint tight ${
-                      linkStatus.state === "error" ? "warn-text" : ""
-                    }`}
-                  >
-                    {linkStatus.message}
-                  </p>
-                )}
-                {!diagnostics?.config_path && (
-                  <p className="hint tight warn-text">
-                    Set SIGNALX_SIGNALCLI_CONFIG in .signalx.env before linking.
-                  </p>
-                )}
-              </div>
-            )}
-
             {settingsTab === "auto" && (
               <div className="settings-card">
                 <div className="settings-card-head">
-                  <h3>Auto-reply (global)</h3>
+                  <h3>Auto-reply</h3>
                   <span className={`status-pill status-${autoSettings?.enabled ? "warn" : "muted"}`}>
                     {autoSettings?.enabled ? "ON" : "OFF"}
                   </span>
                 </div>
                 <p className="hint tight">
-                  Off by default. Even when on, only allowlisted + opted-in threads can auto-send.
-                  Groups stay off unless explicitly enabled per thread.
+                  Kill-switch below. Even when on, only allowlisted chats that opted in can
+                  auto-send. Groups stay off unless enabled per thread.
                 </p>
                 {autoSettings && (
                   <>
@@ -3207,11 +3251,12 @@ export default function App() {
                         checked={autoSettings.enabled}
                         onChange={(e) => void saveAutoSettings({ enabled: e.target.checked })}
                       />
-                      Master switch (kill-switch when off)
+                      Enable auto-reply globally
                     </label>
+                    <div className="settings-section-label">Limits</div>
                     <div className="settings-grid">
                       <label className="field-stack">
-                        <span className="field-label">Max per thread / window</span>
+                        <span className="field-label">Max per thread / hour</span>
                         <input
                           type="number"
                           min={1}
@@ -3235,7 +3280,7 @@ export default function App() {
                         />
                       </label>
                       <label className="field-stack">
-                        <span className="field-label">Quiet hours start (0–23)</span>
+                        <span className="field-label">Quiet start (0–23)</span>
                         <input
                           type="number"
                           min={0}
@@ -3250,7 +3295,7 @@ export default function App() {
                         />
                       </label>
                       <label className="field-stack">
-                        <span className="field-label">Quiet hours end</span>
+                        <span className="field-label">Quiet end</span>
                         <input
                           type="number"
                           min={0}
@@ -3267,7 +3312,7 @@ export default function App() {
                     </div>
                     <div className="allowlist-head">
                       <span className="field-label">
-                        Allowlist ({autoSettings.allowlist.length})
+                        Allowed chats ({autoSettings.allowlist.length})
                       </span>
                       <button
                         type="button"
@@ -3304,160 +3349,169 @@ export default function App() {
             )}
 
             {settingsTab === "ivr" && (
-              <div className="settings-card">
-                <div className="settings-card-head">
-                  <h3>Menu IVR (global)</h3>
-                  <span className={`status-pill status-${ivrSettings?.enabled ? "ok" : "muted"}`}>
-                    {ivrSettings?.enabled ? "ON" : "OFF"}
-                  </span>
-                </div>
-                <p className="hint tight">
-                  Text menus over Signal. Enable globally, then opt in per DM (or add to
-                  allowlist below). Groups are never handled. Buyer “3” hands off to you.
-                </p>
-                {ivrSettings && (
-                  <>
-                    <label className="toggle">
-                      <input
-                        type="checkbox"
-                        checked={ivrSettings.enabled}
-                        onChange={(e) => void saveIvrSettings({ enabled: e.target.checked })}
-                      />
-                      Master switch
-                    </label>
-                    <label className="toggle">
-                      <input
-                        type="checkbox"
-                        checked={ivrSettings.require_allowlist}
-                        onChange={(e) =>
-                          void saveIvrSettings({ require_allowlist: e.target.checked })
-                        }
-                      />
-                      Require per-thread allowlist
-                    </label>
-                    <label className="toggle">
-                      <input
-                        type="checkbox"
-                        checked={!!ivrSettings.hide_zero_stock}
-                        onChange={(e) =>
-                          void saveIvrSettings({ hide_zero_stock: e.target.checked })
-                        }
-                      />
-                      Hide zero-stock products in IVR catalog
-                    </label>
-                    <div className="allowlist-head">
-                      <span className="field-label">
-                        IVR allowlist ({ivrSettings.allowlist.length})
-                      </span>
-                      <button
-                        type="button"
-                        className="ghost-btn"
-                        onClick={() => void addToAllowlist("ivr", selectedId)}
-                      >
-                        Add current chat
-                      </button>
-                    </div>
-                    {ivrSettings.allowlist.length === 0 ? (
-                      <p className="hint tight">
-                        Empty — enable Menu IVR on a DM thread, or add a chat here.
-                      </p>
-                    ) : (
-                      <ul className="allowlist-list">
-                        {ivrSettings.allowlist.map((tid) => (
-                          <li key={tid}>
-                            <div>
-                              <div className="thread-name">{threadTitle(tid, contacts, groups)}</div>
-                              <div className="convo-sub">{tid}</div>
-                            </div>
-                            <button
-                              type="button"
-                              className="ghost-btn"
-                              onClick={() => void removeFromAllowlist("ivr", tid)}
-                            >
-                              Remove
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    <div className="ivr-menus-editor">
-                      <div className="allowlist-head">
-                        <span className="field-label">Menus JSON</span>
-                        <div className="row-actions">
-                          <button
-                            type="button"
-                            className="ghost-btn"
-                            disabled={ivrMenusBusy}
-                            onClick={() => void loadIvrMenusEditor()}
-                          >
-                            Reload
-                          </button>
-                          <button
-                            type="button"
-                            className="action-btn"
-                            disabled={ivrMenusBusy}
-                            onClick={() => void saveIvrMenusJson()}
-                          >
-                            Save
-                          </button>
-                          <button
-                            type="button"
-                            className="ghost-btn"
-                            disabled={ivrMenusBusy}
-                            onClick={() => void resetIvrMenusDemo()}
-                          >
-                            Reset to demo
-                          </button>
-                        </div>
-                      </div>
-                      <textarea
-                        className="ivr-menus-json"
-                        rows={14}
-                        spellCheck={false}
-                        value={ivrMenusJson}
-                        onChange={(e) => {
-                          setIvrMenusJson(e.target.value);
-                          setIvrMenusError(null);
-                        }}
-                        placeholder="Loading menus…"
-                      />
-                      {ivrMenusError && (
-                        <p className="warn-text" role="alert">
-                          {ivrMenusError}
-                        </p>
-                      )}
-                      <div className="form-grid-2">
+              <>
+                <div className="settings-card">
+                  <div className="settings-card-head">
+                    <h3>Menu IVR</h3>
+                    <span className={`status-pill status-${ivrSettings?.enabled ? "ok" : "muted"}`}>
+                      {ivrSettings?.enabled ? "ON" : "OFF"}
+                    </span>
+                  </div>
+                  <p className="hint tight">
+                    Buyers reply with numbers (catalog, order, status). Enable globally, then opt
+                    in per DM. Groups are never handled.
+                  </p>
+                  {ivrSettings && (
+                    <>
+                      <label className="toggle">
                         <input
-                          placeholder="Preview path (comma-separated, e.g. 1,2,1)"
-                          value={ivrPreviewInputs}
-                          onChange={(e) => setIvrPreviewInputs(e.target.value)}
+                          type="checkbox"
+                          checked={ivrSettings.enabled}
+                          onChange={(e) => void saveIvrSettings({ enabled: e.target.checked })}
                         />
+                        Enable IVR globally
+                      </label>
+                      <label className="toggle">
+                        <input
+                          type="checkbox"
+                          checked={ivrSettings.require_allowlist}
+                          onChange={(e) =>
+                            void saveIvrSettings({ require_allowlist: e.target.checked })
+                          }
+                        />
+                        Require allowlist (recommended)
+                      </label>
+                      <label className="toggle">
+                        <input
+                          type="checkbox"
+                          checked={!!ivrSettings.hide_zero_stock}
+                          onChange={(e) =>
+                            void saveIvrSettings({ hide_zero_stock: e.target.checked })
+                          }
+                        />
+                        Hide zero-stock products in catalog replies
+                      </label>
+                      <div className="allowlist-head">
+                        <span className="field-label">
+                          Allowed chats ({ivrSettings.allowlist.length})
+                        </span>
                         <button
                           type="button"
                           className="ghost-btn"
-                          onClick={() => void previewIvrPath()}
+                          onClick={() => void addToAllowlist("ivr", selectedId)}
                         >
-                          Preview path
+                          Add current chat
                         </button>
                       </div>
-                      {ivrPreviewSteps.length > 0 && (
-                        <ol className="ivr-preview-list">
-                          {ivrPreviewSteps.map((step, i) => (
-                            <li key={`${step.input}-${i}`}>
-                              <strong>{step.input}</strong> → {step.node_id}
-                              {step.action ? ` · ${step.action}` : ""}
-                              {step.handed_off ? " · handed off" : ""}
-                              {step.reply ? (
-                                <pre className="ivr-preview-reply">{step.reply}</pre>
-                              ) : null}
+                      {ivrSettings.allowlist.length === 0 ? (
+                        <p className="hint tight">
+                          Empty — turn on Menu IVR on a DM, or add a chat here.
+                        </p>
+                      ) : (
+                        <ul className="allowlist-list">
+                          {ivrSettings.allowlist.map((tid) => (
+                            <li key={tid}>
+                              <div>
+                                <div className="thread-name">{threadTitle(tid, contacts, groups)}</div>
+                                <div className="convo-sub">{tid}</div>
+                              </div>
+                              <button
+                                type="button"
+                                className="ghost-btn"
+                                onClick={() => void removeFromAllowlist("ivr", tid)}
+                              >
+                                Remove
+                              </button>
                             </li>
                           ))}
-                        </ol>
+                        </ul>
                       )}
+                    </>
+                  )}
+                </div>
+
+                <div className="settings-card">
+                  <div className="settings-card-head">
+                    <h3>Menu editor</h3>
+                  </div>
+                  <p className="hint tight">
+                    Edit the menu tree as JSON. Preview a digit path before saving.
+                  </p>
+                  <div className="allowlist-head">
+                    <span className="field-label">Menus JSON</span>
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        disabled={ivrMenusBusy}
+                        onClick={() => void loadIvrMenusEditor()}
+                      >
+                        Reload
+                      </button>
+                      <button
+                        type="button"
+                        className="action-btn"
+                        disabled={ivrMenusBusy}
+                        onClick={() => void saveIvrMenusJson()}
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        disabled={ivrMenusBusy}
+                        onClick={() => void resetIvrMenusDemo()}
+                      >
+                        Reset to demo
+                      </button>
                     </div>
-                  </>
-                )}
-              </div>
+                  </div>
+                  <textarea
+                    className="ivr-menus-json"
+                    rows={14}
+                    spellCheck={false}
+                    value={ivrMenusJson}
+                    onChange={(e) => {
+                      setIvrMenusJson(e.target.value);
+                      setIvrMenusError(null);
+                    }}
+                    placeholder="Loading menus…"
+                  />
+                  {ivrMenusError && (
+                    <p className="warn-text" role="alert">
+                      {ivrMenusError}
+                    </p>
+                  )}
+                  <div className="form-grid-2">
+                    <input
+                      placeholder="Preview path (e.g. 1,2,1)"
+                      value={ivrPreviewInputs}
+                      onChange={(e) => setIvrPreviewInputs(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      onClick={() => void previewIvrPath()}
+                    >
+                      Preview path
+                    </button>
+                  </div>
+                  {ivrPreviewSteps.length > 0 && (
+                    <ol className="ivr-preview-list">
+                      {ivrPreviewSteps.map((step, i) => (
+                        <li key={`${step.input}-${i}`}>
+                          <strong>{step.input}</strong> → {step.node_id}
+                          {step.action ? ` · ${step.action}` : ""}
+                          {step.handed_off ? " · handed off" : ""}
+                          {step.reply ? (
+                            <pre className="ivr-preview-reply">{step.reply}</pre>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              </>
             )}
           </div>
         </section>
