@@ -1758,3 +1758,351 @@ textarea {
   align-items: center;
   cursor: pointer;
 }
+/* IVR visual menu composer — flow-builder style (node rail + inspector + dial preview) */
+
+.ivr-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ivr-composer-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ivr-composer-toolbar-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.field-stack.compact {
+  min-width: 120px;
+}
+
+.ivr-composer-stat {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding-bottom: 6px;
+}
+
+.ivr-composer-stat span {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.ivr-composer-layout {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr) 220px;
+  gap: 12px;
+  align-items: start;
+  min-height: 420px;
+}
+
+.ivr-node-rail,
+.ivr-inspector,
+.ivr-side-panel {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.18);
+  padding: 10px;
+}
+
+.ivr-node-rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.ivr-node-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 520px;
+  overflow: auto;
+}
+
+.ivr-node-item {
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.ivr-node-item:hover {
+  border-color: var(--border);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ivr-node-item.active {
+  border-color: rgba(61, 139, 253, 0.55);
+  background: var(--accent-soft);
+}
+
+.ivr-node-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.ivr-node-item-top strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ivr-node-item-sub {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.35;
+}
+
+.ivr-node-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ivr-badge {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.ivr-badge.entry {
+  color: #93c5fd;
+  border-color: rgba(61, 139, 253, 0.4);
+}
+
+.ivr-badge.capture {
+  color: #fcd34d;
+  border-color: rgba(251, 191, 36, 0.35);
+}
+
+.ivr-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ivr-inspector-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.ivr-inspector-head .field-stack {
+  flex: 1;
+}
+
+.ivr-prompt {
+  width: 100%;
+  resize: vertical;
+  min-height: 96px;
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+.ivr-choice-table {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ivr-choice-row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1.2fr) 36px;
+  gap: 6px;
+  align-items: center;
+}
+
+.ivr-choice-row.head {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  padding: 0 2px;
+}
+
+.ivr-choice-row input,
+.ivr-choice-row select,
+.ivr-inspector select,
+.ivr-inspector input:not([type="checkbox"]),
+.ivr-composer-toolbar select,
+.ivr-composer-toolbar input[type="number"] {
+  width: 100%;
+  min-width: 0;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 8px;
+  font-size: 12px;
+}
+
+.danger-text {
+  color: var(--danger) !important;
+}
+
+.ivr-side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ivr-edge-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.ivr-edge {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  padding: 6px 8px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.ivr-edge:hover {
+  border-color: var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+.ivr-edge code {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--text);
+}
+
+.ivr-edge-digit {
+  min-width: 1.4em;
+  text-align: center;
+  font-weight: 600;
+  color: #93c5fd;
+}
+
+.ivr-edge-arrow {
+  opacity: 0.5;
+}
+
+.ivr-dialpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 8px 0;
+  max-width: 180px;
+}
+
+.ivr-dial-key {
+  aspect-ratio: 1;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  cursor: pointer;
+}
+
+.ivr-dial-key:hover:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: rgba(61, 139, 253, 0.45);
+}
+
+.ivr-dial-key:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ivr-preview-jump {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.ivr-preview-jump:hover {
+  color: #93c5fd;
+}
+
+.ivr-json-details {
+  margin-top: 4px;
+}
+
+@media (max-width: 1100px) {
+  .ivr-composer-layout {
+    grid-template-columns: 180px minmax(0, 1fr);
+  }
+
+  .ivr-side-panel {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 720px) {
+  .ivr-composer-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .ivr-side-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .ivr-choice-row,
+  .ivr-choice-row.head {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .ivr-choice-row.head span:nth-child(n + 3) {
+    display: none;
+  }
+}

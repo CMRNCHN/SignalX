@@ -30,6 +30,7 @@ import {
   type ThreadSummary,
 } from "./api";
 import { DeviceLinkQr } from "./DeviceLinkQr";
+import { IvrMenuComposer } from "./IvrMenuComposer";
 import { ProfileRail } from "./ProfileRail";
 import {
   IconAudit,
@@ -297,9 +298,8 @@ export default function App() {
   const [aiBusy, setAiBusy] = useState(false);
   const [autoSettings, setAutoSettings] = useState<AutoReplySettings | null>(null);
   const [ivrSettings, setIvrSettings] = useState<IvrSettings | null>(null);
-  const [ivrMenusJson, setIvrMenusJson] = useState("");
+  const [ivrMenusDraft, setIvrMenusDraft] = useState<IvrMenus | null>(null);
   const [ivrMenusError, setIvrMenusError] = useState<string | null>(null);
-  const [ivrPreviewInputs, setIvrPreviewInputs] = useState("1,2");
   const [ivrPreviewSteps, setIvrPreviewSteps] = useState<IvrPreviewStep[]>([]);
   const [ivrMenusBusy, setIvrMenusBusy] = useState(false);
   const [threadAuto, setThreadAuto] = useState<ThreadAutoReplyStatus | null>(null);
@@ -1278,27 +1278,26 @@ export default function App() {
       setIvrMenusError(res.error);
       return;
     }
-    setIvrMenusJson(JSON.stringify(res.data, null, 2));
+    setIvrMenusDraft(res.data);
     setIvrMenusError(null);
   };
 
-  const saveIvrMenusJson = async () => {
+  const saveIvrMenusDraft = async () => {
+    if (!ivrMenusDraft) {
+      setStatus("Load menus first");
+      return;
+    }
     setIvrMenusBusy(true);
     setIvrMenusError(null);
     try {
-      const parsed = JSON.parse(ivrMenusJson) as IvrMenus;
-      const res = await api.setIvrMenus(parsed);
+      const res = await api.setIvrMenus(ivrMenusDraft);
       if (!res.success) {
         setIvrMenusError(res.error);
         setStatus(res.error);
         return;
       }
-      setIvrMenusJson(JSON.stringify(res.data, null, 2));
+      setIvrMenusDraft(res.data);
       setStatus("IVR menus saved");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setIvrMenusError(msg);
-      setStatus(`Menus JSON: ${msg}`);
     } finally {
       setIvrMenusBusy(false);
     }
@@ -1314,18 +1313,14 @@ export default function App() {
       setStatus(res.error);
       return;
     }
-    setIvrMenusJson(JSON.stringify(res.data, null, 2));
+    setIvrMenusDraft(res.data);
     setIvrMenusError(null);
     setStatus("IVR menus reset to demo");
   };
 
-  const previewIvrPath = async () => {
-    const inputs = ivrPreviewInputs
-      .split(/[,;\s]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
+  const previewIvrPath = async (inputs: string[]) => {
     if (inputs.length === 0) {
-      setStatus("Enter comma-separated inputs to preview");
+      setIvrPreviewSteps([]);
       return;
     }
     const res = await api.previewIvrPath(inputs);
@@ -1449,7 +1444,7 @@ export default function App() {
   }, [panel, salesRange, salesStatus]);
 
   useEffect(() => {
-    if (panel === "settings" && settingsTab === "ivr" && !ivrMenusJson) {
+    if (panel === "settings" && settingsTab === "ivr" && !ivrMenusDraft) {
       void loadIvrMenusEditor();
     }
   }, [panel, settingsTab]);
@@ -2962,7 +2957,7 @@ export default function App() {
               <div>Settings</div>
               <div className="col-head-sub">
                 {settingsTab === "account" && "Link Signal and check receive health"}
-                {settingsTab === "ivr" && "Text menus buyers can dial over Signal"}
+                {settingsTab === "ivr" && "Compose prompts, digit branches, and try the path"}
                 {settingsTab === "auto" && "Guarded AI replies — off unless you allowlist"}
                 {settingsTab === "backup" && "Export or import catalog, orders, and chats"}
               </div>
@@ -3432,84 +3427,23 @@ export default function App() {
 
                 <div className="settings-card">
                   <div className="settings-card-head">
-                    <h3>Menu editor</h3>
+                    <h3>Menu composer</h3>
                   </div>
                   <p className="hint tight">
-                    Edit the menu tree as JSON. Preview a digit path before saving.
+                    Visual flow builder — pick a node, set the prompt and digit branches, try the
+                    path on the dial pad. Save writes the live IVR graph.
                   </p>
-                  <div className="allowlist-head">
-                    <span className="field-label">Menus JSON</span>
-                    <div className="row-actions">
-                      <button
-                        type="button"
-                        className="ghost-btn"
-                        disabled={ivrMenusBusy}
-                        onClick={() => void loadIvrMenusEditor()}
-                      >
-                        Reload
-                      </button>
-                      <button
-                        type="button"
-                        className="action-btn"
-                        disabled={ivrMenusBusy}
-                        onClick={() => void saveIvrMenusJson()}
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost-btn"
-                        disabled={ivrMenusBusy}
-                        onClick={() => void resetIvrMenusDemo()}
-                      >
-                        Reset to demo
-                      </button>
-                    </div>
-                  </div>
-                  <textarea
-                    className="ivr-menus-json"
-                    rows={14}
-                    spellCheck={false}
-                    value={ivrMenusJson}
-                    onChange={(e) => {
-                      setIvrMenusJson(e.target.value);
-                      setIvrMenusError(null);
-                    }}
-                    placeholder="Loading menus…"
+                  <IvrMenuComposer
+                    menus={ivrMenusDraft}
+                    busy={ivrMenusBusy}
+                    error={ivrMenusError}
+                    previewSteps={ivrPreviewSteps}
+                    onChange={setIvrMenusDraft}
+                    onSave={() => void saveIvrMenusDraft()}
+                    onReload={() => void loadIvrMenusEditor()}
+                    onResetDemo={() => void resetIvrMenusDemo()}
+                    onPreview={(inputs) => void previewIvrPath(inputs)}
                   />
-                  {ivrMenusError && (
-                    <p className="warn-text" role="alert">
-                      {ivrMenusError}
-                    </p>
-                  )}
-                  <div className="form-grid-2">
-                    <input
-                      placeholder="Preview path (e.g. 1,2,1)"
-                      value={ivrPreviewInputs}
-                      onChange={(e) => setIvrPreviewInputs(e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      className="ghost-btn"
-                      onClick={() => void previewIvrPath()}
-                    >
-                      Preview path
-                    </button>
-                  </div>
-                  {ivrPreviewSteps.length > 0 && (
-                    <ol className="ivr-preview-list">
-                      {ivrPreviewSteps.map((step, i) => (
-                        <li key={`${step.input}-${i}`}>
-                          <strong>{step.input}</strong> → {step.node_id}
-                          {step.action ? ` · ${step.action}` : ""}
-                          {step.handed_off ? " · handed off" : ""}
-                          {step.reply ? (
-                            <pre className="ivr-preview-reply">{step.reply}</pre>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ol>
-                  )}
                 </div>
               </>
             )}
