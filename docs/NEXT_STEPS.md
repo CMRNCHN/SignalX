@@ -28,15 +28,15 @@ inventory ops, and Sales console.
 - Dark IBM Plex operator console: luminance-stacked surfaces (`--surface-0…3`), quieter borders, shadows only on floating status.
 - Tighter density (13px base, 6px shell gutters); solid rail/columns; glass reserved for the message composer.
 - Control radius ~6–8px, panels ~10–12px; single blue CTA `#3d8bfd`.
-- Soft setup banner when config/number missing or `NotRegistered` → Settings → Device link.
-- Settings tabs: System | Device link | IVR | Auto-reply; Device link shows QR + Copy URI.
+- Soft setup banner when config/number missing or `NotRegistered` → Settings → Account.
+- Settings tabs: Account | IVR | Auto-reply | Backup; Account combines status + device link QR.
 - IVR: master switch, allowlist, hide zero-stock, menus JSON editor (Save / Reset demo / Preview).
 - Orders: Place order (confirmed) or Create quote (draft); draft → Send quote / Confirm / Edit qty.
 - Catalog: low-stock threshold, ± stock adjust, Below threshold filter, CSV export/import.
 - Sales: period + status filters, revenue totals, top products, commerce audit, Reorder → draft.
 - Thread header shows when Menu IVR is armed but global is off.
 - Messages: profile context rail (standing with 7-day At risk, notes, AI, ledger, Send quote).
-- Settings → System → Backup: export/import data bundle (zip); chat-only export unchanged.
+- Settings → Backup: export/import data bundle (zip); chat-only export unchanged.
 
 ## Long-term backlog (not next)
 
