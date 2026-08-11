@@ -25,7 +25,9 @@ inventory ops, and Sales console.
 
 ## Operator GUI notes
 
-- Dark flat-gray modular shell (floated panels, work tabs, liquid-glass composer).
+- Dark IBM Plex operator console: luminance-stacked surfaces (`--surface-0…3`), quieter borders, shadows only on floating status.
+- Tighter density (13px base, 6px shell gutters); solid rail/columns; glass reserved for the message composer.
+- Control radius ~6–8px, panels ~10–12px; single blue CTA `#3d8bfd`.
 - Soft setup banner when config/number missing or `NotRegistered` → Settings → Device link.
 - Settings tabs: System | Device link | IVR | Auto-reply; Device link shows QR + Copy URI.
 - IVR: master switch, allowlist, hide zero-stock, menus JSON editor (Save / Reset demo / Preview).

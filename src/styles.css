@@ -1,34 +1,52 @@
 :root {
-  --bg: #222326;
-  --bg-lift: #2a2b2f;
-  --bg-2: #2e3035;
-  --bg-3: #383a40;
-  --panel: #2c2e33;
-  --panel-2: #35373d;
-  --border: rgba(255, 255, 255, 0.1);
-  --border-strong: rgba(255, 255, 255, 0.18);
+  /* Surface ladder (luminance stacking) */
+  --bg: #1a1b1e;
+  --bg-lift: #222326;
+  --bg-2: #2a2b2f;
+  --bg-3: #32343a;
+  --surface-0: #222326;
+  --surface-1: #2a2b2f;
+  --surface-2: #32343a;
+  --surface-3: #3a3d44;
+  --panel: var(--surface-1);
+  --panel-2: var(--surface-2);
+
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.12);
   --text: #f0f2f5;
-  --text-dim: #9aa0a8;
+  --text-dim: #8b919a;
+  --muted: var(--text-dim);
   --accent: #f0f2f5;
-  --accent-soft: rgba(61, 139, 253, 0.14);
+  --accent-soft: rgba(61, 139, 253, 0.16);
   --accent-cta: #3d8bfd;
   --accent-cta-hover: #5a9dff;
   --danger: #f87171;
   --warn: #fbbf24;
   --ok: #34d399;
-  --bubble-in: #3a3d44;
-  --bubble-out: #1e3a5f;
-  --radius: 16px;
-  --radius-sm: 10px;
-  --glass: rgba(44, 46, 51, 0.62);
-  --glass-border: rgba(255, 255, 255, 0.16);
-  --shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  --bubble-in: #353841;
+  --bubble-out: #243b5c;
+
+  /* Operator radius: controls 6–8 · panels 10–12 · composer 12–14 */
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-xs: 6px;
+
+  /* Glass only for composer / floating status */
+  --glass: rgba(42, 44, 50, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --shadow: none;
+  --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.35);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
 
   color-scheme: dark;
   font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text);
-  background: radial-gradient(900px 500px at 50% 0%, #32343a 0%, var(--bg) 55%);
+  background: var(--bg);
 }
 
 * {
@@ -52,38 +70,37 @@ textarea {
 
 .shell {
   display: grid;
-  grid-template-columns: 212px 300px 1fr;
-  gap: 10px;
+  grid-template-columns: 212px 288px 1fr;
+  gap: 6px;
   height: 100vh;
   overflow: hidden;
-  padding: 10px;
+  padding: 6px;
+  background: var(--bg);
 }
 
 .shell.shell-with-profile {
-  grid-template-columns: 212px 300px 1fr 300px;
+  grid-template-columns: 212px 288px 1fr 288px;
 }
 
 .rail,
 .thread-col,
 .convo,
 .profile-rail {
-  background: var(--panel);
+  background: var(--surface-0);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  box-shadow: none;
   min-width: 0;
   min-height: 0;
 }
 
 .rail {
-  background: linear-gradient(180deg, rgba(58, 58, 58, 0.72), rgba(42, 42, 42, 0.92));
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  border-color: var(--glass-border);
-  padding: 16px 12px;
+  background: var(--surface-1);
+  border-color: var(--border);
+  padding: 12px 10px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .brand {
@@ -96,9 +113,9 @@ textarea {
 
 .brand-mark {
   font-family: "IBM Plex Sans", system-ui, sans-serif;
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--text);
 }
@@ -155,7 +172,7 @@ textarea {
 .settings-body input[type="number"],
 .composer textarea {
   width: 100%;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-2);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   padding: 8px 10px;
@@ -182,10 +199,10 @@ textarea {
 
 .ai-pill {
   font-size: 12px;
-  padding: 6px 10px;
-  border-radius: 999px;
+  padding: 5px 9px;
+  border-radius: var(--radius-xs);
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-2);
   color: var(--text-dim);
 }
 .ai-pill.ok {
@@ -266,8 +283,8 @@ textarea {
   min-width: 1.4em;
   text-align: center;
   padding: 1px 6px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-xs);
+  background: var(--surface-3);
   color: var(--text);
 }
 
@@ -278,8 +295,8 @@ textarea {
 .bubble-actions button {
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 999px;
-  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
   text-align: left;
   cursor: pointer;
   color: var(--text-dim);
@@ -298,7 +315,7 @@ textarea {
 .thread-col {
   display: flex;
   flex-direction: column;
-  background: var(--panel);
+  background: var(--surface-0);
   overflow: hidden;
 }
 
@@ -307,13 +324,15 @@ textarea {
 }
 
 .col-head {
-  padding: 14px 16px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--border);
   font-weight: 600;
+  font-size: 13px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  background: var(--surface-1);
 }
 
 .col-meta {
@@ -363,16 +382,18 @@ textarea {
 .thread-row {
   width: 100%;
   display: grid;
-  grid-template-columns: 40px 1fr;
-  gap: 10px;
+  grid-template-columns: 36px 1fr;
+  gap: 8px;
   align-items: start;
   text-align: left;
   background: transparent;
   border: 0;
   border-bottom: 1px solid var(--border);
-  padding: 12px 14px;
+  padding: 8px 10px;
+  min-height: 52px;
   cursor: pointer;
   color: inherit;
+  transition: background 120ms ease;
 }
 
 .thread-row:hover {
@@ -380,21 +401,21 @@ textarea {
 }
 
 .thread-row.active {
-  background: rgba(255, 255, 255, 0.07);
-  box-shadow: inset 3px 0 0 #fff;
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent-cta);
 }
 
 .avatar-dot {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  background: #444;
+  background: var(--surface-2);
   color: #ddd;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
   flex-shrink: 0;
 }
 
@@ -434,7 +455,7 @@ textarea {
   background: #111;
   color: #fff;
   padding: 1px 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-xs);
   font-weight: 600;
 }
 .badge.muted {
@@ -478,14 +499,14 @@ textarea {
 
 .search-box button {
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 999px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
 }
 
 .convo {
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, #303030 0%, #2a2a2a 100%);
+  background: var(--surface-0);
   overflow: hidden;
 }
 
@@ -519,10 +540,10 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 14px;
-  border-radius: 14px;
+  padding: 12px;
+  border-radius: var(--radius);
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-1);
   cursor: pointer;
   color: inherit;
   transition: background 120ms ease, border-color 120ms ease;
@@ -534,7 +555,7 @@ textarea {
 }
 
 .quick-action strong {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text);
 }
 
@@ -547,10 +568,11 @@ textarea {
 .convo-head {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   align-items: flex-start;
-  padding: 12px 16px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--border);
+  background: var(--surface-1);
 }
 
 .convo-head h2 {
@@ -578,8 +600,8 @@ textarea {
   color: #fecaca;
   border: 1px solid rgba(248, 113, 113, 0.4);
   background: rgba(248, 113, 113, 0.12);
-  padding: 4px 8px;
-  border-radius: 999px;
+  padding: 3px 7px;
+  border-radius: var(--radius-xs);
 }
 
 .auto-thread-badge.warn {
@@ -614,11 +636,11 @@ textarea {
 .compose-strip input {
   flex: 1;
   min-width: 0;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text);
-  padding: 8px 10px;
+  padding: 7px 10px;
   font: inherit;
 }
 
@@ -645,7 +667,7 @@ textarea {
   flex: 1 1 120px;
   min-width: 100px;
   max-width: 220px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text);
@@ -721,11 +743,11 @@ textarea {
 .form-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  border-radius: 12px;
+  gap: 8px;
+  padding: 10px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-2);
 }
 
 .form-card-title {
@@ -762,9 +784,9 @@ textarea {
   gap: 8px;
   min-height: 110px;
   padding: 16px;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   border: 1.5px dashed var(--border-strong);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-2);
   color: var(--text-dim);
   cursor: pointer;
   text-align: center;
@@ -810,7 +832,7 @@ textarea {
   padding: 8px 10px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-2);
 }
 
 .order-target strong {
@@ -831,8 +853,8 @@ textarea {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  padding: 3px 8px;
-  border-radius: 999px;
+  padding: 3px 7px;
+  border-radius: var(--radius-xs);
   flex-shrink: 0;
 }
 
@@ -863,7 +885,7 @@ textarea {
 .action-btn {
   background: transparent;
   border: 1px solid var(--border-strong);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   padding: 6px 12px;
   cursor: pointer;
   color: var(--text-dim);
@@ -890,7 +912,7 @@ textarea {
 .settings-body input:not([type="checkbox"]),
 .settings-grid input {
   width: 100%;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 8px 10px;
@@ -928,16 +950,16 @@ textarea {
 .toggle.compact {
   font-size: 12px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-xs);
   padding: 4px 10px;
 }
 
 .summary-box {
-  margin: 10px 16px 0;
+  margin: 10px 12px 0;
   padding: 10px 12px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-2);
 }
 
 .summary-head {
@@ -956,16 +978,16 @@ textarea {
 }
 
 .msg-scroll {
-  padding: 16px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .bubble {
   max-width: min(640px, 85%);
-  padding: 10px 12px;
-  border-radius: 16px;
+  padding: 8px 11px;
+  border-radius: 10px;
   border: 1px solid transparent;
   animation: rise 180ms ease-out;
 }
@@ -1037,8 +1059,8 @@ textarea {
 }
 
 .status-bar {
-  margin: 0 16px;
-  padding: 8px 10px;
+  margin: 0 12px;
+  padding: 7px 10px;
   border-radius: var(--radius-sm);
   background: rgba(251, 191, 36, 0.1);
   border: 1px solid rgba(251, 191, 36, 0.25);
@@ -1052,39 +1074,46 @@ textarea {
 
 .shell-status {
   position: fixed;
-  bottom: 18px;
+  bottom: 14px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 30;
   max-width: min(560px, calc(100vw - 32px));
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(30, 30, 30, 0.92);
-  backdrop-filter: blur(12px);
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--surface-3);
   border: 1px solid rgba(251, 191, 36, 0.35);
   color: #fde68a;
-  font-size: 13px;
+  font-size: 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-float);
 }
 
 .composer {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin: 10px 12px 12px;
-  padding: 12px;
-  border-radius: 22px;
+  margin: 8px 10px 10px;
+  padding: 10px;
+  border-radius: 14px;
   border: 1px solid var(--glass-border);
   background: var(--glass);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 8px 24px rgba(0, 0, 0, 0.25);
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 6px 20px rgba(0, 0, 0, 0.22);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .composer {
+    background: var(--surface-2);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 .composer-row {
@@ -1108,11 +1137,11 @@ textarea {
 }
 
 .attach-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: 999px;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-2);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1132,9 +1161,9 @@ textarea {
 .attach-chip {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 8px;
-  border-radius: 12px;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
   background: rgba(0, 0, 0, 0.25);
   border: 1px solid var(--border);
   font-size: 12px;
@@ -1152,8 +1181,8 @@ textarea {
   background: var(--accent-cta);
   color: white;
   border: 0;
-  border-radius: 999px;
-  padding: 12px 18px;
+  border-radius: var(--radius-sm);
+  padding: 10px 16px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -1199,10 +1228,10 @@ textarea {
 }
 
 .settings-body {
-  padding: 16px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   max-width: 640px;
 }
 
@@ -1212,17 +1241,18 @@ textarea {
 
 .settings-body h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .settings-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px;
+  gap: 8px;
+  padding: 10px;
   border: 1px solid var(--border);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
 }
 
 .settings-card-head {
@@ -1289,7 +1319,7 @@ textarea {
   width: 168px;
   height: 168px;
   padding: 10px;
-  border-radius: 14px;
+  border-radius: var(--radius-sm);
   background: #fff;
   border: 1px solid var(--border);
   display: flex;
@@ -1362,9 +1392,10 @@ textarea {
 .profile-rail-head {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 16px 14px 12px;
+  gap: 10px;
+  padding: 12px 12px 10px;
   border-bottom: 1px solid var(--border);
+  background: var(--surface-1);
 }
 
 .profile-avatar {
@@ -1389,7 +1420,7 @@ textarea {
 }
 
 .profile-section {
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--border);
   display: flex;
   flex-direction: column;
