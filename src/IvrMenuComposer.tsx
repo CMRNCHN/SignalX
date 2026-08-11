@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
-  IvrAfterCapture,
   IvrChoice,
   IvrMenus,
   IvrNode,
@@ -22,6 +21,16 @@ const CAPTURE_PRESETS: { id: string; label: string }[] = [
   { id: "note", label: "Ask them to type a note" },
 ];
 
+type ViewMode = "visual" | "text";
+
+type ChoiceRow = {
+  key: string;
+  digit: string;
+  goto: string;
+  action: string;
+  reply: string;
+};
+
 function actionLabel(id: string): string {
   return IVR_ACTIONS.find((a) => a.id === id)?.label ?? id;
 }
@@ -32,14 +41,6 @@ function captureBadge(slot: string): string {
   if (slot === "note") return "asks for a note";
   return "asks a question";
 }
-
-type ChoiceRow = {
-  key: string;
-  digit: string;
-  goto: string;
-  action: string;
-  reply: string;
-};
 
 function emptyMenus(): IvrMenus {
   return {
@@ -105,29 +106,69 @@ function slugifyNodeId(raw: string): string {
     .slice(0, 40);
 }
 
-function flowEdges(menus: IvrMenus): { from: string; digit: string; to: string; action: string }[] {
-  const edges: { from: string; digit: string; to: string; action: string }[] = [];
-  for (const [id, node] of Object.entries(menus.nodes)) {
-    if (node.choices) {
-      for (const [digit, c] of Object.entries(node.choices)) {
-        edges.push({
-          from: id,
-          digit,
-          to: c.goto?.trim() || "·",
-          action: c.action || "",
-        });
+/** Breadth-first columns from the starting screen for the visual canvas. */
+function layoutColumns(menus: IvrMenus): string[][] {
+  const columns: string[][] = [];
+  const seen = new Set<string>();
+  let frontier = menus.nodes[menus.entry] ? [menus.entry] : Object.keys(menus.nodes).slice(0, 1);
+  while (frontier.length) {
+    const col = frontier.filter((id) => menus.nodes[id] && !seen.has(id));
+    for (const id of col) seen.add(id);
+    if (col.length) columns.push(col);
+    const next: string[] = [];
+    for (const id of col) {
+      const n = menus.nodes[id];
+      if (n?.choices) {
+        for (const c of Object.values(n.choices)) {
+          const g = c.goto?.trim();
+          if (g && menus.nodes[g] && !seen.has(g)) next.push(g);
+        }
+      }
+      const ag = n?.after_capture?.goto?.trim();
+      if (ag && menus.nodes[ag] && !seen.has(ag)) next.push(ag);
+    }
+    frontier = [...new Set(next)];
+  }
+  for (const id of Object.keys(menus.nodes)) {
+    if (!seen.has(id)) columns.push([id]);
+  }
+  return columns;
+}
+
+function menusToScript(menus: IvrMenus): string {
+  const lines: string[] = [];
+  lines.push(`# Buyer menu`);
+  lines.push(`First screen: ${menus.entry}`);
+  lines.push(`Remember for: ${Math.round(menus.session_ttl_ms / 60_000)} minutes`);
+  lines.push("");
+  for (const id of nodeIds(menus)) {
+    const n = menus.nodes[id];
+    lines.push(`## ${id}${id === menus.entry ? "  ← start" : ""}`);
+    lines.push(n.prompt || "(no message)");
+    if (n.on_unknown) lines.push(`Unknown: ${n.on_unknown}`);
+    if (n.capture_slot) {
+      lines.push(`Ask: ${captureBadge(n.capture_slot)}`);
+      if (n.after_capture) {
+        lines.push(
+          `  then → ${n.after_capture.goto}` +
+            (n.after_capture.action ? ` · ${actionLabel(n.after_capture.action)}` : "") +
+            (n.after_capture.reply ? ` · “${n.after_capture.reply}”` : ""),
+        );
       }
     }
-    if (node.after_capture?.goto) {
-      edges.push({
-        from: id,
-        digit: "⇢",
-        to: node.after_capture.goto,
-        action: node.after_capture.action || "capture",
-      });
+    if (n.choices) {
+      for (const [digit, c] of Object.entries(n.choices)) {
+        const bits = [
+          `${digit} → ${c.goto?.trim() || "stay"}`,
+          c.action ? actionLabel(c.action) : "",
+          c.reply ? `“${c.reply}”` : "",
+        ].filter(Boolean);
+        lines.push(`  ${bits.join(" · ")}`);
+      }
     }
+    lines.push("");
   }
-  return edges;
+  return lines.join("\n").trim() + "\n";
 }
 
 export interface IvrMenuComposerProps {
@@ -155,6 +196,8 @@ export function IvrMenuComposer({
 }: IvrMenuComposerProps) {
   const working = menus ?? emptyMenus();
   const ids = useMemo(() => nodeIds(working), [working]);
+  const columns = useMemo(() => layoutColumns(working), [working]);
+  const [viewMode, setViewMode] = useState<ViewMode>("visual");
   const [selectedId, setSelectedId] = useState<string>(working.entry);
   const [simPath, setSimPath] = useState<string[]>([]);
   const [showJson, setShowJson] = useState(false);
@@ -167,14 +210,17 @@ export function IvrMenuComposer({
   }, [ids, selectedId, working.entry]);
 
   useEffect(() => {
-    if (showJson && menus) {
-      setJsonDraft(JSON.stringify(menus, null, 2));
-    }
+    if (showJson && menus) setJsonDraft(JSON.stringify(menus, null, 2));
   }, [showJson, menus]);
 
   const selected = working.nodes[selectedId];
   const choiceRows = choicesToRows(selected);
-  const edges = useMemo(() => flowEdges(working), [working]);
+  const script = useMemo(() => menusToScript(working), [working]);
+  const ttlMinutes = Math.round(working.session_ttl_ms / 60_000);
+  const livePreview =
+    previewSteps.length > 0
+      ? previewSteps[previewSteps.length - 1]
+      : null;
 
   const patchMenus = (fn: (m: IvrMenus) => void) => {
     const next = cloneMenus(working);
@@ -190,9 +236,11 @@ export function IvrMenuComposer({
     });
   };
 
-  const setChoiceRows = (rows: ChoiceRow[]) => {
-    patchNode(selectedId, { choices: rowsToChoices(rows) });
+  const setChoiceRowsFor = (nodeId: string, rows: ChoiceRow[]) => {
+    patchNode(nodeId, { choices: rowsToChoices(rows) });
   };
+
+  const setChoiceRows = (rows: ChoiceRow[]) => setChoiceRowsFor(selectedId, rows);
 
   const addChoice = () => {
     const used = new Set(choiceRows.map((r) => r.digit));
@@ -205,13 +253,7 @@ export function IvrMenuComposer({
     }
     setChoiceRows([
       ...choiceRows,
-      {
-        key: `new-${Date.now()}`,
-        digit,
-        goto: working.entry,
-        action: "",
-        reply: "",
-      },
+      { key: `new-${Date.now()}`, digit, goto: working.entry, action: "", reply: "" },
     ]);
   };
 
@@ -222,7 +264,8 @@ export function IvrMenuComposer({
     const id = `${base}_${n}`;
     patchMenus((m) => {
       m.nodes[id] = {
-        prompt: "Tell the buyer what to reply with (for example: 1 for products, 0 for the main menu).",
+        prompt:
+          "Tell the buyer what to reply with (for example: 1 for products, 0 for the main menu).",
         choices: { "0": { goto: m.entry } },
         on_unknown: "Please reply with one of the numbers on the menu.",
       };
@@ -244,9 +287,7 @@ export function IvrMenuComposer({
             if (c.goto === id) c.goto = m.entry;
           }
         }
-        if (node.after_capture?.goto === id) {
-          node.after_capture.goto = m.entry;
-        }
+        if (node.after_capture?.goto === id) node.after_capture.goto = m.entry;
       }
     });
     setSelectedId(working.entry);
@@ -269,9 +310,7 @@ export function IvrMenuComposer({
             if (c.goto === from) c.goto = to;
           }
         }
-        if (node.after_capture?.goto === from) {
-          node.after_capture.goto = to;
-        }
+        if (node.after_capture?.goto === from) node.after_capture.goto = to;
       }
     });
     setSelectedId(to);
@@ -287,12 +326,11 @@ export function IvrMenuComposer({
         return;
       }
       node.capture_slot = slot;
-      const ac: IvrAfterCapture = node.after_capture ?? {
+      node.after_capture = node.after_capture ?? {
         reply: "Got it.",
         goto: m.entry,
         action: null,
       };
-      node.after_capture = ac;
     });
   };
 
@@ -317,12 +355,244 @@ export function IvrMenuComposer({
     onPreview([]);
   };
 
-  const ttlMinutes = Math.round(working.session_ttl_ms / 60_000);
+  const renderChoiceEditor = (nodeId: string, rows: ChoiceRow[]) => (
+    <div className="ivr-choice-table" role="table">
+      <div className="ivr-choice-row head" role="row">
+        <span>They type</span>
+        <span>Next screen</span>
+        <span>Also do</span>
+        <span>Custom reply</span>
+        <span />
+      </div>
+      {rows.map((row, idx) => (
+        <div className="ivr-choice-row" role="row" key={row.key}>
+          <input
+            value={row.digit}
+            disabled={busy}
+            aria-label="What they type"
+            onChange={(e) => {
+              const next = [...rows];
+              next[idx] = { ...row, digit: e.target.value };
+              setChoiceRowsFor(nodeId, next);
+            }}
+          />
+          <select
+            value={row.goto}
+            disabled={busy}
+            aria-label="Next screen"
+            onChange={(e) => {
+              const next = [...rows];
+              next[idx] = { ...row, goto: e.target.value };
+              setChoiceRowsFor(nodeId, next);
+            }}
+          >
+            <option value="">Stay here</option>
+            {ids.map((id) => (
+              <option key={id} value={id}>
+                {id}
+              </option>
+            ))}
+          </select>
+          <select
+            value={row.action}
+            disabled={busy}
+            aria-label="Also do"
+            onChange={(e) => {
+              const next = [...rows];
+              next[idx] = { ...row, action: e.target.value };
+              setChoiceRowsFor(nodeId, next);
+            }}
+          >
+            {IVR_ACTIONS.map((a) => (
+              <option key={a.id || "none"} value={a.id}>
+                {a.label}
+              </option>
+            ))}
+          </select>
+          <input
+            value={row.reply}
+            disabled={busy}
+            placeholder="Optional text"
+            aria-label="Custom reply"
+            onChange={(e) => {
+              const next = [...rows];
+              next[idx] = { ...row, reply: e.target.value };
+              setChoiceRowsFor(nodeId, next);
+            }}
+          />
+          <button
+            type="button"
+            className="ghost-btn"
+            disabled={busy}
+            aria-label="Remove choice"
+            onClick={() => setChoiceRowsFor(nodeId, rows.filter((_, i) => i !== idx))}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderInspector = () => {
+    if (!selected) return <p className="hint">Pick a screen to edit.</p>;
+    return (
+      <>
+        <div className="ivr-inspector-head">
+          <label className="field-stack">
+            <span className="field-label">Screen name</span>
+            <input
+              key={selectedId}
+              defaultValue={selectedId}
+              disabled={busy}
+              placeholder="e.g. main, browse, checkout"
+              onBlur={(e) => renameNode(selectedId, e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className="ghost-btn danger-text"
+            disabled={busy || selectedId === working.entry}
+            onClick={() => deleteNode(selectedId)}
+          >
+            Remove
+          </button>
+        </div>
+
+        <label className="field-stack">
+          <span className="field-label">Message to the buyer</span>
+          <textarea
+            className="ivr-prompt"
+            rows={5}
+            value={selected.prompt}
+            disabled={busy}
+            placeholder={"Hi — reply with a number:\n1 · See products\n0 · Main menu"}
+            onChange={(e) => patchNode(selectedId, { prompt: e.target.value })}
+          />
+        </label>
+
+        <label className="field-stack">
+          <span className="field-label">If they type something that isn’t on the menu</span>
+          <input
+            value={selected.on_unknown ?? ""}
+            disabled={busy}
+            placeholder="e.g. Please reply with 1, 2, or 0."
+            onChange={(e) =>
+              patchNode(selectedId, { on_unknown: e.target.value || null })
+            }
+          />
+        </label>
+
+        <div className="settings-section-label">When they reply with a number</div>
+        {renderChoiceEditor(selectedId, choiceRows)}
+        <button type="button" className="ghost-btn" disabled={busy} onClick={addChoice}>
+          + Add a number choice
+        </button>
+
+        <div className="settings-section-label">Or ask them a question</div>
+        <div className="settings-grid">
+          <label className="field-stack">
+            <span className="field-label">What to collect</span>
+            <select
+              value={selected.capture_slot ?? ""}
+              disabled={busy}
+              onChange={(e) => setCapture(e.target.value)}
+            >
+              {CAPTURE_PRESETS.map((s) => (
+                <option key={s.id || "off"} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {selected.capture_slot && selected.after_capture && (
+            <>
+              <label className="field-stack">
+                <span className="field-label">Then go to screen</span>
+                <select
+                  value={selected.after_capture.goto}
+                  disabled={busy}
+                  onChange={(e) =>
+                    patchNode(selectedId, {
+                      after_capture: { ...selected.after_capture!, goto: e.target.value },
+                    })
+                  }
+                >
+                  {ids.map((id) => (
+                    <option key={id} value={id}>
+                      {id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field-stack">
+                <span className="field-label">Then also</span>
+                <select
+                  value={selected.after_capture.action ?? ""}
+                  disabled={busy}
+                  onChange={(e) =>
+                    patchNode(selectedId, {
+                      after_capture: {
+                        ...selected.after_capture!,
+                        action: e.target.value || null,
+                      },
+                    })
+                  }
+                >
+                  {IVR_ACTIONS.map((a) => (
+                    <option key={a.id || "none"} value={a.id}>
+                      {a.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field-stack" style={{ gridColumn: "1 / -1" }}>
+                <span className="field-label">Quick reply after they answer</span>
+                <input
+                  value={selected.after_capture.reply}
+                  disabled={busy}
+                  placeholder="e.g. Got it — one moment…"
+                  onChange={(e) =>
+                    patchNode(selectedId, {
+                      after_capture: { ...selected.after_capture!, reply: e.target.value },
+                    })
+                  }
+                />
+              </label>
+            </>
+          )}
+        </div>
+      </>
+    );
+  };
 
   return (
-    <div className="ivr-composer">
+    <div className={`ivr-composer ivr-composer-${viewMode}`}>
       <div className="ivr-composer-toolbar">
         <div className="ivr-composer-toolbar-main">
+          <div className="ivr-view-toggle" role="tablist" aria-label="Menu editor view">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === "visual"}
+              className={viewMode === "visual" ? "ivr-view-btn active" : "ivr-view-btn"}
+              onClick={() => setViewMode("visual")}
+            >
+              Visual
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === "text"}
+              className={viewMode === "text" ? "ivr-view-btn active" : "ivr-view-btn"}
+              onClick={() => setViewMode("text")}
+            >
+              Text
+            </button>
+          </div>
           <label className="field-stack compact">
             <span className="field-label">First screen</span>
             <select
@@ -342,7 +612,7 @@ export function IvrMenuComposer({
             </select>
           </label>
           <label className="field-stack compact">
-            <span className="field-label">Remember for (min)</span>
+            <span className="field-label">Remember (min)</span>
             <input
               type="number"
               min={1}
@@ -356,11 +626,11 @@ export function IvrMenuComposer({
               }
             />
           </label>
-          <div className="ivr-composer-stat">
-            <span>{ids.length}</span> screens · <span>{edges.length}</span> choices
-          </div>
         </div>
         <div className="row-actions">
+          <button type="button" className="ghost-btn" disabled={busy} onClick={addNode}>
+            + Screen
+          </button>
           <button type="button" className="ghost-btn" disabled={busy} onClick={onReload}>
             Discard edits
           </button>
@@ -379,364 +649,193 @@ export function IvrMenuComposer({
         </p>
       )}
 
-      <div className="ivr-composer-layout">
-        <aside className="ivr-node-rail" aria-label="Menu screens">
-          <div className="ivr-node-rail-head">
-            <span className="field-label">Screens</span>
-            <button type="button" className="ghost-btn" disabled={busy} onClick={addNode}>
-              + Screen
-            </button>
-          </div>
-          <ul className="ivr-node-list">
-            {ids.map((id) => {
-              const n = working.nodes[id];
-              const choiceCount = n?.choices ? Object.keys(n.choices).length : 0;
-              return (
-                <li key={id}>
-                  <button
-                    type="button"
-                    className={
-                      selectedId === id ? "ivr-node-item active" : "ivr-node-item"
-                    }
-                    onClick={() => setSelectedId(id)}
-                  >
-                    <div className="ivr-node-item-top">
-                      <strong>{id}</strong>
-                      <div className="ivr-node-badges">
-                        {id === working.entry && <span className="ivr-badge entry">start</span>}
-                        {n?.capture_slot && (
-                          <span className="ivr-badge capture">
-                            {captureBadge(n.capture_slot)}
-                          </span>
+      {viewMode === "visual" ? (
+        <div className="ivr-visual">
+          <div className="ivr-canvas-wrap">
+            <div className="ivr-canvas" aria-label="Menu flow">
+              {columns.map((col, colIdx) => (
+                <div className="ivr-canvas-col" key={`col-${colIdx}`}>
+                  {colIdx > 0 && <div className="ivr-col-connector" aria-hidden />}
+                  {col.map((id) => {
+                    const n = working.nodes[id];
+                    const choices = n?.choices ? Object.entries(n.choices) : [];
+                    const active = selectedId === id;
+                    const isStart = id === working.entry;
+                    return (
+                      <button
+                        type="button"
+                        key={id}
+                        className={
+                          active
+                            ? "ivr-screen-card active"
+                            : isStart
+                              ? "ivr-screen-card start"
+                              : "ivr-screen-card"
+                        }
+                        onClick={() => setSelectedId(id)}
+                      >
+                        <div className="ivr-screen-card-top">
+                          <strong>{id}</strong>
+                          <div className="ivr-node-badges">
+                            {isStart && <span className="ivr-badge entry">start</span>}
+                            {n?.capture_slot && (
+                              <span className="ivr-badge capture">
+                                {captureBadge(n.capture_slot)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="ivr-screen-bubble">
+                          {(n?.prompt || "No message yet").split("\n").slice(0, 4).join("\n")}
+                        </div>
+                        {choices.length > 0 && (
+                          <div className="ivr-screen-exits">
+                            {choices.map(([digit, c]) => (
+                              <span className="ivr-exit-chip" key={`${id}-${digit}`}>
+                                <em>{digit}</em>
+                                <span aria-hidden>→</span>
+                                {c.goto?.trim() || "stay"}
+                                {c.action ? ` · ${actionLabel(c.action)}` : ""}
+                              </span>
+                            ))}
+                          </div>
                         )}
-                      </div>
-                    </div>
-                    <div className="ivr-node-item-sub">
-                      {(n?.prompt || "").split("\n")[0].slice(0, 48) || "No message yet"}
-                      {choiceCount > 0 ? ` · ${choiceCount} choices` : ""}
-                    </div>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </aside>
-
-        <div className="ivr-inspector">
-          {!selected ? (
-            <p className="hint">Pick a screen on the left, or add a new one.</p>
-          ) : (
-            <>
-              <div className="ivr-inspector-head">
-                <label className="field-stack">
-                  <span className="field-label">Screen name</span>
-                  <input
-                    key={selectedId}
-                    defaultValue={selectedId}
-                    disabled={busy}
-                    placeholder="e.g. main, browse, checkout"
-                    onBlur={(e) => renameNode(selectedId, e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        (e.target as HTMLInputElement).blur();
-                      }
-                    }}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="ghost-btn danger-text"
-                  disabled={busy || selectedId === working.entry}
-                  onClick={() => deleteNode(selectedId)}
-                >
-                  Remove
-                </button>
-              </div>
-
-              <label className="field-stack">
-                <span className="field-label">Message to the buyer</span>
-                <textarea
-                  className="ivr-prompt"
-                  rows={5}
-                  value={selected.prompt}
-                  disabled={busy}
-                  placeholder={"Hi — reply with a number:\n1 · See products\n2 · Place an order\n0 · Main menu"}
-                  onChange={(e) => patchNode(selectedId, { prompt: e.target.value })}
-                />
-              </label>
-
-              <label className="field-stack">
-                <span className="field-label">If they type something that isn’t on the menu</span>
-                <input
-                  value={selected.on_unknown ?? ""}
-                  disabled={busy}
-                  placeholder="e.g. Please reply with 1, 2, or 0."
-                  onChange={(e) =>
-                    patchNode(selectedId, {
-                      on_unknown: e.target.value || null,
-                    })
-                  }
-                />
-              </label>
-
-              <div className="settings-section-label">When they reply with a number</div>
-              <p className="hint tight">
-                Map each number to the next screen and (optionally) something SignalX should do —
-                like sending the catalog or creating an order.
-              </p>
-              <div className="ivr-choice-table" role="table">
-                <div className="ivr-choice-row head" role="row">
-                  <span>They type</span>
-                  <span>Next screen</span>
-                  <span>Also do</span>
-                  <span>Custom reply</span>
-                  <span />
+                        {n?.after_capture?.goto && (
+                          <div className="ivr-screen-exits">
+                            <span className="ivr-exit-chip capture">
+                              answer → {n.after_capture.goto}
+                              {n.after_capture.action
+                                ? ` · ${actionLabel(n.after_capture.action)}`
+                                : ""}
+                            </span>
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
-                {choiceRows.map((row, idx) => (
-                  <div className="ivr-choice-row" role="row" key={row.key}>
-                    <input
-                      value={row.digit}
-                      disabled={busy}
-                      aria-label="What they type"
-                      onChange={(e) => {
-                        const next = [...choiceRows];
-                        next[idx] = { ...row, digit: e.target.value };
-                        setChoiceRows(next);
-                      }}
-                    />
-                    <select
-                      value={row.goto}
-                      disabled={busy}
-                      aria-label="Next screen"
-                      onChange={(e) => {
-                        const next = [...choiceRows];
-                        next[idx] = { ...row, goto: e.target.value };
-                        setChoiceRows(next);
-                      }}
-                    >
-                      <option value="">Stay here</option>
-                      {ids.map((id) => (
-                        <option key={id} value={id}>
-                          {id}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={row.action}
-                      disabled={busy}
-                      aria-label="Also do"
-                      onChange={(e) => {
-                        const next = [...choiceRows];
-                        next[idx] = { ...row, action: e.target.value };
-                        setChoiceRows(next);
-                      }}
-                    >
-                      {IVR_ACTIONS.map((a) => (
-                        <option key={a.id || "none"} value={a.id}>
-                          {a.label}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      value={row.reply}
-                      disabled={busy}
-                      placeholder="Optional text"
-                      aria-label="Custom reply"
-                      onChange={(e) => {
-                        const next = [...choiceRows];
-                        next[idx] = { ...row, reply: e.target.value };
-                        setChoiceRows(next);
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="ghost-btn"
-                      disabled={busy}
-                      aria-label="Remove choice"
-                      onClick={() => setChoiceRows(choiceRows.filter((_, i) => i !== idx))}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <button type="button" className="ghost-btn" disabled={busy} onClick={addChoice}>
-                + Add a number choice
-              </button>
-
-              <div className="settings-section-label">Or ask them a question</div>
-              <p className="hint tight">
-                Instead of (or after) number choices, wait for their next message — for example
-                which product number or how many they want — then move on.
-              </p>
-              <div className="settings-grid">
-                <label className="field-stack">
-                  <span className="field-label">What to collect</span>
-                  <select
-                    value={selected.capture_slot ?? ""}
-                    disabled={busy}
-                    onChange={(e) => setCapture(e.target.value)}
-                  >
-                    {CAPTURE_PRESETS.map((s) => (
-                      <option key={s.id || "off"} value={s.id}>
-                        {s.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {selected.capture_slot && selected.after_capture && (
-                  <>
-                    <label className="field-stack">
-                      <span className="field-label">Then go to screen</span>
-                      <select
-                        value={selected.after_capture.goto}
-                        disabled={busy}
-                        onChange={(e) =>
-                          patchNode(selectedId, {
-                            after_capture: {
-                              ...selected.after_capture!,
-                              goto: e.target.value,
-                            },
-                          })
-                        }
-                      >
-                        {ids.map((id) => (
-                          <option key={id} value={id}>
-                            {id}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="field-stack">
-                      <span className="field-label">Then also</span>
-                      <select
-                        value={selected.after_capture.action ?? ""}
-                        disabled={busy}
-                        onChange={(e) =>
-                          patchNode(selectedId, {
-                            after_capture: {
-                              ...selected.after_capture!,
-                              action: e.target.value || null,
-                            },
-                          })
-                        }
-                      >
-                        {IVR_ACTIONS.map((a) => (
-                          <option key={a.id || "none"} value={a.id}>
-                            {a.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="field-stack" style={{ gridColumn: "1 / -1" }}>
-                      <span className="field-label">Quick reply after they answer</span>
-                      <input
-                        value={selected.after_capture.reply}
-                        disabled={busy}
-                        placeholder="e.g. Got it — one moment…"
-                        onChange={(e) =>
-                          patchNode(selectedId, {
-                            after_capture: {
-                              ...selected.after_capture!,
-                              reply: e.target.value,
-                            },
-                          })
-                        }
-                      />
-                    </label>
-                  </>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-
-        <aside className="ivr-side-panel">
-          <div className="ivr-flow-map">
-            <div className="field-label">How it connects</div>
-            <p className="hint tight">
-              A quick map of every choice. Tap a row to jump to that screen.
-            </p>
-            <ul className="ivr-edge-list">
-              {edges.length === 0 ? (
-                <li className="hint tight">No choices yet — add numbers on the middle panel.</li>
-              ) : (
-                edges.map((e, i) => (
-                  <li key={`${e.from}-${e.digit}-${e.to}-${i}`}>
-                    <button
-                      type="button"
-                      className="ivr-edge"
-                      onClick={() => setSelectedId(e.from)}
-                    >
-                      <code>{e.from}</code>
-                      <span className="ivr-edge-digit">{e.digit}</span>
-                      <span className="ivr-edge-arrow">→</span>
-                      <code>{e.to === "·" ? "stay" : e.to}</code>
-                      {e.action ? (
-                        <span className="ivr-badge" title={e.action}>
-                          {actionLabel(e.action)}
-                        </span>
-                      ) : null}
-                    </button>
-                  </li>
-                ))
-              )}
-            </ul>
-          </div>
-
-          <div className="ivr-sim">
-            <div className="field-label">Test as a buyer</div>
-            <p className="hint tight">
-              Tap numbers like a customer would. Uses the <strong>last saved</strong> menu.
-              {simPath.length ? ` Path: ${simPath.join(" → ")}` : ""}
-            </p>
-            <div className="ivr-dialpad" role="group" aria-label="Test number pad">
-              {["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"].map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  className="ivr-dial-key"
-                  disabled={busy}
-                  onClick={() => pressSimDigit(d)}
-                >
-                  {d}
-                </button>
               ))}
             </div>
-            <div className="row-actions">
-              <button type="button" className="ghost-btn" onClick={clearSim}>
-                Start over
-              </button>
+          </div>
+
+          <div className="ivr-visual-side">
+            <div className="ivr-phone" aria-label="Buyer preview">
+              <div className="ivr-phone-notch" />
+              <div className="ivr-phone-screen">
+                <div className="ivr-phone-label">Buyer sees</div>
+                <div className="ivr-phone-thread">
+                  {(livePreview?.reply || selected?.prompt || "Pick a screen or tap numbers below.")
+                    .split("\n")
+                    .map((line, i) => (
+                      <p key={i}>{line || "\u00a0"}</p>
+                    ))}
+                </div>
+                {simPath.length > 0 && (
+                  <div className="ivr-phone-path">You pressed: {simPath.join(" → ")}</div>
+                )}
+              </div>
+              <div className="ivr-dialpad" role="group" aria-label="Test number pad">
+                {["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"].map((d) =>
+                  d === "*" || d === "#" ? (
+                    <span key={d} className="ivr-dial-spacer" />
+                  ) : (
+                    <button
+                      key={d}
+                      type="button"
+                      className="ivr-dial-key"
+                      disabled={busy}
+                      onClick={() => pressSimDigit(d)}
+                    >
+                      {d}
+                    </button>
+                  ),
+                )}
+              </div>
+              <div className="row-actions ivr-phone-actions">
+                <button type="button" className="ghost-btn" onClick={clearSim}>
+                  Start over
+                </button>
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  disabled={busy || simPath.length === 0}
+                  onClick={() => onPreview(simPath)}
+                >
+                  Run again
+                </button>
+              </div>
+              <p className="hint tight ivr-phone-hint">
+                Test uses the <strong>last saved</strong> menu.
+              </p>
+            </div>
+
+            <div className="ivr-inspector ivr-inspector-panel">
+              <div className="field-label">Edit selected screen</div>
+              {renderInspector()}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="ivr-text">
+          <div className="ivr-text-script">
+            <div className="ivr-text-script-head">
+              <span className="field-label">Script overview</span>
               <button
                 type="button"
                 className="ghost-btn"
-                disabled={busy || simPath.length === 0}
-                onClick={() => onPreview(simPath)}
+                onClick={() => void navigator.clipboard.writeText(script)}
               >
-                Run again
+                Copy script
               </button>
             </div>
-            {previewSteps.length > 0 && (
-              <ol className="ivr-preview-list">
-                {previewSteps.map((step, i) => (
-                  <li key={`${step.input}-${i}`}>
-                    <button
-                      type="button"
-                      className="ivr-preview-jump"
-                      onClick={() => setSelectedId(step.node_id)}
-                    >
-                      <strong>{step.input || "·"}</strong> → {step.node_id}
-                      {step.action ? ` · ${actionLabel(step.action)}` : ""}
-                      {step.handed_off ? " · handed to you" : ""}
-                    </button>
-                    {step.reply ? <pre className="ivr-preview-reply">{step.reply}</pre> : null}
-                  </li>
-                ))}
-              </ol>
-            )}
+            <pre className="ivr-script-pre">{script}</pre>
           </div>
-        </aside>
-      </div>
+
+          <div className="ivr-text-editors">
+            {ids.map((id) => {
+              const n = working.nodes[id];
+              const rows = choicesToRows(n);
+              const open = selectedId === id;
+              return (
+                <details
+                  key={id}
+                  className="ivr-text-block"
+                  open={open}
+                  onToggle={(e) => {
+                    if ((e.target as HTMLDetailsElement).open) setSelectedId(id);
+                  }}
+                >
+                  <summary>
+                    <strong>{id}</strong>
+                    {id === working.entry ? " · start" : ""}
+                    {n?.capture_slot ? ` · ${captureBadge(n.capture_slot)}` : ""}
+                    <span className="ivr-text-summary-snip">
+                      {(n?.prompt || "").split("\n")[0].slice(0, 60)}
+                    </span>
+                  </summary>
+                  <div className="ivr-text-block-body">
+                    {open ? (
+                      renderInspector()
+                    ) : (
+                      <p className="hint tight">Open to edit this screen.</p>
+                    )}
+                    {!open && rows.length > 0 && (
+                      <ul className="ivr-text-choice-list">
+                        {rows.map((r) => (
+                          <li key={r.key}>
+                            {r.digit} → {r.goto || "stay"}
+                            {r.action ? ` · ${actionLabel(r.action)}` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </details>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <details
         className="settings-details ivr-json-details"
@@ -745,8 +844,7 @@ export function IvrMenuComposer({
       >
         <summary>Expert edit (raw file)</summary>
         <p className="hint tight">
-          For power users who want to paste or tweak the whole menu at once. Apply loads it into
-          this editor — then press <strong>Save menu</strong> to go live.
+          Paste or tweak the whole menu file. Load into the editor, then Save menu to go live.
         </p>
         <textarea
           className="ivr-menus-json"

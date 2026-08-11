@@ -3431,8 +3431,8 @@ export default function App() {
                     <h3>Build the menu</h3>
                   </div>
                   <p className="hint tight">
-                    Write what buyers see, decide what each number does, and test it before it goes
-                    live. Save when you’re happy.
+                    Switch between a visual map of the conversation and a plain text script. Edit a
+                    screen, test it on the phone pad, then save.
                   </p>
                   <IvrMenuComposer
                     menus={ivrMenusDraft}
