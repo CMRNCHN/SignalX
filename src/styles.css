@@ -1251,6 +1251,10 @@ textarea {
   gap: 10px;
 }
 
+.diag-grid.diag-grid-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .diag-grid dt {
   font-size: 11px;
   text-transform: uppercase;
@@ -1264,6 +1268,76 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.diag-list {
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.diag-list > div {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.diag-list dt {
+  margin: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.diag-list dd {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+  word-break: break-all;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.settings-details {
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.settings-details summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-dim);
+  user-select: none;
+}
+
+.settings-details summary:hover {
+  color: var(--text);
+}
+
+.settings-section-label {
+  margin-top: 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.col-head-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-dim);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+@media (max-width: 900px) {
+  .diag-grid.diag-grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .setup-steps {

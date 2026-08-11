@@ -26,8 +26,8 @@ inventory ops, and Sales console.
 ## Operator GUI notes
 
 - Dark flat-gray modular shell (floated panels, work tabs, liquid-glass composer).
-- Soft setup banner when config/number missing or `NotRegistered` → Settings → Device link.
-- Settings tabs: System | Device link | IVR | Auto-reply; Device link shows QR + Copy URI.
+- Soft setup banner when config/number missing or `NotRegistered` → Settings → Account.
+- Settings tabs: Account | IVR | Auto-reply | Backup; Account combines status + device link QR.
 - IVR: master switch, allowlist, hide zero-stock, menus JSON editor (Save / Reset demo / Preview).
 - Orders: Place order (confirmed) or Create quote (draft); draft → Send quote / Confirm / Edit qty.
 - Catalog: low-stock threshold, ± stock adjust, Below threshold filter, CSV export/import.
