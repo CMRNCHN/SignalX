@@ -9,16 +9,24 @@
 
 ## Development Build
 
-Run the app in development mode:
+Open the **local desktop app** (Tauri window + Vite UI + Rust/signal-cli backend):
 
 ```bash
-npm run tauri:dev
-```
-
-Or use the launcher:
-```bash
+./run-dev.sh
+# or
+npm run desktop
+# or
 ./SignalX-Dev.command
 ```
+
+Browser layout preview only (no Signal IPC):
+
+```bash
+npm run ui
+```
+
+Requires Rust **1.88+** (see repo-root `rust-toolchain.toml`). If `tauri:dev` fails with
+`edition2024` / `hashbrown` errors, run `rustup update` and ensure that toolchain is active.
 
 ## Production Build
 
