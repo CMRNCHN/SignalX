@@ -30,6 +30,7 @@ inventory ops, and Sales console.
 - Control radius ~6–8px, panels ~10–12px; single blue CTA `#3d8bfd`.
 - Soft setup banner when config/number missing or `NotRegistered` → Settings → Account.
 - Settings tabs: Account | IVR | Auto-reply | Backup; Account combines status + device link QR.
+- IVR Settings includes a visual menu composer (node rail, digit branches, dial-pad preview); JSON under Advanced.
 - IVR: master switch, allowlist, hide zero-stock, menus JSON editor (Save / Reset demo / Preview).
 - Orders: Place order (confirmed) or Create quote (draft); draft → Send quote / Confirm / Edit qty.
 - Catalog: low-stock threshold, ± stock adjust, Below threshold filter, CSV export/import.
@@ -88,7 +89,7 @@ inventory ops, and Sales console.
 ## Device link smoke (manual)
 
 1. Ensure `.signalx.env` has `SIGNALX_SIGNALCLI_CONFIG` (and a usable `signal-cli`).
-2. If the rail shows **Link this Mac**, open it (or Settings → Device link).
+2. If the rail shows **Link this Mac**, open it (or Settings → Account).
 3. Start linking → scan the in-app QR from Signal → Linked devices (or Copy URI).
 4. Wait for LINKED; set `SIGNALX_NUMBER` if first link, then restart so receive/outbox start.
 

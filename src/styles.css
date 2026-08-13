@@ -1790,6 +1790,547 @@ textarea {
   cursor: pointer;
 }
 
+/* Buyer menu composer — Visual canvas + Text script */
+
+.ivr-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ivr-composer-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ivr-composer-toolbar-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.field-stack.compact {
+  min-width: 110px;
+}
+
+.ivr-view-toggle {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.25);
+  gap: 2px;
+}
+
+.ivr-view-btn {
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 7px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.ivr-view-btn.active {
+  background: rgba(61, 139, 253, 0.22);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px rgba(61, 139, 253, 0.35);
+}
+
+.ivr-node-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ivr-badge {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.ivr-badge.entry {
+  color: #93c5fd;
+  border-color: rgba(61, 139, 253, 0.4);
+}
+
+.ivr-badge.capture {
+  color: #fcd34d;
+  border-color: rgba(251, 191, 36, 0.35);
+}
+
+.ivr-visual {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.ivr-canvas-wrap {
+  position: relative;
+  min-height: 480px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  overflow: auto;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 10%, rgba(61, 139, 253, 0.14), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 90% 80%, rgba(52, 211, 153, 0.08), transparent 50%),
+    linear-gradient(160deg, #1a1b1f 0%, #22242a 45%, #1c1d22 100%);
+}
+
+.ivr-canvas {
+  display: flex;
+  align-items: flex-start;
+  gap: 28px;
+  padding: 28px 24px;
+  min-width: max-content;
+}
+
+.ivr-canvas-col {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 240px;
+}
+
+.ivr-col-connector {
+  position: absolute;
+  left: -22px;
+  top: 48px;
+  bottom: 48px;
+  width: 2px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(61, 139, 253, 0.35),
+    transparent
+  );
+  pointer-events: none;
+}
+
+.ivr-col-connector::before {
+  content: "";
+  position: absolute;
+  top: 40%;
+  left: -4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(61, 139, 253, 0.55);
+  box-shadow: 0 0 12px rgba(61, 139, 253, 0.45);
+}
+
+.ivr-screen-card {
+  width: 240px;
+  text-align: left;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 12px;
+  cursor: pointer;
+  color: var(--text);
+  background: rgba(44, 46, 51, 0.88);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(8px);
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ivr-screen-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.ivr-screen-card.start {
+  border-color: rgba(61, 139, 253, 0.4);
+}
+
+.ivr-screen-card.active {
+  border-color: rgba(61, 139, 253, 0.75);
+  box-shadow:
+    0 0 0 1px rgba(61, 139, 253, 0.35),
+    0 16px 40px rgba(0, 0, 0, 0.35);
+}
+
+.ivr-screen-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.ivr-screen-card-top strong {
+  font-size: 13px;
+}
+
+.ivr-screen-bubble {
+  white-space: pre-wrap;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--bubble-in);
+  border-radius: 12px 12px 12px 4px;
+  padding: 10px 12px;
+  min-height: 64px;
+  max-height: 120px;
+  overflow: hidden;
+}
+
+.ivr-screen-exits {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.ivr-exit-chip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+.ivr-exit-chip em {
+  font-style: normal;
+  font-weight: 700;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  color: #93c5fd;
+}
+
+.ivr-exit-chip.capture {
+  border-color: rgba(251, 191, 36, 0.3);
+  color: #fde68a;
+}
+
+.ivr-visual-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ivr-phone {
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, #2a2c32 0%, #1c1d21 100%);
+  padding: 14px 14px 12px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.4);
+}
+
+.ivr-phone-notch {
+  width: 72px;
+  height: 8px;
+  margin: 0 auto 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.ivr-phone-screen {
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(61, 139, 253, 0.08), transparent 40%),
+    #16171a;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 12px;
+  min-height: 160px;
+}
+
+.ivr-phone-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+.ivr-phone-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ivr-phone-thread p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--bubble-in);
+  border-radius: 12px 12px 12px 4px;
+  padding: 8px 10px;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.ivr-phone-path {
+  margin-top: 10px;
+  font-size: 11px;
+  color: #93c5fd;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.ivr-phone .ivr-dialpad {
+  margin: 12px auto 0;
+  max-width: 200px;
+}
+
+.ivr-dialpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.ivr-dial-key {
+  aspect-ratio: 1.35;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 600;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  cursor: pointer;
+}
+
+.ivr-dial-key:hover:not(:disabled) {
+  background: rgba(61, 139, 253, 0.22);
+  border-color: rgba(61, 139, 253, 0.45);
+  transform: scale(1.03);
+}
+
+.ivr-dial-key:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ivr-dial-spacer {
+  aspect-ratio: 1.35;
+}
+
+.ivr-phone-actions {
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.ivr-phone-hint {
+  text-align: center;
+  margin: 6px 0 0;
+}
+
+.ivr-inspector,
+.ivr-inspector-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.18);
+  padding: 12px;
+}
+
+.ivr-inspector-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.ivr-inspector-head .field-stack {
+  flex: 1;
+}
+
+.ivr-prompt {
+  width: 100%;
+  resize: vertical;
+  min-height: 96px;
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+.ivr-choice-table {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ivr-choice-row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1.2fr) 36px;
+  gap: 6px;
+  align-items: center;
+}
+
+.ivr-choice-row.head {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  padding: 0 2px;
+}
+
+.ivr-choice-row input,
+.ivr-choice-row select,
+.ivr-inspector select,
+.ivr-inspector input:not([type="checkbox"]),
+.ivr-composer-toolbar select,
+.ivr-composer-toolbar input[type="number"],
+.ivr-text-block select,
+.ivr-text-block input:not([type="checkbox"]) {
+  width: 100%;
+  min-width: 0;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 8px;
+  font-size: 12px;
+}
+
+.danger-text {
+  color: var(--danger) !important;
+}
+
+/* Text / script mode */
+
+.ivr-text {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.ivr-text-script {
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.28);
+  padding: 12px;
+  position: sticky;
+  top: 8px;
+}
+
+.ivr-text-script-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.ivr-script-pre {
+  margin: 0;
+  max-height: 640px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #d7dbe2;
+}
+
+.ivr-text-editors {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ivr-text-block {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0 12px 10px;
+}
+
+.ivr-text-block summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 12px 0 8px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.ivr-text-block summary::-webkit-details-marker {
+  display: none;
+}
+
+.ivr-text-summary-snip {
+  flex: 1 1 100%;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.ivr-text-block-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 4px;
+}
+
+.ivr-text-choice-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.ivr-json-details {
+  margin-top: 4px;
+}
+
+@media (max-width: 1100px) {
+  .ivr-visual,
+  .ivr-text {
+    grid-template-columns: 1fr;
+  }
+
+  .ivr-text-script {
+    position: static;
+    max-height: none;
+  }
+
+  .ivr-script-pre {
+    max-height: 220px;
+  }
+}
+
+@media (max-width: 720px) {
+  .ivr-choice-row,
+  .ivr-choice-row.head {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .ivr-choice-row.head span:nth-child(n + 3) {
+    display: none;
+  }
+}
+
 /* Browser preview gate — full Signal backend only in Tauri desktop */
 .shell.desktop-gate {
   display: grid;
