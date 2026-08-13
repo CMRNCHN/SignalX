@@ -18,12 +18,14 @@ mod orders;
 mod link;
 mod uom;
 mod backup;
+mod session;
 use ivr::{thread_allowed, IvrMenus, IvrSettings, IvrStore};
 use commerce::{format_catalog_list, CommerceStore, Customer, Product};
 use commerce_audit::CommerceAuditStore;
 use orders::{format_invoice, format_order_status, format_quote, Order, OrderLineInput, OrderStore};
 use link::{DeviceLinkManager, DeviceLinkStatus};
 use backup::{export_data_bundle, import_data_bundle, ImportMode};
+use session::SessionControl;
 
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
@@ -2230,6 +2232,7 @@ struct Diagnostics {
   config_path: Option<String>,
   number: Option<String>,
   active_account: Option<String>,
+  session_locked: bool,
   ollama_configured: bool,
   ollama_url: String,
   ollama_model: Option<String>,
@@ -2299,8 +2302,8 @@ struct AutoReplyAuditLog {
 
 #[derive(Clone)]
 struct AutoReplyStore {
-  settings_path: PathBuf,
-  audit_path: PathBuf,
+  settings_path: Arc<Mutex<PathBuf>>,
+  audit_path: Arc<Mutex<PathBuf>>,
   settings: Arc<Mutex<AutoReplySettings>>,
   audit: Arc<Mutex<AutoReplyAuditLog>>,
   /// In-memory timestamps of recent auto-sends for rate limiting: (thread_id, ts_ms)
@@ -2328,12 +2331,21 @@ impl AutoReplyStore {
       AutoReplyAuditLog::default()
     };
     Self {
-      settings_path,
-      audit_path,
+      settings_path: Arc::new(Mutex::new(settings_path)),
+      audit_path: Arc::new(Mutex::new(audit_path)),
       settings: Arc::new(Mutex::new(settings)),
       audit: Arc::new(Mutex::new(audit)),
       recent_sends: Arc::new(Mutex::new(Vec::new())),
     }
+  }
+
+  fn reload_from(&self, account_data_dir: &Path) {
+    let fresh = Self::new(account_data_dir);
+    *self.settings_path.lock().unwrap() = fresh.settings_path.lock().unwrap().clone();
+    *self.audit_path.lock().unwrap() = fresh.audit_path.lock().unwrap().clone();
+    *self.settings.lock().unwrap() = fresh.settings.lock().unwrap().clone();
+    *self.audit.lock().unwrap() = fresh.audit.lock().unwrap().clone();
+    self.recent_sends.lock().unwrap().clear();
   }
 
   fn get_settings(&self) -> AutoReplySettings {
@@ -2345,10 +2357,11 @@ impl AutoReplyStore {
       *self.settings.lock().unwrap() = s.clone();
     }
     let json = serde_json::to_string_pretty(&s).map_err(|e| e.to_string())?;
-    if let Some(parent) = self.settings_path.parent() {
+    let path = self.settings_path.lock().unwrap().clone();
+    if let Some(parent) = path.parent() {
       std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    std::fs::write(&self.settings_path, json).map_err(|e| e.to_string())?;
+    std::fs::write(&path, json).map_err(|e| e.to_string())?;
     Ok(s)
   }
 
@@ -2369,7 +2382,8 @@ impl AutoReplyStore {
         a.entries.drain(0..excess);
       }
       let json = serde_json::to_string_pretty(&*a).unwrap_or_else(|_| "{}".to_string());
-      let _ = std::fs::write(&self.audit_path, json);
+      let path = self.audit_path.lock().unwrap().clone();
+      let _ = std::fs::write(&path, json);
     }
   }
 
@@ -2488,6 +2502,7 @@ struct AppState {
   outbox_store: OutboxStore,
   outbox_send_locks: Arc<Mutex<HashMap<String, Arc<AsyncMutex<()>>>>>, // account_id -> send mutex
   outbox_workers: Arc<Mutex<HashSet<String>>>, // account_id set
+  session: SessionControl,
   auto_reply: AutoReplyStore,
   ivr: IvrStore,
   commerce: CommerceStore,
@@ -2513,6 +2528,113 @@ fn canonical_account_id_from_number(number: &str) -> String {
 
 fn configured_account_id() -> Option<String> {
   get_signal_number().map(|n| canonical_account_id_from_number(&n))
+}
+
+fn upsert_env_key(env_path: &Path, key: &str, value: &str) -> Result<(), String> {
+  let mut lines: Vec<String> = if env_path.is_file() {
+    std::fs::read_to_string(env_path)
+      .map_err(|e| e.to_string())?
+      .lines()
+      .map(|l| l.to_string())
+      .collect()
+  } else {
+    Vec::new()
+  };
+  let prefix = format!("{}=", key);
+  let mut found = false;
+  for line in lines.iter_mut() {
+    if line.starts_with(&prefix) {
+      *line = format!("{}={}", key, value);
+      found = true;
+      break;
+    }
+  }
+  if !found {
+    lines.push(format!("{}={}", key, value));
+  }
+  let mut out = lines.join("\n");
+  if !out.ends_with('\n') {
+    out.push('\n');
+  }
+  if let Some(parent) = env_path.parent() {
+    let _ = std::fs::create_dir_all(parent);
+  }
+  std::fs::write(env_path, out).map_err(|e| e.to_string())
+}
+
+fn resolve_env_file_path(state: &AppState) -> Option<PathBuf> {
+  if let Some(p) = &state.env_path {
+    return Some(p.clone());
+  }
+  std::env::current_dir()
+    .ok()
+    .map(|d| d.join(".signalx.env"))
+}
+
+fn persist_live_number(state: &AppState, e164: &str) -> Result<(), String> {
+  std::env::set_var("SIGNALX_NUMBER", e164);
+  if let Some(p) = resolve_env_file_path(state) {
+    upsert_env_key(&p, "SIGNALX_NUMBER", e164)?;
+  }
+  Ok(())
+}
+
+fn reload_shop_stores(state: &AppState, account_id: &str) {
+  let dir = session::account_data_dir(&state.app_data_dir, account_id);
+  let _ = std::fs::create_dir_all(dir.join("commerce"));
+  let _ = std::fs::create_dir_all(dir.join("ivr").join("sessions"));
+  state.commerce.reload_from(&dir);
+  state.orders.reload_from(&dir);
+  state.commerce_audit.reload_from(&dir);
+  state.ivr.reload_from(&dir);
+  state.auto_reply.reload_from(&dir);
+}
+
+fn stop_identity_workers(state: &AppState) {
+  state.session.set_locked(true);
+  state.session.bump();
+  state.outbox_workers.lock().unwrap().clear();
+}
+
+fn bind_live_account(state: &AppState, e164: &str) -> Result<String, String> {
+  persist_live_number(state, e164)?;
+  let id = canonical_account_id_from_number(e164);
+  let _ = session::migrate_global_shop(&state.app_data_dir, &id);
+  session::ensure_roster_account(&state.app_data_dir, e164, now_ms())?;
+  state.account_manager.set_active(id.clone());
+  let _ = state.account_manager.get_or_create(&id);
+  state.alias_manager.load_account(&id);
+  state.contact_store.load_account(&id);
+  state.group_store.load_account(&id);
+  reload_shop_stores(state, &id);
+  Ok(id)
+}
+
+fn start_live_workers(state: &AppState) {
+  if state.session.is_locked() {
+    return;
+  }
+  if configured_account_id().is_none() || get_signal_config().is_none() {
+    eprintln!("SignalX: not configured — skipping receive/outbox workers");
+    return;
+  }
+  start_receive_loop(state.clone(), Some(AgentModeConfig::enabled_default()));
+  if let Some(a) = configured_account_id() {
+    ensure_outbox_worker(state.clone(), a);
+  }
+}
+
+fn emit_session_switched(state: &AppState, locked: bool) {
+  let roster = session::Roster::load(&state.app_data_dir);
+  emit_event(
+    "account://switched",
+    json!({
+      "locked": locked,
+      "number": get_signal_number(),
+      "active_id": state.account_manager.get_active(),
+      "accounts": roster.accounts.len(),
+    }),
+  );
 }
 
 fn outbox_path_for(dir: &Path, account_id: &str) -> PathBuf {
@@ -2559,8 +2681,17 @@ fn get_diagnostics(state: &AppState) -> Value {
     signal_cli_usable: cli.is_usable,
     signal_cli_last_error: cli.last_error,
     config_path: get_signal_config(),
-    number: get_signal_number(),
-    active_account: state.account_manager.get_active(),
+    number: if state.session.is_locked() {
+      None
+    } else {
+      get_signal_number()
+    },
+    active_account: if state.session.is_locked() {
+      None
+    } else {
+      state.account_manager.get_active()
+    },
+    session_locked: state.session.is_locked(),
     ollama_configured: ai.configured,
     ollama_url: ai.ollama_url,
     ollama_model: ai.ollama_model,
@@ -2575,6 +2706,9 @@ fn check_ai_status() -> Value {
 }
 
 fn require_active_account(state: &AppState) -> Result<String, Value> {
+  if state.session.is_locked() {
+    return Err(err("session locked".to_string()));
+  }
   let id = configured_account_id().ok_or_else(|| err("SIGNALX_NUMBER not set".to_string()))?;
   if state.account_manager.get_active().as_ref() != Some(&id) {
     state.account_manager.set_active(id.clone());
@@ -4132,7 +4266,11 @@ fn trigger_agent_draft(state: AppState, agent: AgentModeConfig, ts: ThreadState,
 }
 
 async fn receive_loop(state: AppState, agent_mode: Option<AgentModeConfig>) {
+  let my_gen = state.session.current_gen();
   loop {
+    if !state.session.is_current(my_gen) {
+      break;
+    }
     // cooldown window (self-heal)
     let snap = state.receive_monitor.snapshot();
     if let Some(until) = snap.cooldown_until {
@@ -4209,6 +4347,10 @@ async fn receive_loop(state: AppState, agent_mode: Option<AgentModeConfig>) {
     .map_err(|e| format!("receive join error: {}", e))
     .and_then(|x| x);
 
+    if !state.session.is_current(my_gen) {
+      break;
+    }
+
     match received {
       Ok(list) => {
         state.receive_monitor.on_success();
@@ -4262,6 +4404,9 @@ fn outbox_send_lock_for(state: &AppState, account_id: &str) -> Arc<AsyncMutex<()
 }
 
 fn ensure_outbox_worker(state: AppState, account_id: String) {
+  if state.session.is_locked() {
+    return;
+  }
   let mut set = state.outbox_workers.lock().unwrap();
   if set.contains(&account_id) {
     return;
@@ -4269,8 +4414,12 @@ fn ensure_outbox_worker(state: AppState, account_id: String) {
   set.insert(account_id.clone());
   drop(set);
 
+  let my_gen = state.session.current_gen();
   spawn_daemon_task(async move {
     loop {
+      if !state.session.is_current(my_gen) {
+        break;
+      }
       // Claim an eligible item first (this persists "sending" state).
       let claimed = match state.outbox_store.claim_next_for_send_async(&account_id).await {
         Ok(x) => x,
@@ -4284,6 +4433,13 @@ fn ensure_outbox_worker(state: AppState, account_id: String) {
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
         continue;
       };
+
+      if !state.session.is_current(my_gen) {
+        item.state = "queued".to_string();
+        item.last_error = Some("session switched".to_string());
+        let _ = state.outbox_store.update_item_async(&account_id, item).await;
+        break;
+      }
 
       let config = match get_signal_config() {
         Some(c) => c,
@@ -4315,6 +4471,11 @@ fn ensure_outbox_worker(state: AppState, account_id: String) {
       };
 
       // Only one send at a time per account.
+      if !state.session.is_current(my_gen) {
+        item.state = "queued".to_string();
+        let _ = state.outbox_store.update_item_async(&account_id, item).await;
+        break;
+      }
       let send_lock = outbox_send_lock_for(&state, &account_id);
       let _send_guard = send_lock.lock().await;
 
@@ -4427,6 +4588,11 @@ fn run_headless(state: AppState) {
   }
 
   bootstrap_accounts(&state);
+
+  if state.session.is_locked() {
+    eprintln!("SignalX: session locked — headless will not start receive/outbox");
+    return;
+  }
 
   if configured_account_id().is_none() || get_signal_config().is_none() {
     eprintln!("SignalX: not configured — headless receive/outbox will not start");
@@ -4614,6 +4780,7 @@ fn build_app_state() -> AppState {
     outbox_store: OutboxStore::new(outbox_dir.clone()),
     outbox_send_locks: Arc::new(Mutex::new(HashMap::new())),
     outbox_workers: Arc::new(Mutex::new(HashSet::new())),
+    session: SessionControl::default(),
     auto_reply: AutoReplyStore::new(&app_data_dir),
     ivr: IvrStore::new(&app_data_dir),
     commerce: CommerceStore::new(&app_data_dir),
@@ -4628,15 +4795,34 @@ fn bootstrap_accounts(state: &AppState) {
     eprintln!("SignalX: SIGNALX_NUMBER not set — receive/outbox will not start");
     return;
   };
+  let e164 = get_signal_number().unwrap_or_default();
+  let _ = session::migrate_global_shop(&state.app_data_dir, &id);
+  let roster = match session::ensure_roster_account(&state.app_data_dir, &e164, now_ms()) {
+    Ok(r) => r,
+    Err(e) => {
+      eprintln!("SignalX: roster init failed: {e}");
+      session::Roster::load(&state.app_data_dir)
+    }
+  };
+  if roster.requires_unlock() {
+    state.session.set_locked(true);
+    eprintln!("SignalX: session locked — unlock an account to start receive/outbox");
+    return;
+  }
   state.account_manager.set_active(id.clone());
   state.account_manager.get_or_create(&id);
   state.alias_manager.load_account(&id);
   state.contact_store.load_account(&id);
   state.group_store.load_account(&id);
+  reload_shop_stores(state, &id);
+  state.session.set_locked(false);
 }
 
 /// Returns true when IVR claimed this inbound (skip AI auto-send path).
 fn maybe_handle_ivr(state: &AppState, thread_id: &str, content: &str) -> bool {
+  if state.session.is_locked() {
+    return false;
+  }
   if thread_id.starts_with("group:") {
     return false;
   }
@@ -4806,6 +4992,9 @@ fn ivr_place_order(state: &AppState, thread_id: &str, session: &ivr::IvrSession)
 }
 
 fn get_ivr_settings(state: &AppState) -> Value {
+  if state.session.is_locked() {
+    return err("session locked".to_string());
+  }
   ok_t(state.ivr.get_settings())
 }
 
@@ -4948,6 +5137,9 @@ fn clear_thread_handoff(state: &AppState, thread_id: String) -> Value {
 }
 
 fn list_products(state: &AppState) -> Value {
+  if state.session.is_locked() {
+    return ok_t(Vec::<Product>::new());
+  }
   ok_t(state.commerce.list_products())
 }
 
@@ -5304,6 +5496,9 @@ fn update_draft_order_lines(
 }
 
 fn confirm_order(state: &AppState, id: String) -> Value {
+  if state.session.is_locked() {
+    return err("session locked".to_string());
+  }
   match state.orders.confirm(&state.commerce, id.trim(), now_ms()) {
     Ok(order) => {
       state.commerce_audit.record(
@@ -6024,6 +6219,183 @@ fn cmd_sales_summary(
   sales_summary(&state, since_ms, until_ms, thread_id, status)
 }
 
+fn list_linked_numbers(state: &AppState) -> Vec<String> {
+  let Some(cfg) = get_signal_config() else {
+    return Vec::new();
+  };
+  let p = PathBuf::from(cfg).join("data").join("accounts.json");
+  let Ok(s) = std::fs::read_to_string(p) else {
+    return Vec::new();
+  };
+  let _ = state;
+  session::linked_numbers_from_accounts_json(&s)
+}
+
+fn session_status(state: &AppState) -> Value {
+  let roster = session::Roster::load(&state.app_data_dir);
+  let active = if state.session.is_locked() {
+    None
+  } else {
+    state.account_manager.get_active()
+  };
+  let accounts: Vec<Value> = roster
+    .accounts
+    .iter()
+    .map(|a| {
+      json!({
+        "id": a.id,
+        "e164": a.e164,
+        "label": a.label,
+        "last4": session::last4(&a.e164),
+        "has_pin": a.pin_hash.is_some(),
+        "is_active": active.as_ref() == Some(&a.id),
+      })
+    })
+    .collect();
+  let roster_ids: std::collections::HashSet<String> = roster
+    .accounts
+    .iter()
+    .map(|a| a.e164.clone())
+    .collect();
+  let linked_unseen: Vec<String> = list_linked_numbers(state)
+    .into_iter()
+    .filter(|n| !roster_ids.contains(n))
+    .collect();
+  ok(json!({
+    "locked": state.session.is_locked(),
+    "requires_unlock": roster.requires_unlock(),
+    "active_id": active,
+    "number": if state.session.is_locked() { None } else { get_signal_number() },
+    "accounts": accounts,
+    "linked_unseen": linked_unseen,
+  }))
+}
+
+fn unlock_account(state: &AppState, id: String, pin: String) -> Value {
+  let roster = session::Roster::load(&state.app_data_dir);
+  if let Err(e) = state.session.check_backoff(&id, now_ms()) {
+    return err(e);
+  }
+  let acct = match roster.verify_unlock(&id, &pin) {
+    Ok(a) => a.clone(),
+    Err(e) => {
+      state.session.record_failure(&id, now_ms());
+      return err(e);
+    }
+  };
+  state.session.clear_failures(&id);
+  stop_identity_workers(state);
+  match bind_live_account(state, &acct.e164) {
+    Ok(_) => {}
+    Err(e) => return err(e),
+  }
+  let mut roster = session::Roster::load(&state.app_data_dir);
+  roster.last_unlocked = Some(acct.id.clone());
+  let _ = roster.save(&state.app_data_dir);
+  state.session.set_locked(false);
+  start_live_workers(state);
+  emit_session_switched(state, false);
+  session_status(state)
+}
+
+fn lock_session(state: &AppState) -> Value {
+  stop_identity_workers(state);
+  emit_session_switched(state, true);
+  session_status(state)
+}
+
+fn add_account(state: &AppState, number: String, pin: String, label: String) -> Value {
+  let e164 = match normalize_e164_phone(&number) {
+    Ok(n) => n,
+    Err(e) => return err(e),
+  };
+  let id = canonical_account_id_from_number(&e164);
+  let mut roster = session::Roster::load(&state.app_data_dir);
+  if roster.find(&id).is_some() {
+    return err("account already in roster".to_string());
+  }
+  let hash = match session::hash_pin(&pin) {
+    Ok(h) => h,
+    Err(e) => return err(e),
+  };
+  roster.accounts.push(session::RosterAccount {
+    id: id.clone(),
+    e164: e164.clone(),
+    label: label.trim().to_string(),
+    pin_hash: Some(hash),
+    created_ms: now_ms(),
+  });
+  if let Err(e) = roster.save(&state.app_data_dir) {
+    return err(e);
+  }
+  let dir = session::account_data_dir(&state.app_data_dir, &id);
+  let _ = std::fs::create_dir_all(dir.join("commerce"));
+  let _ = std::fs::create_dir_all(dir.join("ivr").join("sessions"));
+  session_status(state)
+}
+
+fn set_account_pin(state: &AppState, id: String, current_pin: String, new_pin: String) -> Value {
+  let mut roster = session::Roster::load(&state.app_data_dir);
+  match roster.verify_unlock(&id, &current_pin) {
+    Ok(_) => {}
+    Err(e) => return err(e),
+  }
+  let hash = match session::hash_pin(&new_pin) {
+    Ok(h) => h,
+    Err(e) => return err(e),
+  };
+  if let Some(a) = roster.find_mut(&id) {
+    a.pin_hash = Some(hash);
+  } else {
+    return err("unknown account".to_string());
+  }
+  if let Err(e) = roster.save(&state.app_data_dir) {
+    return err(e);
+  }
+  session_status(state)
+}
+
+fn rename_account(state: &AppState, id: String, label: String) -> Value {
+  if state.session.is_locked() {
+    return err("session locked".to_string());
+  }
+  let mut roster = session::Roster::load(&state.app_data_dir);
+  if roster.find(&id).is_none() {
+    return err("unknown account".to_string());
+  }
+  if let Some(a) = roster.find_mut(&id) {
+    a.label = label.trim().to_string();
+  }
+  if let Err(e) = roster.save(&state.app_data_dir) {
+    return err(e);
+  }
+  session_status(state)
+}
+
+fn remove_from_roster(state: &AppState, id: String, pin: String) -> Value {
+  let roster = session::Roster::load(&state.app_data_dir);
+  if roster.accounts.len() <= 1 {
+    return err("cannot remove the last roster account".to_string());
+  }
+  match roster.verify_unlock(&id, &pin) {
+    Ok(_) => {}
+    Err(e) => return err(e),
+  }
+  let id = session::sanitize_account_id(&id);
+  if state.account_manager.get_active().as_ref() == Some(&id) && !state.session.is_locked() {
+    return err("lock or switch away before removing the live account".to_string());
+  }
+  let mut roster = roster;
+  roster.accounts.retain(|a| a.id != id);
+  if roster.last_unlocked.as_deref() == Some(id.as_str()) {
+    roster.last_unlocked = roster.accounts.first().map(|a| a.id.clone());
+  }
+  if let Err(e) = roster.save(&state.app_data_dir) {
+    return err(e);
+  }
+  session_status(state)
+}
+
 fn start_device_link(state: &AppState) -> Value {
   let Some(config) = get_signal_config() else {
     return err(
@@ -6080,6 +6452,51 @@ fn cmd_cancel_device_link(state: State<'_, AppState>) -> Value {
   cancel_device_link(&state)
 }
 
+#[tauri::command]
+fn cmd_session_status(state: State<'_, AppState>) -> Value {
+  session_status(&state)
+}
+
+#[tauri::command]
+fn cmd_unlock_account(state: State<'_, AppState>, id: String, pin: String) -> Value {
+  unlock_account(&state, id, pin)
+}
+
+#[tauri::command]
+fn cmd_lock_session(state: State<'_, AppState>) -> Value {
+  lock_session(&state)
+}
+
+#[tauri::command]
+fn cmd_add_account(
+  state: State<'_, AppState>,
+  number: String,
+  pin: String,
+  label: String,
+) -> Value {
+  add_account(&state, number, pin, label)
+}
+
+#[tauri::command]
+fn cmd_set_account_pin(
+  state: State<'_, AppState>,
+  id: String,
+  current_pin: String,
+  new_pin: String,
+) -> Value {
+  set_account_pin(&state, id, current_pin, new_pin)
+}
+
+#[tauri::command]
+fn cmd_rename_account(state: State<'_, AppState>, id: String, label: String) -> Value {
+  rename_account(&state, id, label)
+}
+
+#[tauri::command]
+fn cmd_remove_from_roster(state: State<'_, AppState>, id: String, pin: String) -> Value {
+  remove_from_roster(&state, id, pin)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let state = build_app_state();
@@ -6100,11 +6517,16 @@ pub fn run() {
       // Agent drafts always prepared when AI is configured; auto-send is guarded separately.
       let agent_mode = Some(AgentModeConfig::enabled_default());
 
-      if configured_account_id().is_some() && get_signal_config().is_some() {
+      if !runtime_state.session.is_locked()
+        && configured_account_id().is_some()
+        && get_signal_config().is_some()
+      {
         start_receive_loop(runtime_state.clone(), agent_mode);
         if let Some(a) = configured_account_id() {
           ensure_outbox_worker(runtime_state, a);
         }
+      } else if runtime_state.session.is_locked() {
+        eprintln!("SignalX: session locked — skipping receive/outbox workers");
       } else {
         eprintln!("SignalX: not configured — skipping receive/outbox workers");
       }
@@ -6192,6 +6614,13 @@ pub fn run() {
       cmd_sales_summary,
       cmd_start_device_link,
       cmd_cancel_device_link,
+      cmd_session_status,
+      cmd_unlock_account,
+      cmd_lock_session,
+      cmd_add_account,
+      cmd_set_account_pin,
+      cmd_rename_account,
+      cmd_remove_from_roster,
     ])
     .run(tauri::generate_context!())
     .expect("error while running SignalX");
@@ -6274,5 +6703,19 @@ mod foundation_tests {
     let parsed = parse_thread_actions_json(raw).expect("parse");
     assert_eq!(parsed.len(), 1);
     assert_eq!(parsed[0].kind, "summarize");
+  }
+
+  #[test]
+  fn unlock_rejects_ids_not_in_roster() {
+    let mut roster = session::Roster::default();
+    roster.accounts.push(session::RosterAccount {
+      id: "_12025551212".into(),
+      e164: "+12025551212".into(),
+      label: String::new(),
+      pin_hash: None,
+      created_ms: 1,
+    });
+    assert!(roster.verify_unlock("not-a-member", "").unwrap_err().contains("unknown"));
+    assert!(roster.verify_unlock("../escape", "").unwrap_err().contains("unknown"));
   }
 }

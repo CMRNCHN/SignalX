@@ -23,13 +23,16 @@ inventory ops, and Sales console.
 12. ~~Inventory ops~~ (stock ± with reason, low-stock threshold + filter, CSV import/export)
 13. ~~Sales console~~ (Sales nav: totals / top products / commerce audit; Duplicate as draft)
 
+14. ~~PIN-gated multi-account session switch~~ (one live identity; roster unlock; shop data per number)
+
 ## Operator GUI notes
 
 - Dark IBM Plex operator console: luminance-stacked surfaces (`--surface-0…3`), quieter borders, shadows only on floating status.
 - Tighter density (13px base, 6px shell gutters); solid rail/columns; glass reserved for the message composer.
 - Control radius ~6–8px, panels ~10–12px; single blue CTA `#3d8bfd`.
 - Soft setup banner when config/number missing or `NotRegistered` → Settings → Account.
-- Settings tabs: Account | IVR | Auto-reply | Backup; Account combines status + device link QR.
+- Settings → Account: roster (add number + PIN), Device link, status.
+- Header account control: Lock / Switch account (PIN gate). Only one session is live.
 - IVR Settings includes a visual menu composer (node rail, digit branches, dial-pad preview); JSON under Advanced.
 - IVR: master switch, allowlist, hide zero-stock, menus JSON editor (Save / Reset demo / Preview).
 - Orders: Place order (confirmed) or Create quote (draft); draft → Send quote / Confirm / Edit qty.
@@ -64,7 +67,8 @@ inventory ops, and Sales console.
 - Payment processor (only if explicitly reopened)
 
 **Still rejected**
-- Multi-account switcher
+- Concurrent sessions / two live receive loops
+- Shared catalog across numbers
 - Native Signal bot buttons as primary IVR
 - Auto-send from AI chips
 
@@ -91,7 +95,14 @@ inventory ops, and Sales console.
 1. Ensure `.signalx.env` has `SIGNALX_SIGNALCLI_CONFIG` (and a usable `signal-cli`).
 2. If the rail shows **Link this Mac**, open it (or Settings → Account).
 3. Start linking → scan the in-app QR from Signal → Linked devices (or Copy URI).
-4. Wait for LINKED; set `SIGNALX_NUMBER` if first link, then restart so receive/outbox start.
+4. Wait for LINKED; add the number to the roster with a PIN (Settings → Account) and Unlock — receive/outbox start for that identity only.
+
+## Session switch smoke (manual)
+
+1. Settings → Account → add a second linked number with a PIN.
+2. Rail → Switch account… → pick the other card → enter PIN.
+3. Confirm catalog/orders/IVR are the other shop; previous stock unchanged.
+4. Outbox cockpit only claims items for the unlocked number.
 
 ## AI setup (optional)
 

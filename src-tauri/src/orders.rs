@@ -97,7 +97,7 @@ struct OrderFile {
 
 #[derive(Clone)]
 pub struct OrderStore {
-  path: PathBuf,
+  path: Arc<Mutex<PathBuf>>,
   orders: Arc<Mutex<Vec<Order>>>,
 }
 
@@ -116,16 +116,23 @@ impl OrderStore {
       Vec::new()
     };
     Self {
-      path,
+      path: Arc::new(Mutex::new(path)),
       orders: Arc::new(Mutex::new(orders)),
     }
+  }
+
+  pub fn reload_from(&self, account_data_dir: &Path) {
+    let fresh = Self::new(account_data_dir);
+    *self.path.lock().unwrap() = fresh.path.lock().unwrap().clone();
+    *self.orders.lock().unwrap() = fresh.orders.lock().unwrap().clone();
   }
 
   fn persist(&self) -> Result<(), String> {
     let orders = self.orders.lock().unwrap().clone();
     let file = OrderFile { version: 1, orders };
     let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
-    std::fs::write(&self.path, json).map_err(|e| e.to_string())
+    let path = self.path.lock().unwrap().clone();
+    std::fs::write(&path, json).map_err(|e| e.to_string())
   }
 
   pub fn list(&self) -> Vec<Order> {
@@ -564,5 +571,61 @@ mod tests {
     assert!(err.contains("terminal"), "{err}");
 
     let _ = std::fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn confirm_on_account_b_leaves_account_a_stock() {
+    let root = std::env::temp_dir().join(format!("signalx-orders-iso-{}", Uuid::new_v4()));
+    let dir_a = root.join("a");
+    let dir_b = root.join("b");
+    let _ = std::fs::create_dir_all(&dir_a);
+    let _ = std::fs::create_dir_all(&dir_b);
+    let product = |qty: i64| crate::commerce::Product {
+      id: "p1".into(),
+      name: "Widget".into(),
+      description: String::new(),
+      sku: String::new(),
+      price_cents: 100,
+      cost_cents: 0,
+      supplier: String::new(),
+      base_unit: "ea".into(),
+      stock_unit: String::new(),
+      sales_unit: String::new(),
+      quantity_base_milli: qty,
+      quantity_in_stock: qty / 1000,
+      stock_qty: None,
+      unit: "ea".into(),
+      weight: 0.0,
+      weight_unit: String::new(),
+      image_path: String::new(),
+      sell_options: vec![],
+      low_stock_threshold_milli: 0,
+      updated_at: 0,
+    };
+    let commerce_a = CommerceStore::new(&dir_a);
+    commerce_a.upsert_product(product(5000), 1).unwrap();
+    let commerce_b = CommerceStore::new(&dir_b);
+    commerce_b.upsert_product(product(5000), 1).unwrap();
+    let orders_b = OrderStore::new(&dir_b);
+    let draft = orders_b
+      .create_with_mode(
+        &commerce_b,
+        "c1".into(),
+        "dm:+1".into(),
+        vec![OrderLineInput {
+          product_id: "p1".into(),
+          quantity: 1.0,
+          unit: "ea".into(),
+          sell_option_id: String::new(),
+        }],
+        true,
+        2,
+      )
+      .unwrap();
+    assert_eq!(commerce_a.list_products()[0].quantity_base_milli, 5000);
+    orders_b.confirm(&commerce_b, &draft.id, 3).unwrap();
+    assert_eq!(commerce_b.list_products()[0].quantity_base_milli, 4000);
+    assert_eq!(commerce_a.list_products()[0].quantity_base_milli, 5000);
+    let _ = std::fs::remove_dir_all(&root);
   }
 }

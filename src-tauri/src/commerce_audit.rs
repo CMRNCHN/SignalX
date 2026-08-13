@@ -27,7 +27,7 @@ struct AuditFile {
 
 #[derive(Clone)]
 pub struct CommerceAuditStore {
-  path: PathBuf,
+  path: Arc<Mutex<PathBuf>>,
   events: Arc<Mutex<Vec<CommerceAuditEvent>>>,
 }
 
@@ -46,16 +46,23 @@ impl CommerceAuditStore {
       Vec::new()
     };
     Self {
-      path,
+      path: Arc::new(Mutex::new(path)),
       events: Arc::new(Mutex::new(events)),
     }
+  }
+
+  pub fn reload_from(&self, account_data_dir: &Path) {
+    let fresh = Self::new(account_data_dir);
+    *self.path.lock().unwrap() = fresh.path.lock().unwrap().clone();
+    *self.events.lock().unwrap() = fresh.events.lock().unwrap().clone();
   }
 
   fn persist(&self) -> Result<(), String> {
     let events = self.events.lock().unwrap().clone();
     let file = AuditFile { version: 1, events };
     let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
-    std::fs::write(&self.path, json).map_err(|e| e.to_string())
+    let path = self.path.lock().unwrap().clone();
+    std::fs::write(&path, json).map_err(|e| e.to_string())
   }
 
   pub fn record(
