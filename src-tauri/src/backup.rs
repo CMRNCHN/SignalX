@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
+use crate::session::{account_data_dir, shop_root};
+
 pub const SCHEMA_VERSION: u32 = 1;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -85,10 +87,26 @@ fn is_forbidden_source_name(name: &str) -> bool {
     || lower == "config.json" && name.contains("signal")
 }
 
-/// Relative paths under app_data that belong in the active-account bundle.
-fn collect_include_paths(app_data_dir: &Path, account: &str) -> Vec<PathBuf> {
+fn is_shop_zip_rel(rel: &str) -> bool {
+  rel.starts_with("commerce/")
+    || rel.starts_with("ivr/")
+    || rel == "auto_reply_settings.json"
+    || rel == "auto_reply_audit.json"
+}
+
+fn dest_for_zip_rel(app_data_dir: &Path, account: &str, zip_rel: &str) -> PathBuf {
+  if is_shop_zip_rel(zip_rel) {
+    account_data_dir(app_data_dir, account).join(zip_rel)
+  } else {
+    app_data_dir.join(zip_rel)
+  }
+}
+
+/// Zip-relative path + absolute source for the active-account bundle.
+fn collect_include_paths(app_data_dir: &Path, account: &str) -> Vec<(PathBuf, PathBuf)> {
   let acct = sanitize_filename(account);
-  let mut out: Vec<PathBuf> = Vec::new();
+  let shop = shop_root(app_data_dir, &acct);
+  let mut out: Vec<(PathBuf, PathBuf)> = Vec::new();
 
   let account_files = [
     format!("threads/{acct}.json"),
@@ -96,16 +114,21 @@ fn collect_include_paths(app_data_dir: &Path, account: &str) -> Vec<PathBuf> {
     format!("aliases/{acct}.json"),
     format!("contacts/{acct}.json"),
     format!("groups/{acct}.json"),
-    format!("ivr/sessions/{acct}.json"),
   ];
   for rel in account_files {
     let p = app_data_dir.join(&rel);
     if p.is_file() {
-      out.push(PathBuf::from(rel));
+      out.push((PathBuf::from(&rel), p));
     }
   }
 
-  let global_files = [
+  let ivr_session = format!("ivr/sessions/{acct}.json");
+  let ivr_src = shop.join(&ivr_session);
+  if ivr_src.is_file() {
+    out.push((PathBuf::from(&ivr_session), ivr_src));
+  }
+
+  let shop_files = [
     "commerce/products.json",
     "commerce/customers.json",
     "commerce/orders.json",
@@ -116,22 +139,21 @@ fn collect_include_paths(app_data_dir: &Path, account: &str) -> Vec<PathBuf> {
     "auto_reply_settings.json",
     "auto_reply_audit.json",
   ];
-  for rel in global_files {
-    let p = app_data_dir.join(rel);
+  for rel in shop_files {
+    let p = shop.join(rel);
     if p.is_file() {
-      out.push(PathBuf::from(rel));
+      out.push((PathBuf::from(rel), p));
     }
   }
 
-  // Product images
-  let images = app_data_dir.join("commerce/product-images");
+  let images = shop.join("commerce/product-images");
   if images.is_dir() {
     if let Ok(rd) = fs::read_dir(&images) {
       for entry in rd.flatten() {
         let path = entry.path();
         if path.is_file() {
-          if let Ok(rel) = path.strip_prefix(app_data_dir) {
-            out.push(rel.to_path_buf());
+          if let Ok(rel) = path.strip_prefix(&shop) {
+            out.push((rel.to_path_buf(), path));
           }
         }
       }
@@ -146,7 +168,7 @@ fn collect_include_paths(app_data_dir: &Path, account: &str) -> Vec<PathBuf> {
         let path = entry.path();
         if path.is_file() {
           if let Ok(rel) = path.strip_prefix(app_data_dir) {
-            out.push(rel.to_path_buf());
+            out.push((rel.to_path_buf(), path));
           }
         }
       }
@@ -167,20 +189,18 @@ fn collect_include_paths(app_data_dir: &Path, account: &str) -> Vec<PathBuf> {
                   let rel = PathBuf::from("attachments").join(name);
                   let under = app_data_dir.join(&rel);
                   if under.is_file() || path_is_under_root(app_data_dir, &p) {
-                    // Prefer canonical attachments/name when file lives under app data
                     if under.is_file() {
-                      out.push(rel);
+                      out.push((rel, under));
                     } else if let Ok(r) = p.strip_prefix(app_data_dir) {
-                      out.push(r.to_path_buf());
+                      out.push((r.to_path_buf(), p));
                     }
                   }
                 }
               } else {
-                // Already relative?
                 let candidate = app_data_dir.join(ap);
                 if candidate.is_file() {
                   if let Ok(rel) = candidate.strip_prefix(app_data_dir) {
-                    out.push(rel.to_path_buf());
+                    out.push((rel.to_path_buf(), candidate));
                   }
                 }
               }
@@ -191,9 +211,8 @@ fn collect_include_paths(app_data_dir: &Path, account: &str) -> Vec<PathBuf> {
     }
   }
 
-  // Dedupe while preserving order
   let mut seen = HashSet::new();
-  out.retain(|p| seen.insert(p.to_string_lossy().to_string()));
+  out.retain(|(rel, _)| seen.insert(rel.to_string_lossy().to_string()));
   out
 }
 
@@ -274,23 +293,23 @@ pub fn export_data_bundle(
 
   let includes = collect_include_paths(app_data_dir, &acct);
   let mut attachment_count = 0u32;
-  for rel in &includes {
+  for (rel, _) in &includes {
     if rel.starts_with("attachments") {
       attachment_count += 1;
     }
   }
 
   let include_flags = BundleIncludeFlags {
-    threads: includes.iter().any(|p| p.starts_with("threads")),
-    commerce: includes.iter().any(|p| p.starts_with("commerce")),
-    outbox: includes.iter().any(|p| p.starts_with("outbox")),
-    ivr: includes.iter().any(|p| p.starts_with("ivr")),
-    auto_reply: includes.iter().any(|p| {
+    threads: includes.iter().any(|(p, _)| p.starts_with("threads")),
+    commerce: includes.iter().any(|(p, _)| p.starts_with("commerce")),
+    outbox: includes.iter().any(|(p, _)| p.starts_with("outbox")),
+    ivr: includes.iter().any(|(p, _)| p.starts_with("ivr")),
+    auto_reply: includes.iter().any(|(p, _)| {
       p.to_string_lossy().starts_with("auto_reply")
     }),
-    contacts: includes.iter().any(|p| p.starts_with("contacts")),
-    groups: includes.iter().any(|p| p.starts_with("groups")),
-    aliases: includes.iter().any(|p| p.starts_with("aliases")),
+    contacts: includes.iter().any(|(p, _)| p.starts_with("contacts")),
+    groups: includes.iter().any(|(p, _)| p.starts_with("groups")),
+    aliases: includes.iter().any(|(p, _)| p.starts_with("aliases")),
     attachments: attachment_count > 0,
   };
 
@@ -316,8 +335,7 @@ pub fn export_data_bundle(
     .map_err(|e| format!("zip write manifest: {e}"))?;
 
   let mut file_count = 1u32; // manifest
-  for rel in &includes {
-    let src = app_data_dir.join(rel);
+  for (rel, src) in &includes {
     if !src.is_file() {
       continue;
     }
@@ -327,7 +345,7 @@ pub fn export_data_bundle(
         continue;
       }
     }
-    let mut bytes = fs::read(&src).map_err(|e| format!("read {}: {e}", rel.display()))?;
+    let mut bytes = fs::read(src).map_err(|e| format!("read {}: {e}", rel.display()))?;
     if rel.starts_with("outbox") && rel.extension().and_then(|e| e.to_str()) == Some("json") {
       let rewritten = rewrite_outbox_attachments_for_export(
         &String::from_utf8_lossy(&bytes),
@@ -381,8 +399,7 @@ fn safe_zip_rel_path(name: &str) -> Result<PathBuf, String> {
 fn snapshot_current(app_data_dir: &Path, export_dir: &Path, account: &str, ts: i64) -> Result<PathBuf, String> {
   let dest = export_dir.join(format!("pre-import-{ts}"));
   fs::create_dir_all(&dest).map_err(|e| format!("pre-import dir: {e}"))?;
-  for rel in collect_include_paths(app_data_dir, account) {
-    let src = app_data_dir.join(&rel);
+  for (rel, src) in collect_include_paths(app_data_dir, account) {
     if !src.is_file() {
       continue;
     }
@@ -778,7 +795,7 @@ pub fn import_data_bundle(
       }
     }
 
-    let dest = app_data_dir.join(&rel);
+    let dest = dest_for_zip_rel(app_data_dir, &acct, &name);
 
     if name.starts_with("outbox/") && name.ends_with(".json") {
       let text = String::from_utf8_lossy(&bytes).to_string();
@@ -923,8 +940,45 @@ mod tests {
     )
     .unwrap();
     assert_eq!(res["restart_required"], true);
-    let products = fs::read_to_string(root.join("commerce/products.json")).unwrap();
+    let namespaced = root.join("accounts").join(acct).join("commerce/products.json");
+    let products = fs::read_to_string(&namespaced).unwrap();
     assert!(products.contains("Widget"));
+    let _ = fs::remove_dir_all(&root);
+  }
+
+  #[test]
+  fn export_only_unlocked_account_shop() {
+    let root = tmp_root("iso");
+    let a = "_12025551212";
+    let b = "_15550001111";
+    fs::create_dir_all(root.join("exports")).unwrap();
+    fs::create_dir_all(root.join("accounts").join(a).join("commerce")).unwrap();
+    fs::create_dir_all(root.join("accounts").join(b).join("commerce")).unwrap();
+    fs::write(
+      root.join("accounts").join(a).join("commerce/products.json"),
+      r#"{"version":1,"products":[{"id":"p1","name":"ShopA","price_cents":100,"unit":"ea","base_unit":"ea","sales_unit":"ea","stock_base_milli":1000,"weight":0,"weight_unit":"","image_path":"","sell_options":[],"updated_at":1}]}"#,
+    )
+    .unwrap();
+    fs::write(
+      root.join("accounts").join(b).join("commerce/products.json"),
+      r#"{"version":1,"products":[{"id":"p2","name":"ShopB","price_cents":200,"unit":"ea","base_unit":"ea","sales_unit":"ea","stock_base_milli":1000,"weight":0,"weight_unit":"","image_path":"","sell_options":[],"updated_at":1}]}"#,
+    )
+    .unwrap();
+    let (zip_path, _, _) =
+      export_data_bundle(&root, &root.join("exports"), a, 1, "0.1.0").unwrap();
+    let bytes = fs::read(&zip_path).unwrap();
+    let text = String::from_utf8_lossy(&bytes);
+    // zip is compressed; search include list instead
+    let includes = collect_include_paths(&root, a);
+    let shop_src: Vec<_> = includes
+      .iter()
+      .filter(|(rel, _)| rel.starts_with("commerce"))
+      .collect();
+    assert_eq!(shop_src.len(), 1);
+    let body = fs::read_to_string(&shop_src[0].1).unwrap();
+    assert!(body.contains("ShopA"));
+    assert!(!body.contains("ShopB"));
+    let _ = text;
     let _ = fs::remove_dir_all(&root);
   }
 

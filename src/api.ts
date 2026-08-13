@@ -79,6 +79,7 @@ export interface Diagnostics {
   config_path?: string | null;
   number?: string | null;
   active_account?: string | null;
+  session_locked?: boolean;
   ollama_configured: boolean;
   ollama_url: string;
   ollama_model?: string | null;
@@ -99,6 +100,24 @@ export interface DeviceLinkStatus {
 
 export interface DeviceLinkUri {
   uri: string;
+}
+
+export interface SessionAccount {
+  id: string;
+  e164: string;
+  label: string;
+  last4: string;
+  has_pin: boolean;
+  is_active: boolean;
+}
+
+export interface SessionStatus {
+  locked: boolean;
+  requires_unlock: boolean;
+  active_id?: string | null;
+  number?: string | null;
+  accounts: SessionAccount[];
+  linked_unseen: string[];
 }
 
 export interface ContactMeta {
@@ -568,6 +587,18 @@ export const api = {
     }),
   startDeviceLink: () => call<DeviceLinkStart>("cmd_start_device_link"),
   cancelDeviceLink: () => call<{ cancelled: boolean }>("cmd_cancel_device_link"),
+  sessionStatus: () => call<SessionStatus>("cmd_session_status"),
+  unlockAccount: (id: string, pin: string) =>
+    call<SessionStatus>("cmd_unlock_account", { id, pin }),
+  lockSession: () => call<SessionStatus>("cmd_lock_session"),
+  addAccount: (number: string, pin: string, label = "") =>
+    call<SessionStatus>("cmd_add_account", { number, pin, label }),
+  setAccountPin: (id: string, currentPin: string, newPin: string) =>
+    call<SessionStatus>("cmd_set_account_pin", { id, currentPin, newPin }),
+  renameAccount: (id: string, label: string) =>
+    call<SessionStatus>("cmd_rename_account", { id, label }),
+  removeFromRoster: (id: string, pin: string) =>
+    call<SessionStatus>("cmd_remove_from_roster", { id, pin }),
 };
 
 export async function onEvent<T>(

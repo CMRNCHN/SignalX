@@ -11,10 +11,12 @@ quotes/orders/invoices, inventory, and Sales summary — all outbox-gated.
   `npm run desktop` opens the Tauri window (Vite is only the UI host inside that shell).
 - **`npm run ui`** is a browser layout preview — no Signal backend / IPC.
 - Requires **Rust ≥ 1.88** (`rust-toolchain.toml` pins it). Older Cargo fails on current crates.
-- **One Signal account** from `.signalx.env` (`SIGNALX_NUMBER` +
-  `SIGNALX_SIGNALCLI_CONFIG`). There is no account switcher.
-- Storage keys use a sanitized form of the number; orphan JSON files under other
-  stems on disk are ignored, not deleted.
+- **One live Signal account** from `.signalx.env` (`SIGNALX_NUMBER` +
+  `SIGNALX_SIGNALCLI_CONFIG`). A PIN-gated roster can switch identities; only
+  one receive loop and outbox worker run. Shop data lives under
+  `accounts/{sanitized_id}/`.
+- Storage keys use a sanitized form of the number; shop files live under
+  `accounts/{id}/`. Orphan JSON under other stems is ignored, not deleted.
 - **Outbox is the only send path** (queue → retry → signal-cli).
 - Headless mode remains available: `cd src-tauri && cargo run -- --headless`
 
@@ -33,5 +35,6 @@ quotes/orders/invoices, inventory, and Sales summary — all outbox-gated.
 11. Quotes / draft orders (no stock until Confirm; Send quote vs Send invoice)
 12. Inventory ops (stock adjust + ledger, low-stock threshold, CSV import/export)
 13. Sales console (Sales nav, totals/top products, commerce audit, Duplicate as draft)
+14. PIN-gated multi-account session switch (one live identity; shop data under `accounts/{id}/`)
 
 See `docs/NEXT_STEPS.md` for smoke checklists and the long-term backlog.

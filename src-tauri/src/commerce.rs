@@ -228,12 +228,17 @@ pub struct CsvImportPreview {
 }
 
 #[derive(Clone)]
-pub struct CommerceStore {
+struct CommerceDisk {
   products_path: PathBuf,
   customers_path: PathBuf,
   stock_ledger_path: PathBuf,
   images_dir: PathBuf,
   app_data_dir: PathBuf,
+}
+
+#[derive(Clone)]
+pub struct CommerceStore {
+  disk: Arc<Mutex<CommerceDisk>>,
   products: Arc<Mutex<Vec<Product>>>,
   customers: Arc<Mutex<Vec<Customer>>>,
   stock_ledger: Arc<Mutex<Vec<StockLedgerEntry>>>,
@@ -355,15 +360,26 @@ impl CommerceStore {
     };
 
     Self {
-      products_path,
-      customers_path,
-      stock_ledger_path,
-      images_dir,
-      app_data_dir: app_data_dir.to_path_buf(),
+      disk: Arc::new(Mutex::new(CommerceDisk {
+        products_path,
+        customers_path,
+        stock_ledger_path,
+        images_dir,
+        app_data_dir: app_data_dir.to_path_buf(),
+      })),
       products: Arc::new(Mutex::new(products)),
       customers: Arc::new(Mutex::new(customers)),
       stock_ledger: Arc::new(Mutex::new(stock_ledger)),
     }
+  }
+
+  /// Replace in-memory catalog with files under `account_data_dir`.
+  pub fn reload_from(&self, account_data_dir: &Path) {
+    let fresh = Self::new(account_data_dir);
+    *self.disk.lock().unwrap() = fresh.disk.lock().unwrap().clone();
+    *self.products.lock().unwrap() = fresh.products.lock().unwrap().clone();
+    *self.customers.lock().unwrap() = fresh.customers.lock().unwrap().clone();
+    *self.stock_ledger.lock().unwrap() = fresh.stock_ledger.lock().unwrap().clone();
   }
 
   fn persist_stock_ledger(&self) -> Result<(), String> {
@@ -373,7 +389,8 @@ impl CommerceStore {
       entries,
     };
     let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
-    std::fs::write(&self.stock_ledger_path, json).map_err(|e| e.to_string())
+    let path = self.disk.lock().unwrap().stock_ledger_path.clone();
+    std::fs::write(&path, json).map_err(|e| e.to_string())
   }
 
   fn persist_products(&self) -> Result<(), String> {
@@ -383,7 +400,8 @@ impl CommerceStore {
       products,
     };
     let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
-    std::fs::write(&self.products_path, json).map_err(|e| e.to_string())
+    let path = self.disk.lock().unwrap().products_path.clone();
+    std::fs::write(&path, json).map_err(|e| e.to_string())
   }
 
   fn persist_customers(&self) -> Result<(), String> {
@@ -393,7 +411,8 @@ impl CommerceStore {
       customers,
     };
     let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
-    std::fs::write(&self.customers_path, json).map_err(|e| e.to_string())
+    let path = self.disk.lock().unwrap().customers_path.clone();
+    std::fs::write(&path, json).map_err(|e| e.to_string())
   }
 
   pub fn list_products(&self) -> Vec<Product> {
@@ -551,11 +570,12 @@ impl CommerceStore {
         return Err("product not found".to_string());
       }
     }
+    let disk = self.disk.lock().unwrap().clone();
     let fname = format!("{}.{}", id.replace('/', "_"), ext_norm);
-    let full = self.images_dir.join(&fname);
+    let full = disk.images_dir.join(&fname);
     std::fs::write(&full, bytes).map_err(|e| e.to_string())?;
     let rel = full
-      .strip_prefix(&self.app_data_dir)
+      .strip_prefix(&disk.app_data_dir)
       .unwrap_or(&full)
       .to_string_lossy()
       .to_string();
@@ -568,7 +588,7 @@ impl CommerceStore {
         .ok_or_else(|| "product not found".to_string())?;
       // best-effort remove previous file if different
       if !p.image_path.is_empty() && p.image_path != rel {
-        let _ = std::fs::remove_file(self.app_data_dir.join(&p.image_path));
+        let _ = std::fs::remove_file(disk.app_data_dir.join(&p.image_path));
       }
       p.image_path = rel;
       p.updated_at = now;
@@ -587,7 +607,8 @@ impl CommerceStore {
         .find(|x| x.id == product_id)
         .ok_or_else(|| "product not found".to_string())?;
       if !p.image_path.is_empty() {
-        let _ = std::fs::remove_file(self.app_data_dir.join(&p.image_path));
+        let app_data = self.disk.lock().unwrap().app_data_dir.clone();
+        let _ = std::fs::remove_file(app_data.join(&p.image_path));
       }
       p.image_path.clear();
       p.updated_at = now;
@@ -609,7 +630,7 @@ impl CommerceStore {
     if path.is_empty() {
       return Err("no image".to_string());
     }
-    let full = self.app_data_dir.join(&path);
+    let full = self.disk.lock().unwrap().app_data_dir.join(&path);
     let bytes = std::fs::read(&full).map_err(|e| e.to_string())?;
     let mime = if path.ends_with(".png") {
       "image/png"
@@ -1212,5 +1233,84 @@ mod tests {
       0
     );
     let _ = std::fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn reload_from_does_not_touch_other_account_stock() {
+    let root = std::env::temp_dir().join(format!(
+      "signalx-commerce-iso-{}",
+      std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis()
+    ));
+    let dir_a = root.join("a");
+    let dir_b = root.join("b");
+    let _ = std::fs::create_dir_all(&dir_a);
+    let _ = std::fs::create_dir_all(&dir_b);
+    let store_a = CommerceStore::new(&dir_a);
+    let pa = store_a
+      .upsert_product(
+        Product {
+          id: "shared".into(),
+          name: "Widget".into(),
+          description: String::new(),
+          sku: String::new(),
+          price_cents: 100,
+          cost_cents: 0,
+          supplier: String::new(),
+          base_unit: "ea".into(),
+          stock_unit: String::new(),
+          sales_unit: String::new(),
+          quantity_base_milli: 5000,
+          quantity_in_stock: 5,
+          stock_qty: None,
+          unit: "ea".into(),
+          weight: 0.0,
+          weight_unit: String::new(),
+          image_path: String::new(),
+          sell_options: vec![],
+          low_stock_threshold_milli: 0,
+          updated_at: 0,
+        },
+        1,
+      )
+      .unwrap();
+    let store_b = CommerceStore::new(&dir_b);
+    let pb = store_b
+      .upsert_product(
+        Product {
+          id: "shared".into(),
+          name: "Widget".into(),
+          description: String::new(),
+          sku: String::new(),
+          price_cents: 100,
+          cost_cents: 0,
+          supplier: String::new(),
+          base_unit: "ea".into(),
+          stock_unit: String::new(),
+          sales_unit: String::new(),
+          quantity_base_milli: 5000,
+          quantity_in_stock: 5,
+          stock_qty: None,
+          unit: "ea".into(),
+          weight: 0.0,
+          weight_unit: String::new(),
+          image_path: String::new(),
+          sell_options: vec![],
+          low_stock_threshold_milli: 0,
+          updated_at: 0,
+        },
+        1,
+      )
+      .unwrap();
+    // Live store switches to B and decrements
+    store_a.reload_from(&dir_b);
+    store_a.adjust_stock(&pb.id, -2, 2).unwrap();
+    store_a.reload_from(&dir_a);
+    let again = store_a.list_products();
+    assert_eq!(again[0].id, pa.id);
+    assert_eq!(again[0].quantity_base_milli, 5000);
+    let _ = std::fs::remove_dir_all(&root);
   }
 }

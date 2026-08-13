@@ -25,6 +25,7 @@ import {
   type ReceiveLoopState,
   type SalesSummary,
   type SearchResult,
+  type SessionStatus,
   type ThreadAutoReplyStatus,
   type ThreadIvrStatus,
   type ThreadSummary,
@@ -277,6 +278,16 @@ function includesQ(hay: string, q: string): boolean {
 export default function App() {
   const [panel, setPanel] = useState<Panel>("threads");
   const [accountNumber, setAccountNumber] = useState<string | null>(null);
+  const [session, setSession] = useState<SessionStatus | null>(null);
+  const [sessionPin, setSessionPin] = useState("");
+  const [unlockId, setUnlockId] = useState<string | null>(null);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [addNumber, setAddNumber] = useState("");
+  const [addPin, setAddPin] = useState("");
+  const [addLabel, setAddLabel] = useState("");
+  const [rosterBusy, setRosterBusy] = useState(false);
+  const [changePinCurrent, setChangePinCurrent] = useState("");
+  const [changePinNew, setChangePinNew] = useState("");
   const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
   const [health, setHealth] = useState<ReceiveLoopState | null>(null);
   const [ai, setAi] = useState<AiStatus | null>(null);
@@ -435,23 +446,49 @@ export default function App() {
     if (ords.success) setOrders(ords.data);
   };
 
+  const applySession = (s: SessionStatus) => {
+    setSession(s);
+    setAccountNumber(s.locked ? null : (s.number ?? null));
+    if (s.locked) {
+      setSelectedId(null);
+      setThreads([]);
+      setMessages([]);
+      setProducts([]);
+      setOrders([]);
+      setCustomers([]);
+      setIvrMenusDraft(null);
+    }
+    if (!unlockId && s.accounts[0]) setUnlockId(s.accounts[0].id);
+  };
+
+  const refreshSession = async () => {
+    const res = await api.sessionStatus();
+    if (res.success) applySession(res.data);
+  };
+
   const bootstrap = async () => {
-    const [diag, recv, aiStatus] = await Promise.all([
+    const [diag, recv, aiStatus, sess] = await Promise.all([
       api.getDiagnostics(),
       api.getReceiveLoopState(),
       api.checkAiStatus(),
+      api.sessionStatus(),
     ]);
     const d = unwrap(diag, null as unknown as Diagnostics | null);
     setDiagnostics(d);
-    setAccountNumber(d?.number ?? null);
-    if (!d?.number) {
+    if (sess.success) applySession(sess.data);
+    else setAccountNumber(d?.number ?? null);
+    if (sess.success && sess.data.locked) {
+      setStatus("Unlock an account to send and receive");
+    } else if (!d?.number) {
       setStatus("Not configured — set SIGNALX_NUMBER and SIGNALX_SIGNALCLI_CONFIG in .signalx.env");
     }
     setHealth(unwrap(recv, null as unknown as ReceiveLoopState));
     setAi(unwrap(aiStatus, null as unknown as AiStatus));
-    await refreshThreads();
-    await refreshMeta();
-    await refreshGlobalOutbox();
+    if (!(sess.success && sess.data.locked)) {
+      await refreshThreads();
+      await refreshMeta();
+      await refreshGlobalOutbox();
+    }
   };
 
   useEffect(() => {
@@ -527,9 +564,17 @@ export default function App() {
           setLinkStatus(s);
           setLinkBusy(false);
           if (s.state === "success") {
-            setStatus("Device linked — set SIGNALX_NUMBER if needed, then restart receive");
+            setStatus("Device linked — add the new number to the roster with a PIN");
             void refreshDiagnostics();
+            void refreshSession();
           }
+        }),
+      );
+      unsubs.push(
+        await onEvent("account://switched", () => {
+          setSelectedId(null);
+          setAccountMenuOpen(false);
+          void bootstrap();
         }),
       );
     })();
@@ -1574,6 +1619,48 @@ export default function App() {
     setSettingsTab("account");
   };
 
+  const onUnlock = async () => {
+    const id = unlockId || session?.accounts[0]?.id;
+    if (!id) {
+      setStatus("No roster account to unlock");
+      return;
+    }
+    setRosterBusy(true);
+    const res = await api.unlockAccount(id, sessionPin);
+    setRosterBusy(false);
+    if (!res.success) {
+      setStatus(res.error);
+      return;
+    }
+    setSessionPin("");
+    applySession(res.data);
+    setStatus("Unlocked");
+    await bootstrap();
+  };
+
+  const onLock = async () => {
+    setAccountMenuOpen(false);
+    const res = await api.lockSession();
+    if (res.success) applySession(res.data);
+    setStatus("Session locked");
+  };
+
+  const onAddAccount = async (number: string, pin: string, label: string) => {
+    const normalized = normalizePhoneInput(number) || number.trim();
+    setRosterBusy(true);
+    const res = await api.addAccount(normalized, pin, label);
+    setRosterBusy(false);
+    if (!res.success) {
+      setStatus(res.error);
+      return;
+    }
+    applySession(res.data);
+    setAddNumber("");
+    setAddPin("");
+    setAddLabel("");
+    setStatus("Account added to roster — unlock it to switch");
+  };
+
   if (!isTauriRuntime()) {
     return (
       <div className="shell desktop-gate">
@@ -1605,6 +1692,53 @@ export default function App() {
           </button>
         </div>
       )}
+      {session?.locked && (
+        <div className="lock-overlay" role="dialog" aria-modal="true" aria-labelledby="lock-title">
+          <div className="lock-card">
+            <p className="brand-mark">SignalX</p>
+            <h1 id="lock-title">Unlock account</h1>
+            <p className="hint tight">One live session. Locked numbers do not send or receive.</p>
+            <div className="lock-accounts">
+              {(session.accounts.length ? session.accounts : []).map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  className={unlockId === a.id ? "lock-account active" : "lock-account"}
+                  onClick={() => setUnlockId(a.id)}
+                >
+                  <span className="lock-account-label">{a.label || a.e164 || `…${a.last4}`}</span>
+                  <span className="lock-account-meta">
+                    ••••{a.last4}
+                    {a.has_pin ? " · PIN" : ""}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <input
+              type="password"
+              autoComplete="off"
+              placeholder="PIN"
+              value={sessionPin}
+              onChange={(e) => setSessionPin(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && void onUnlock()}
+            />
+            <button
+              type="button"
+              className="action-btn primary"
+              disabled={rosterBusy || !unlockId}
+              onClick={() => void onUnlock()}
+            >
+              {rosterBusy ? "Unlocking…" : "Unlock"}
+            </button>
+            {session.linked_unseen.length > 0 && (
+              <p className="hint tight">
+                Linked but not in roster: {session.linked_unseen.join(", ")}. Add them in Settings
+                after unlock, or below.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
       <aside className="rail">
         <div className="brand">
           <span className="brand-mark">SignalX</span>
@@ -1612,8 +1746,33 @@ export default function App() {
         </div>
 
         <label className="field-label">Account</label>
-        <div className="account-label" title={accountNumber ?? undefined}>
-          {accountNumber ?? "Not configured"}
+        <div className="account-switch">
+          <button
+            type="button"
+            className="account-label account-label-btn"
+            title={accountNumber ?? undefined}
+            onClick={() => setAccountMenuOpen((o) => !o)}
+          >
+            {session?.locked
+              ? "Locked"
+              : accountNumber ?? "Not configured"}
+          </button>
+          {accountMenuOpen && (
+            <div className="account-menu">
+              <button type="button" onClick={() => void onLock()}>
+                Lock
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAccountMenuOpen(false);
+                  void onLock();
+                }}
+              >
+                Switch account…
+              </button>
+            </div>
+          )}
         </div>
 
         {setupNeeded && (
@@ -3111,8 +3270,8 @@ export default function App() {
                     </span>
                   </div>
                   <p className="hint tight">
-                    Link this Mac to your Signal phone. After it says Linked, put your phone number
-                    in the account settings file and restart SignalX.
+                    Link this Mac to your Signal phone. After it says Linked, add the number to the
+                    roster with a PIN — do not relaunch to switch identities.
                   </p>
                   <div className="row-actions">
                     <button
@@ -3160,6 +3319,106 @@ export default function App() {
                       linking.
                     </p>
                   )}
+                </div>
+
+                <div className="settings-card">
+                  <div className="settings-card-head">
+                    <h3>Roster</h3>
+                  </div>
+                  <p className="hint tight">
+                    Each number is a separate shop (catalog, orders, IVR). Only one session is live.
+                    Switching stops receive and the outbox for the previous number.
+                  </p>
+                  <ul className="roster-list">
+                    {(session?.accounts ?? []).map((a) => (
+                      <li key={a.id} className={a.is_active ? "roster-row active" : "roster-row"}>
+                        <div>
+                          <strong>{a.label || a.e164}</strong>
+                          <span className="hint tight">
+                            {" "}
+                            ••••{a.last4}
+                            {a.has_pin ? " · PIN" : " · no PIN"}
+                            {a.is_active ? " · live" : ""}
+                          </span>
+                        </div>
+                        {a.is_active && (
+                          <form
+                            className="roster-pin-form"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              void (async () => {
+                                const res = await api.setAccountPin(
+                                  a.id,
+                                  changePinCurrent,
+                                  changePinNew,
+                                );
+                                if (!res.success) {
+                                  setStatus(res.error);
+                                  return;
+                                }
+                                applySession(res.data);
+                                setChangePinCurrent("");
+                                setChangePinNew("");
+                                setStatus("PIN updated");
+                              })();
+                            }}
+                          >
+                            <input
+                              type="password"
+                              placeholder="Current PIN (blank if none)"
+                              value={changePinCurrent}
+                              onChange={(e) => setChangePinCurrent(e.target.value)}
+                            />
+                            <input
+                              type="password"
+                              placeholder="New PIN"
+                              value={changePinNew}
+                              onChange={(e) => setChangePinNew(e.target.value)}
+                              required
+                            />
+                            <button type="submit" className="ghost-btn">
+                              Set PIN
+                            </button>
+                          </form>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  {(session?.linked_unseen ?? []).length > 0 && (
+                    <p className="hint tight">
+                      Linked in signal-cli but not in roster:{" "}
+                      {session?.linked_unseen.join(", ")}. Add below.
+                    </p>
+                  )}
+                  <form
+                    className="roster-add"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void onAddAccount(addNumber, addPin, addLabel);
+                    }}
+                  >
+                    <input
+                      placeholder="+15551234567"
+                      value={addNumber}
+                      onChange={(e) => setAddNumber(e.target.value)}
+                      required
+                    />
+                    <input
+                      placeholder="Label (optional)"
+                      value={addLabel}
+                      onChange={(e) => setAddLabel(e.target.value)}
+                    />
+                    <input
+                      type="password"
+                      placeholder="PIN (4+ chars)"
+                      value={addPin}
+                      onChange={(e) => setAddPin(e.target.value)}
+                      required
+                    />
+                    <button type="submit" className="action-btn primary" disabled={rosterBusy}>
+                      Add to roster
+                    </button>
+                  </form>
                 </div>
               </>
             )}

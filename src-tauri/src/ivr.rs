@@ -520,9 +520,9 @@ pub struct IvrPreviewStep {
 
 #[derive(Clone)]
 pub struct IvrStore {
-  settings_path: PathBuf,
-  menus_path: PathBuf,
-  sessions_dir: PathBuf,
+  settings_path: Arc<Mutex<PathBuf>>,
+  menus_path: Arc<Mutex<PathBuf>>,
+  sessions_dir: Arc<Mutex<PathBuf>>,
   settings: Arc<Mutex<IvrSettings>>,
   menus: Arc<Mutex<IvrMenus>>,
   /// account_id -> thread_id -> session
@@ -577,13 +577,23 @@ impl IvrStore {
     };
 
     Self {
-      settings_path,
-      menus_path,
-      sessions_dir,
+      settings_path: Arc::new(Mutex::new(settings_path)),
+      menus_path: Arc::new(Mutex::new(menus_path)),
+      sessions_dir: Arc::new(Mutex::new(sessions_dir)),
       settings: Arc::new(Mutex::new(settings)),
       menus: Arc::new(Mutex::new(menus)),
       sessions: Arc::new(Mutex::new(HashMap::new())),
     }
+  }
+
+  pub fn reload_from(&self, account_data_dir: &Path) {
+    let fresh = Self::new(account_data_dir);
+    *self.settings_path.lock().unwrap() = fresh.settings_path.lock().unwrap().clone();
+    *self.menus_path.lock().unwrap() = fresh.menus_path.lock().unwrap().clone();
+    *self.sessions_dir.lock().unwrap() = fresh.sessions_dir.lock().unwrap().clone();
+    *self.settings.lock().unwrap() = fresh.settings.lock().unwrap().clone();
+    *self.menus.lock().unwrap() = fresh.menus.lock().unwrap().clone();
+    *self.sessions.lock().unwrap() = HashMap::new();
   }
 
   pub fn get_settings(&self) -> IvrSettings {
@@ -595,7 +605,8 @@ impl IvrStore {
       *self.settings.lock().unwrap() = s.clone();
     }
     let json = serde_json::to_string_pretty(&s).map_err(|e| e.to_string())?;
-    std::fs::write(&self.settings_path, json).map_err(|e| e.to_string())?;
+    let path = self.settings_path.lock().unwrap().clone();
+    std::fs::write(&path, json).map_err(|e| e.to_string())?;
     Ok(s)
   }
 
@@ -609,7 +620,8 @@ impl IvrStore {
       *self.menus.lock().unwrap() = menus.clone();
     }
     let json = serde_json::to_string_pretty(&menus).map_err(|e| e.to_string())?;
-    std::fs::write(&self.menus_path, json).map_err(|e| e.to_string())?;
+    let path = self.menus_path.lock().unwrap().clone();
+    std::fs::write(&path, json).map_err(|e| e.to_string())?;
     Ok(menus)
   }
 
@@ -648,7 +660,7 @@ impl IvrStore {
         }
       })
       .collect();
-    self.sessions_dir.join(format!("{}.json", safe))
+    self.sessions_dir.lock().unwrap().join(format!("{}.json", safe))
   }
 
   fn ensure_sessions_loaded(&self, account_id: &str) {

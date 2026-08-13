@@ -6,7 +6,9 @@
   local thread persistence, outbox worker, optional Ollama drafts and guarded
   auto-reply, local commerce (catalog / customers / quotes / orders / IVR /
   Sales).
-- **Identity:** single account from `.signalx.env` — no multi-account UI.
+- **Identity:** one *live* Signal account at a time. A PIN-gated roster can hold
+  multiple numbers; switching stops receive/outbox for the previous identity.
+  Commerce, IVR, and auto-reply are stored under `accounts/{id}/`.
 - **Send path:** all outbound messages go through the outbox.
 - **Next:** see long-term backlog in `docs/NEXT_STEPS.md` (inbound media,
   unified Audit, keyboard shortcuts, backup v2, etc.). Commerce-depth phases
@@ -35,3 +37,4 @@ Config keys: `SIGNALX_SIGNALCLI_CONFIG`, `SIGNALX_NUMBER`, optional
 3. Commands return `{success: true, data}` or `{success: false, error}`.
 4. AI never auto-sends in assisted mode; auto-reply is separate, opt-in, guarded.
 5. Draft quotes do not decrement stock; Confirm does (once). IVR place-order stays confirmed.
+6. One live Signal identity: roster unlock is PIN-gated; never two outboxes.
