@@ -1789,3 +1789,52 @@ textarea {
   align-items: center;
   cursor: pointer;
 }
+
+/* Browser preview gate — full Signal backend only in Tauri desktop */
+.shell.desktop-gate {
+  display: grid;
+  place-items: center;
+  grid-template-columns: 1fr;
+  padding: 24px;
+  background:
+    radial-gradient(720px 420px at 50% 0%, #2a2b2f 0%, transparent 55%),
+    var(--bg);
+}
+
+.desktop-gate-panel {
+  max-width: 520px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 28px 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+}
+
+.desktop-gate-panel h1 {
+  margin: 0;
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.desktop-gate-panel > p {
+  margin: 0;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+
+.desktop-gate-cmd {
+  margin: 4px 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 14px;
+}

@@ -7,7 +7,10 @@ quotes/orders/invoices, inventory, and Sales summary — all outbox-gated.
 
 ## Current reality
 
-- **GUI is the default.** `npm run tauri dev` (or `./run-dev.sh`) starts the app.
+- **Local desktop app is the product.** `./run-dev.sh`, `./SignalX-Dev.command`, or
+  `npm run desktop` opens the Tauri window (Vite is only the UI host inside that shell).
+- **`npm run ui`** is a browser layout preview — no Signal backend / IPC.
+- Requires **Rust ≥ 1.88** (`rust-toolchain.toml` pins it). Older Cargo fails on current crates.
 - **One Signal account** from `.signalx.env` (`SIGNALX_NUMBER` +
   `SIGNALX_SIGNALCLI_CONFIG`). There is no account switcher.
 - Storage keys use a sanitized form of the number; orphan JSON files under other

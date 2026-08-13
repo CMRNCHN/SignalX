@@ -1,0 +1,5 @@
+# Current Cargo.lock needs a recent toolchain (serde_with/time/plist ≥ 1.88).
+# Older Cargo (e.g. 1.83) also fails parsing edition-2024 crates like hashbrown 0.17.
+[toolchain]
+channel = "1.88.0"
+components = ["rustfmt", "clippy"]
