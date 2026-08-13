@@ -4,14 +4,14 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "ui": "vite",
+    "dev": "bash scripts/free-vite-port.sh && vite",
+    "ui": "bash scripts/free-vite-port.sh && vite",
     "build": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
+    "tauri:dev": "bash scripts/free-vite-port.sh && tauri dev",
     "tauri:build": "tauri build",
-    "desktop": "tauri dev",
+    "desktop": "bash scripts/free-vite-port.sh && tauri dev",
     "desktop:build": "tauri build"
   },
   "dependencies": {

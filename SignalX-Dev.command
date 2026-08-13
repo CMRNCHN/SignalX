@@ -46,13 +46,7 @@ if [[ ! -d "$ROOT/node_modules" ]]; then
 fi
 
 # Free Vite's fixed port (vite.config.ts uses strictPort: true).
-if command -v lsof >/dev/null 2>&1; then
-  PID="$(lsof -ti tcp:5173 || true)"
-  if [[ -n "$PID" ]]; then
-    echo "Killing process on port 5173: $PID" | tee -a "$LOG"
-    kill -9 $PID || true
-  fi
-fi
+bash "$ROOT/scripts/free-vite-port.sh"
 
 echo "Starting SignalX desktop window (Ctrl+C to stop)..." | tee -a "$LOG"
 echo "Tip: npm run ui = browser layout preview only (no signal-cli)." | tee -a "$LOG"
