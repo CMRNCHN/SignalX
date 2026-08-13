@@ -1,5 +1,16 @@
 # SignalX Desktop - Quick Start Guide
 
+SignalX is a **local desktop app** (Tauri). The Vite URL is only a layout preview —
+messaging and Signal need the desktop window.
+
+| Mode | Command | What you get |
+|------|---------|--------------|
+| **Desktop app (real)** | `./run-dev.sh` or `./SignalX-Dev.command` or `npm run desktop` | Native window + signal-cli backend |
+| **Browser UI preview** | `npm run ui` | Layout only — no send/receive |
+| **Production .app** | `npm run desktop:build` | `SignalX.app` under `src-tauri/target/release/bundle/` |
+
+Requires **Rust 1.88+** (pinned in `rust-toolchain.toml`) and Node 18+.
+
 ## 🚀 First Time Setup
 
 ### 1. Prerequisites Check
@@ -19,10 +30,12 @@ SIGNALX_NUMBER=+1YOURNUMBERHERE
 SIGNALX_SIGNALCLI_BIN=/opt/homebrew/bin/signal-cli
 ```
 
-### 3. Launch Development Mode
+### 3. Launch the desktop app
 ```bash
 # Double-click or run:
 ./SignalX-Dev.command
+# or
+./run-dev.sh
 ```
 
 ## 🧪 Testing Features

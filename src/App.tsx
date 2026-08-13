@@ -32,6 +32,7 @@ import {
 import { DeviceLinkQr } from "./DeviceLinkQr";
 import { IvrMenuComposer } from "./IvrMenuComposer";
 import { ProfileRail } from "./ProfileRail";
+import { isTauriRuntime } from "./runtime";
 import {
   IconAudit,
   IconCatalog,
@@ -454,6 +455,7 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (!isTauriRuntime()) return;
     void bootstrap();
     const unsubs: Array<() => void> = [];
     void (async () => {
@@ -1571,6 +1573,27 @@ export default function App() {
     setPanel("settings");
     setSettingsTab("account");
   };
+
+  if (!isTauriRuntime()) {
+    return (
+      <div className="shell desktop-gate">
+        <main className="desktop-gate-panel">
+          <p className="brand-mark">SignalX</p>
+          <h1>Open the desktop app</h1>
+          <p>
+            This browser view is layout-only. Messaging, Signal linking, and your catalog run in the
+            local SignalX window.
+          </p>
+          <pre className="desktop-gate-cmd">./run-dev.sh</pre>
+          <p className="hint tight">
+            Or double-click <code>SignalX-Dev.command</code>. Needs Rust 1.88+ (see{" "}
+            <code>rust-toolchain.toml</code>) and Node. Production build:{" "}
+            <code>npm run desktop:build</code>
+          </p>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className={showProfileRail ? "shell shell-with-profile" : "shell"}>

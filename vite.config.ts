@@ -9,7 +9,9 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
-    host: false,
+    // All interfaces so Cursor's 127.174.* browser proxy can reach Vite
+    // (host: false binds ::1-only and times out). Tauri still uses localhost:5173.
+    host: true,
   },
   // Expose both VITE_ and TAURI_ env vars to the frontend.
   envPrefix: ["VITE_", "TAURI_"],
