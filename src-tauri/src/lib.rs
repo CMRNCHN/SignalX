@@ -2198,6 +2198,32 @@ fn normalize_incoming_message(my_number: &str, v: &Value) -> Option<(Message, Ve
   Some((msg, participants))
 }
 
+/// Persist inbound envelopes to `account_id`'s thread store.
+///
+/// `signal-cli receive` has already consumed these from the server. A session
+/// lock/switch must still write them to the account they were fetched for —
+/// dropping them loses the messages permanently.
+fn persist_incoming_envelopes(
+  account_manager: &AccountManager,
+  account_id: &str,
+  my_number: &str,
+  list: &[Value],
+) -> Vec<Message> {
+  if list.is_empty() {
+    return Vec::new();
+  }
+  let ts = account_manager.get_or_create(account_id);
+  let mut out = Vec::new();
+  for v in list {
+    if let Some((msg, participants)) = normalize_incoming_message(my_number, v) {
+      ts.add_message(msg.clone(), participants);
+      emit_message_new(account_id, &msg);
+      out.push(msg);
+    }
+  }
+  out
+}
+
 fn normalize_outgoing_message(my_number: &str, thread_id: &str, recipient: &str, content: &str) -> (Message, Vec<String>) {
   let ts = now_ms();
   let id = format!("outgoing-{}-{}", recipient, ts);
@@ -4347,33 +4373,37 @@ async fn receive_loop(state: AppState, agent_mode: Option<AgentModeConfig>) {
     .map_err(|e| format!("receive join error: {}", e))
     .and_then(|x| x);
 
-    if !state.session.is_current(my_gen) {
-      break;
-    }
-
     match received {
       Ok(list) => {
-        state.receive_monitor.on_success();
-        emit_receive_health(&state.receive_monitor.snapshot());
-
-        if !list.is_empty() {
-          let account = account_id.clone();
-          let ts = state.account_manager.get_or_create(&account);
-
-          for v in list.iter() {
-            if let Some((msg, participants)) = normalize_incoming_message(&my_number, v) {
-              let thread_id = msg.thread_id.clone();
-              let msg_id = msg.id.clone();
-              ts.add_message(msg.clone(), participants);
-              emit_message_new(&account, &msg);
-              let ivr_handled = maybe_handle_ivr(&state, &thread_id, &msg.content);
-              if !ivr_handled {
-                if let Some(agent_cfg) = agent_mode.clone() {
-                  trigger_agent_draft(state.clone(), agent_cfg, ts.clone(), thread_id, msg_id);
-                }
+        let live = state.session.is_current(my_gen);
+        // Always persist first. The envelopes were already consumed by
+        // signal-cli; a generation bump (lock/switch) must not drop them.
+        let persisted = persist_incoming_envelopes(
+          &state.account_manager,
+          &account_id,
+          &my_number,
+          &list,
+        );
+        if live {
+          let ts = state.account_manager.get_or_create(&account_id);
+          for msg in persisted {
+            let ivr_handled = maybe_handle_ivr(&state, &msg.thread_id, &msg.content);
+            if !ivr_handled {
+              if let Some(agent_cfg) = agent_mode.clone() {
+                trigger_agent_draft(
+                  state.clone(),
+                  agent_cfg,
+                  ts.clone(),
+                  msg.thread_id.clone(),
+                  msg.id.clone(),
+                );
               }
             }
           }
+          state.receive_monitor.on_success();
+          emit_receive_health(&state.receive_monitor.snapshot());
+        } else {
+          break;
         }
       }
       Err(e) => {
@@ -6717,5 +6747,49 @@ mod foundation_tests {
     });
     assert!(roster.verify_unlock("not-a-member", "").unwrap_err().contains("unknown"));
     assert!(roster.verify_unlock("../escape", "").unwrap_err().contains("unknown"));
+  }
+
+  #[test]
+  fn persist_incoming_keeps_messages_on_stale_session_gen() {
+    let dir = std::env::temp_dir().join(format!(
+      "signalx-recv-persist-{}",
+      Uuid::new_v4()
+    ));
+    let _ = std::fs::create_dir_all(&dir);
+    let mgr = AccountManager::new(dir.clone());
+    let account_a = "_15551234567";
+    let account_b = "_14445556666";
+    mgr.set_active(account_b.to_string());
+
+    let envelope = json!({
+      "envelope": {
+        "timestamp": 1_700_000_000_000i64,
+        "source": "+15550001111",
+        "sourceDevice": 1,
+        "dataMessage": { "message": "do not drop me" }
+      }
+    });
+
+    // Same contract as receive_loop after a lock/switch: persist to the
+    // account the receive was fetched for, even if another id is active.
+    let saved = persist_incoming_envelopes(
+      &mgr,
+      account_a,
+      "+15551234567",
+      &[envelope],
+    );
+    assert_eq!(saved.len(), 1);
+    assert_eq!(saved[0].content, "do not drop me");
+    assert_eq!(saved[0].thread_id, "+15550001111");
+
+    let ts_a = mgr.get_or_create(account_a);
+    let msgs = ts_a.get_thread_messages("+15550001111");
+    assert_eq!(msgs.len(), 1);
+    assert_eq!(msgs[0].content, "do not drop me");
+
+    let ts_b = mgr.get_or_create(account_b);
+    assert!(ts_b.get_threads().is_empty());
+
+    let _ = std::fs::remove_dir_all(&dir);
   }
 }
