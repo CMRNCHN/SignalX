@@ -312,6 +312,15 @@ pub fn format_product_measure(p: &Product) -> String {
   parts.join(" · ")
 }
 
+fn write_json_atomic(path: &Path, json: &str) -> Result<(), String> {
+  if let Some(parent) = path.parent() {
+    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+  }
+  let tmp = path.with_extension("json.tmp");
+  std::fs::write(&tmp, json).map_err(|e| e.to_string())?;
+  std::fs::rename(&tmp, path).map_err(|e| e.to_string())
+}
+
 impl CommerceStore {
   pub fn new(app_data_dir: &Path) -> Self {
     let dir = app_data_dir.join("commerce");
@@ -374,45 +383,62 @@ impl CommerceStore {
   }
 
   /// Replace in-memory catalog with files under `account_data_dir`.
+  /// Holds disk+payload locks together so a concurrent persist cannot snapshot
+  /// one account's catalog and write it to the other account's path.
   pub fn reload_from(&self, account_data_dir: &Path) {
     let fresh = Self::new(account_data_dir);
-    *self.disk.lock().unwrap() = fresh.disk.lock().unwrap().clone();
-    *self.products.lock().unwrap() = fresh.products.lock().unwrap().clone();
-    *self.customers.lock().unwrap() = fresh.customers.lock().unwrap().clone();
-    *self.stock_ledger.lock().unwrap() = fresh.stock_ledger.lock().unwrap().clone();
+    let mut disk = self.disk.lock().unwrap();
+    let mut products = self.products.lock().unwrap();
+    let mut customers = self.customers.lock().unwrap();
+    let mut stock_ledger = self.stock_ledger.lock().unwrap();
+    *disk = fresh.disk.lock().unwrap().clone();
+    *products = fresh.products.lock().unwrap().clone();
+    *customers = fresh.customers.lock().unwrap().clone();
+    *stock_ledger = fresh.stock_ledger.lock().unwrap().clone();
   }
 
   fn persist_stock_ledger(&self) -> Result<(), String> {
-    let entries = self.stock_ledger.lock().unwrap().clone();
-    let file = StockLedgerFile {
-      version: 1,
-      entries,
+    let (json, path) = {
+      let disk = self.disk.lock().unwrap();
+      let entries = self.stock_ledger.lock().unwrap().clone();
+      let file = StockLedgerFile {
+        version: 1,
+        entries,
+      };
+      let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
+      (json, disk.stock_ledger_path.clone())
     };
-    let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
-    let path = self.disk.lock().unwrap().stock_ledger_path.clone();
-    std::fs::write(&path, json).map_err(|e| e.to_string())
+    write_json_atomic(&path, &json)
   }
 
   fn persist_products(&self) -> Result<(), String> {
-    let products = self.products.lock().unwrap().clone();
-    let file = ProductFile {
-      version: 1,
-      products,
+    let (json, path) = {
+      // Same lock order as reload_from (disk then products) so the snapshot
+      // and destination path always belong to one account.
+      let disk = self.disk.lock().unwrap();
+      let products = self.products.lock().unwrap().clone();
+      let file = ProductFile {
+        version: 1,
+        products,
+      };
+      let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
+      (json, disk.products_path.clone())
     };
-    let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
-    let path = self.disk.lock().unwrap().products_path.clone();
-    std::fs::write(&path, json).map_err(|e| e.to_string())
+    write_json_atomic(&path, &json)
   }
 
   fn persist_customers(&self) -> Result<(), String> {
-    let customers = self.customers.lock().unwrap().clone();
-    let file = CustomerFile {
-      version: 1,
-      customers,
+    let (json, path) = {
+      let disk = self.disk.lock().unwrap();
+      let customers = self.customers.lock().unwrap().clone();
+      let file = CustomerFile {
+        version: 1,
+        customers,
+      };
+      let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
+      (json, disk.customers_path.clone())
     };
-    let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
-    let path = self.disk.lock().unwrap().customers_path.clone();
-    std::fs::write(&path, json).map_err(|e| e.to_string())
+    write_json_atomic(&path, &json)
   }
 
   pub fn list_products(&self) -> Vec<Product> {
@@ -1311,6 +1337,75 @@ mod tests {
     let again = store_a.list_products();
     assert_eq!(again[0].id, pa.id);
     assert_eq!(again[0].quantity_base_milli, 5000);
+    let _ = std::fs::remove_dir_all(&root);
+  }
+
+  #[test]
+  fn persist_does_not_write_catalog_onto_other_account_path() {
+    use std::sync::Arc;
+    use std::thread;
+
+    fn named(id: &str, name: &str) -> Product {
+      let mut p = sample_ea();
+      p.id = id.into();
+      p.name = name.into();
+      p
+    }
+
+    let root = std::env::temp_dir().join(format!(
+      "signalx-commerce-race-{}",
+      std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis()
+    ));
+    let dir_a = root.join("a");
+    let dir_b = root.join("b");
+    let _ = std::fs::create_dir_all(&dir_a);
+    let _ = std::fs::create_dir_all(&dir_b);
+
+    CommerceStore::new(&dir_a)
+      .upsert_product(named("a1", "ShopA"), 1)
+      .unwrap();
+    CommerceStore::new(&dir_b)
+      .upsert_product(named("b1", "ShopB"), 1)
+      .unwrap();
+
+    let store = Arc::new(CommerceStore::new(&dir_a));
+    let persist_store = store.clone();
+    let reload_store = store.clone();
+    let da = dir_a.clone();
+    let db = dir_b.clone();
+
+    let persist = thread::spawn(move || {
+      for _ in 0..200 {
+        persist_store.persist_products().unwrap();
+      }
+    });
+    let reload = thread::spawn(move || {
+      for i in 0..200 {
+        if i % 2 == 0 {
+          reload_store.reload_from(&db);
+        } else {
+          reload_store.reload_from(&da);
+        }
+      }
+    });
+    persist.join().unwrap();
+    reload.join().unwrap();
+
+    let a_json = std::fs::read_to_string(dir_a.join("commerce/products.json")).unwrap();
+    let b_json = std::fs::read_to_string(dir_b.join("commerce/products.json")).unwrap();
+    assert!(
+      !b_json.contains("ShopA"),
+      "account A catalog leaked into B products.json: {b_json}"
+    );
+    assert!(
+      !a_json.contains("ShopB"),
+      "account B catalog leaked into A products.json: {a_json}"
+    );
+    assert!(b_json.contains("ShopB"));
+    assert!(a_json.contains("ShopA"));
     let _ = std::fs::remove_dir_all(&root);
   }
 }
