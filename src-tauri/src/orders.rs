@@ -123,16 +123,23 @@ impl OrderStore {
 
   pub fn reload_from(&self, account_data_dir: &Path) {
     let fresh = Self::new(account_data_dir);
-    *self.path.lock().unwrap() = fresh.path.lock().unwrap().clone();
-    *self.orders.lock().unwrap() = fresh.orders.lock().unwrap().clone();
+    let mut path = self.path.lock().unwrap();
+    let mut orders = self.orders.lock().unwrap();
+    *path = fresh.path.lock().unwrap().clone();
+    *orders = fresh.orders.lock().unwrap().clone();
   }
 
   fn persist(&self) -> Result<(), String> {
-    let orders = self.orders.lock().unwrap().clone();
-    let file = OrderFile { version: 1, orders };
-    let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
-    let path = self.path.lock().unwrap().clone();
-    std::fs::write(&path, json).map_err(|e| e.to_string())
+    let (json, dest) = {
+      let path_guard = self.path.lock().unwrap();
+      let orders = self.orders.lock().unwrap().clone();
+      let file = OrderFile { version: 1, orders };
+      let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
+      (json, path_guard.clone())
+    };
+    let tmp = dest.with_extension("json.tmp");
+    std::fs::write(&tmp, json).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, dest).map_err(|e| e.to_string())
   }
 
   pub fn list(&self) -> Vec<Order> {
