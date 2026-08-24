@@ -14,9 +14,9 @@
       {
         "label": "main",
         "title": "SignalX",
-        "width": 1100,
-        "height": 720,
-        "minWidth": 860,
+        "width": 1280,
+        "height": 780,
+        "minWidth": 1024,
         "minHeight": 560,
         "resizable": true
       }
