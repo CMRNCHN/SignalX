@@ -27,10 +27,9 @@ inventory ops, and Sales console.
 
 ## Operator GUI notes
 
-- Dark IBM Plex operator console: luminance-stacked surfaces (`--surface-0…3`), quieter borders, shadows only on floating status.
-- Tighter density (13px base, 6px shell gutters); solid rail/columns; glass reserved for the message composer.
-- Control radius ~6–8px, panels ~10–12px; single blue CTA `#3d8bfd`.
-- Soft setup banner when config/number missing or `NotRegistered` → Settings → Account.
+- Dark zinc shell (shadcn-style): flush columns, Inter + JetBrains Mono, 14px base, 8px radius.
+- Primary actions are white-on-zinc; status, health, and banners stay grayscale.
+- Setup banner when config/number missing or `NotRegistered` → Settings → Account.
 - Settings → Account: roster (add number + PIN), Device link, status.
 - Header account control: Lock / Switch account (PIN gate). Only one session is live.
 - IVR Settings includes a visual menu composer (node rail, digit branches, dial-pad preview); JSON under Advanced.
