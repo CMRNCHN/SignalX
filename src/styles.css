@@ -87,6 +87,11 @@ textarea {
   color: inherit;
 }
 
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: #fafafa;
+}
+
 .shell {
   display: grid;
   grid-template-columns: 220px 300px 1fr;
