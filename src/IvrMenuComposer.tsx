@@ -751,8 +751,14 @@ export function IvrMenuComposer({
                   >
                     <strong>{id}</strong>
                     <span>
-                      {id === working.entry ? "start" : ""}
-                      {bound ? `${bound} bound product${bound === 1 ? "" : "s"}` : "no products"}
+                      {[
+                        id === working.entry ? "start" : "",
+                        bound
+                          ? `${bound} bound product${bound === 1 ? "" : "s"}`
+                          : "no products",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </span>
                   </button>
                 );
