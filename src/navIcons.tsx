@@ -7,8 +7,8 @@ function IconShell({ children, className }: SvgProps & { children: ReactNode }) 
   return (
     <svg
       className={className}
-      width="18"
-      height="18"
+      width="15"
+      height="15"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
