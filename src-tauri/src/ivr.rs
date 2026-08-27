@@ -35,6 +35,7 @@ impl Default for IvrSettings {
 /// Host actions the IVR engine may emit (validated on menu save).
 pub const ALLOWED_IVR_ACTIONS: &[&str] = &[
   "list_catalog",
+  "offer_product",
   "place_order",
   "handoff",
   "order_status",
@@ -113,7 +114,7 @@ pub struct IvrSession {
   pub expires_at: i64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct IvrChoice {
   #[serde(default)]
   pub goto: Option<String>,
@@ -121,6 +122,9 @@ pub struct IvrChoice {
   pub action: Option<String>,
   #[serde(default)]
   pub reply: Option<String>,
+  /// Bound catalog product. Survives catalog reorder; host uses this instead of list index.
+  #[serde(default)]
+  pub product_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -164,25 +168,29 @@ impl IvrMenus {
             goto: Some("browse".into()),
             action: Some("list_catalog".into()),
             reply: None,
+            product_id: None,
           }),
           ("2".into(), IvrChoice {
             goto: Some("order_pick".into()),
             action: Some("list_catalog".into()),
             reply: None,
+            product_id: None,
           }),
           ("3".into(), IvrChoice {
             goto: None,
             action: Some("handoff".into()),
             reply: Some("Got it — someone will reply here shortly.".into()),
+            product_id: None,
           }),
           ("4".into(), IvrChoice {
             goto: Some("main".into()),
             action: Some("order_status".into()),
             reply: None,
+            product_id: None,
           }),
-          ("0".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
-          ("menu".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
-          ("help".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
+          ("0".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None, product_id: None }),
+          ("menu".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None, product_id: None }),
+          ("help".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None, product_id: None }),
         ]),
         on_unknown: Some("Reply 1, 2, 3, 4, or 0.".into()),
         capture_slot: None,
@@ -198,9 +206,10 @@ impl IvrMenus {
             goto: Some("order_pick".into()),
             action: Some("list_catalog".into()),
             reply: None,
+            product_id: None,
           }),
-          ("0".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
-          ("menu".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
+          ("0".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None, product_id: None }),
+          ("menu".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None, product_id: None }),
         ]),
         on_unknown: Some("Reply 2 to order, or 0 for the menu.".into()),
         capture_slot: None,
@@ -212,8 +221,8 @@ impl IvrMenus {
       IvrNode {
         prompt: "Reply with the product # from the list (or 0 to cancel).".to_string(),
         choices: HashMap::from([
-          ("0".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
-          ("menu".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
+          ("0".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None, product_id: None }),
+          ("menu".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None, product_id: None }),
         ]),
         on_unknown: None,
         capture_slot: Some("order_idx".into()),
@@ -229,8 +238,8 @@ impl IvrMenus {
       IvrNode {
         prompt: "Reply with a quantity (or 0 to cancel).".to_string(),
         choices: HashMap::from([
-          ("0".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
-          ("menu".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None }),
+          ("0".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None, product_id: None }),
+          ("menu".into(), IvrChoice { goto: Some("main".into()), action: None, reply: None, product_id: None }),
         ]),
         on_unknown: None,
         capture_slot: Some("order_qty".into()),
@@ -277,6 +286,7 @@ fn migrate_menus(mut m: IvrMenus) -> IvrMenus {
           goto: Some("main".into()),
           action: Some("order_status".into()),
           reply: None,
+          product_id: None,
         },
       );
       if !main.prompt.contains("Check order") {
@@ -456,6 +466,15 @@ fn apply_choice(
   choice: &IvrChoice,
   now: i64,
 ) -> Option<IvrStepResult> {
+  if let Some(pid) = choice
+    .product_id
+    .as_ref()
+    .map(|s| s.trim())
+    .filter(|s| !s.is_empty())
+  {
+    session.slots.insert("product_id".to_string(), pid.to_string());
+  }
+
   if let Some(action) = &choice.action {
     if action == "handoff" {
       session.handed_off = true;
@@ -467,9 +486,15 @@ fn apply_choice(
         action: Some("handoff".into()),
       });
     }
-    if action == "list_catalog" || action == "order_status" {
+    if action == "list_catalog"
+      || action == "order_status"
+      || action == "offer_product"
+      || action == "place_order"
+    {
       if let Some(goto) = &choice.goto {
         session.node_id = goto.clone();
+        touch(session, menus, now);
+      } else {
         touch(session, menus, now);
       }
       return Some(IvrStepResult {
@@ -872,6 +897,7 @@ mod tests {
         goto: Some("missing".into()),
         action: None,
         reply: None,
+        product_id: None,
       },
     );
     let err = validate_menus(&m).unwrap_err();
@@ -887,10 +913,92 @@ mod tests {
         goto: None,
         action: Some("explode".into()),
         reply: None,
+        product_id: None,
       },
     );
     let err = validate_menus(&m).unwrap_err();
     assert!(err.contains("explode"), "{err}");
+  }
+
+  #[test]
+  fn bound_product_choice_stores_product_id() {
+    let mut m = menus();
+    m.nodes.get_mut("main").unwrap().choices.insert(
+      "8".into(),
+      IvrChoice {
+        goto: Some("order_qty".into()),
+        action: None,
+        reply: None,
+        product_id: Some("prod_abc".into()),
+      },
+    );
+    let s = fresh_session("dm:+1", &m, 1000);
+    let r = step(s, "8", &m, 1000);
+    assert!(r.handled);
+    assert_eq!(r.session.node_id, "order_qty");
+    assert_eq!(r.session.slots.get("product_id").unwrap(), "prod_abc");
+    assert!(r.action.is_none());
+  }
+
+  #[test]
+  fn offer_product_action_emits_with_bound_id() {
+    let mut m = menus();
+    m.nodes.get_mut("main").unwrap().choices.insert(
+      "7".into(),
+      IvrChoice {
+        goto: Some("order_qty".into()),
+        action: Some("offer_product".into()),
+        reply: None,
+        product_id: Some("sku-1".into()),
+      },
+    );
+    let s = fresh_session("dm:+1", &m, 1000);
+    let r = step(s, "7", &m, 1000);
+    assert_eq!(r.action.as_deref(), Some("offer_product"));
+    assert_eq!(r.session.node_id, "order_qty");
+    assert_eq!(r.session.slots.get("product_id").unwrap(), "sku-1");
+  }
+
+  #[test]
+  fn place_order_choice_with_product_id_emits_action() {
+    let mut m = menus();
+    m.nodes.get_mut("main").unwrap().choices.insert(
+      "6".into(),
+      IvrChoice {
+        goto: Some("main".into()),
+        action: Some("place_order".into()),
+        reply: None,
+        product_id: Some("bound-9".into()),
+      },
+    );
+    let s = fresh_session("dm:+1", &m, 1000);
+    let r = step(s, "6", &m, 1000);
+    assert_eq!(r.action.as_deref(), Some("place_order"));
+    assert_eq!(r.session.slots.get("product_id").unwrap(), "bound-9");
+    assert_eq!(r.session.node_id, "main");
+  }
+
+  #[test]
+  fn validate_allows_offer_product() {
+    let mut m = menus();
+    m.nodes.get_mut("main").unwrap().choices.insert(
+      "5".into(),
+      IvrChoice {
+        goto: Some("main".into()),
+        action: Some("offer_product".into()),
+        reply: None,
+        product_id: Some("p1".into()),
+      },
+    );
+    assert!(validate_menus(&m).is_ok());
+  }
+
+  #[test]
+  fn missing_product_id_deserializes_as_none() {
+    let raw = r#"{"goto":"browse","action":"list_catalog"}"#;
+    let c: IvrChoice = serde_json::from_str(raw).unwrap();
+    assert_eq!(c.goto.as_deref(), Some("browse"));
+    assert!(c.product_id.is_none());
   }
 
   #[test]
