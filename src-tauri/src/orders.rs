@@ -406,6 +406,18 @@ impl OrderStore {
     self.persist()?;
     out.ok_or_else(|| "order not found".to_string())
   }
+
+  /// Insert a fully-formed order without stock movement. No-op if `id` exists.
+  pub fn insert_seeded(&self, order: Order) -> Result<(), String> {
+    {
+      let mut list = self.orders.lock().unwrap();
+      if list.iter().any(|o| o.id == order.id) {
+        return Ok(());
+      }
+      list.push(order);
+    }
+    self.persist()
+  }
 }
 
 pub fn format_invoice(order: &Order, business_name: &str) -> String {

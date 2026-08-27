@@ -19,6 +19,7 @@ mod link;
 mod uom;
 mod backup;
 mod session;
+mod demo;
 use ivr::{thread_allowed, IvrMenus, IvrSettings, IvrStore};
 use commerce::{format_catalog_list, CommerceStore, Customer, Product};
 use commerce_audit::CommerceAuditStore;
@@ -2721,11 +2722,15 @@ fn check_ai_status() -> Value {
   ok_t(probe_ollama())
 }
 
+fn local_or_configured_account() -> String {
+  configured_account_id().unwrap_or_else(|| demo::LOCAL_ACCOUNT_ID.to_string())
+}
+
 fn require_active_account(state: &AppState) -> Result<String, Value> {
   if state.session.is_locked() {
     return Err(err("session locked".to_string()));
   }
-  let id = configured_account_id().ok_or_else(|| err("SIGNALX_NUMBER not set".to_string()))?;
+  let id = local_or_configured_account();
   if state.account_manager.get_active().as_ref() != Some(&id) {
     state.account_manager.set_active(id.clone());
     let _ = state.account_manager.get_or_create(&id);
@@ -4809,6 +4814,14 @@ fn build_app_state() -> AppState {
 fn bootstrap_accounts(state: &AppState) {
   let Some(id) = configured_account_id() else {
     eprintln!("SignalX: SIGNALX_NUMBER not set — receive/outbox will not start");
+    let id = demo::LOCAL_ACCOUNT_ID.to_string();
+    state.account_manager.set_active(id.clone());
+    state.account_manager.get_or_create(&id);
+    state.alias_manager.load_account(&id);
+    state.contact_store.load_account(&id);
+    state.group_store.load_account(&id);
+    demo::seed_if_empty(state, &id);
+    state.session.set_locked(false);
     return;
   };
   let e164 = get_signal_number().unwrap_or_default();
@@ -4831,6 +4844,7 @@ fn bootstrap_accounts(state: &AppState) {
   state.contact_store.load_account(&id);
   state.group_store.load_account(&id);
   reload_shop_stores(state, &id);
+  demo::seed_if_empty(state, &id);
   state.session.set_locked(false);
 }
 
