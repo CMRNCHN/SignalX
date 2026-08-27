@@ -89,27 +89,35 @@ function fallbackActions(
 }
 
 type Props = {
-  threadId: string;
+  threadId: string | null;
   title: string;
   initials: string;
   contact: ContactMeta | null;
   customer: Customer | null;
   orders: Order[];
   products: Product[];
+  participants?: string[];
   ai: AiStatus | null;
   aiBusy: boolean;
+  ivrEnabled?: boolean;
+  ivrEffective?: boolean;
+  ivrHandedOff?: boolean;
+  ivrHint?: string | null;
   onStatus: (msg: string | null) => void;
   onSetComposer: (text: string) => void;
   onDraft: (intent?: string) => void;
   onSummarize: () => Promise<string | null>;
   onLinkCustomer: () => void;
   onOpenOrders: () => void;
+  onOpenPeople?: () => void;
   onSendInvoice: (orderId: string) => void;
   onSendQuote?: (orderId: string) => void;
   onMarkPaid: (orderId: string) => void;
   onToggleFavorite: (next: boolean) => void;
   onToggleMute: (next: boolean) => void;
   onSaveNotes: (notes: string) => void;
+  onResumeMenu?: () => void;
+  onPlaceOrder?: () => void;
 };
 
 export function ProfileRail(props: Props) {
@@ -121,21 +129,31 @@ export function ProfileRail(props: Props) {
     customer,
     orders,
     products,
+    participants = [],
     ai,
     aiBusy,
+    ivrEnabled,
+    ivrEffective,
+    ivrHandedOff,
+    ivrHint,
     onStatus,
     onSetComposer,
     onDraft,
     onSummarize,
     onLinkCustomer,
     onOpenOrders,
+    onOpenPeople,
     onSendInvoice,
     onSendQuote,
     onMarkPaid,
     onToggleFavorite,
     onToggleMute,
     onSaveNotes,
+    onResumeMenu,
+    onPlaceOrder,
   } = props;
+
+  const isGroup = !!threadId?.startsWith("group:");
 
   const [summary, setSummary] = useState<string | null>(null);
   const [actions, setActions] = useState<ThreadActionSuggestion[]>([]);
@@ -147,7 +165,10 @@ export function ProfileRail(props: Props) {
   );
 
   const threadOrders = useMemo(
-    () => orders.filter((o) => o.thread_id === threadId).sort((a, b) => b.created_at - a.created_at),
+    () =>
+      threadId
+        ? orders.filter((o) => o.thread_id === threadId).sort((a, b) => b.created_at - a.created_at)
+        : [],
     [orders, threadId],
   );
   const standing = useMemo(() => computeStanding(threadOrders), [threadOrders]);
@@ -158,6 +179,10 @@ export function ProfileRail(props: Props) {
   }, [threadId, customer?.id, customer?.notes]);
 
   useEffect(() => {
+    if (!threadId) {
+      setThreadOutbox([]);
+      return;
+    }
     let cancelled = false;
     void (async () => {
       const res = await api.listOutbox(threadId);
@@ -199,6 +224,10 @@ export function ProfileRail(props: Props) {
   }, [threadOrders, products]);
 
   useEffect(() => {
+    if (!threadId) {
+      setActions([]);
+      return;
+    }
     let cancelled = false;
     const t = window.setTimeout(() => {
       void (async () => {
@@ -291,18 +320,42 @@ export function ProfileRail(props: Props) {
       return { id: i.id, path, src, label: path.split("/").pop() || "file" };
     });
 
+  if (!threadId) {
+    return (
+      <aside className="profile-rail">
+        <div className="profile-empty">
+          <strong>Profile</strong>
+          <p>Select a thread to see their profile.</p>
+        </div>
+      </aside>
+    );
+  }
+
   return (
     <aside className="profile-rail">
       <header className="profile-rail-head">
         <span className="avatar-dot profile-avatar" aria-hidden>
           {initials}
         </span>
-        <div className="profile-rail-title">
+        <div className="profile-rail-title wrap">
           <strong>{title}</strong>
-          <div className="convo-sub">{threadId}</div>
+          <div className="convo-sub wrap">{threadId}</div>
         </div>
       </header>
 
+      <div className="profile-section">
+        <div className="profile-section-title">Identity</div>
+        <p className="hint tight wrap">{isGroup ? "Group chat" : "Direct message"}</p>
+        {isGroup && participants.length > 0 && (
+          <ul className="profile-members">
+            {participants.map((p) => (
+              <li key={p}>{p}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {!isGroup && (
       <div className="profile-section">
         <div className="profile-section-title">Standing</div>
         <span className={`status-pill status-${standing.tone}`}>{standing.label}</span>
@@ -321,57 +374,69 @@ export function ProfileRail(props: Props) {
           </div>
         </dl>
       </div>
+      )}
 
       <div className="profile-section">
-        <div className="profile-section-title">Contact</div>
-        {!threadId.startsWith("group:") && (
-          <div className="profile-toggles">
-            <label className="toggle compact">
-              <input
-                type="checkbox"
-                checked={!!contact?.favorite}
-                onChange={(e) => onToggleFavorite(e.target.checked)}
-              />
-              Favorite
-            </label>
-            <label className="toggle compact">
-              <input
-                type="checkbox"
-                checked={!!contact?.muted}
-                onChange={(e) => onToggleMute(e.target.checked)}
-              />
-              Muted
-            </label>
-          </div>
-        )}
-        {customer ? (
-          <p className="hint tight">Customer linked · {customer.display_name || customer.id.slice(0, 8)}</p>
-        ) : !threadId.startsWith("group:") ? (
+        <div className="profile-section-title">{isGroup ? "Group" : "Customer"}</div>
+        <div className="profile-toggles">
+          <label className="toggle compact">
+            <input
+              type="checkbox"
+              checked={!!contact?.favorite}
+              onChange={(e) => onToggleFavorite(e.target.checked)}
+            />
+            Favorite
+          </label>
+          <label className="toggle compact">
+            <input
+              type="checkbox"
+              checked={!!contact?.muted}
+              onChange={(e) => onToggleMute(e.target.checked)}
+            />
+            Muted
+          </label>
+        </div>
+        {isGroup ? (
+          <p className="hint tight">Groups have no customer record or order composer.</p>
+        ) : customer ? (
+          <>
+            <p className="hint tight wrap">
+              Customer linked · {customer.display_name || customer.id.slice(0, 8)}
+            </p>
+            {onOpenPeople && (
+              <button type="button" className="ghost-btn" onClick={onOpenPeople}>
+                Open in People
+              </button>
+            )}
+          </>
+        ) : (
           <button type="button" className="action-btn primary" onClick={onLinkCustomer}>
             Link as customer
           </button>
-        ) : (
-          <p className="hint tight">Group thread — customer link is DM-only.</p>
         )}
-        <label className="field-stack">
-          <span className="field-label">Notes</span>
-          <textarea
-            className="product-desc"
-            rows={3}
-            placeholder="Operator notes…"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            disabled={!customer}
-          />
-        </label>
-        {customer && (
-          <button
-            type="button"
-            className="ghost-btn"
-            onClick={() => onSaveNotes(notes)}
-          >
-            Save notes
-          </button>
+        {!isGroup && (
+          <>
+            <label className="field-stack">
+              <span className="field-label">Notes</span>
+              <textarea
+                className="product-desc"
+                rows={3}
+                placeholder="Operator notes…"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                disabled={!customer}
+              />
+            </label>
+            {customer && (
+              <button
+                type="button"
+                className="ghost-btn"
+                onClick={() => onSaveNotes(notes)}
+              >
+                Save notes
+              </button>
+            )}
+          </>
         )}
       </div>
 
@@ -393,8 +458,24 @@ export function ProfileRail(props: Props) {
         )}
       </div>
 
+      {!isGroup && (
       <div className="profile-section">
-        <div className="profile-section-title">Quick actions</div>
+        <div className="profile-section-title">Actions</div>
+        {onPlaceOrder && (
+          <button type="button" className="action-btn" onClick={onPlaceOrder}>
+            Place order
+          </button>
+        )}
+        {ivrHint && <p className="hint tight">{ivrHint}</p>}
+        {ivrEffective && <p className="hint tight">Buyer menu is live on this chat.</p>}
+        {ivrEnabled && !ivrEffective && !ivrHandedOff && (
+          <p className="hint tight">Buyer menu is on for this chat.</p>
+        )}
+        {ivrHandedOff && onResumeMenu && (
+          <button type="button" className="ghost-btn" onClick={onResumeMenu}>
+            Resume menu
+          </button>
+        )}
         {actionsBusy && <p className="hint tight">Suggesting…</p>}
         <div className="profile-chips">
           {actions.map((a, i) => (
@@ -413,12 +494,14 @@ export function ProfileRail(props: Props) {
           ))}
         </div>
       </div>
+      )}
 
+      {!isGroup && (
       <div className="profile-section">
-        <div className="profile-section-title">Ledger</div>
+        <div className="profile-section-title">Orders</div>
         {threadOrders.length === 0 && <p className="hint tight">No orders for this chat.</p>}
         <ul className="profile-ledger">
-          {threadOrders.slice(0, 12).map((o) => (
+          {threadOrders.slice(0, 8).map((o) => (
             <li key={o.id}>
               <div className="thread-row-top">
                 <span className="thread-name">{o.id.slice(0, 8)}</span>
@@ -454,6 +537,16 @@ export function ProfileRail(props: Props) {
           </button>
         )}
       </div>
+      )}
+
+      {!isGroup && (
+      <div className="profile-section">
+        <div className="profile-section-title">Buyer menu</div>
+        <p className="hint tight">
+          {ivrEffective ? "ON for this chat" : ivrEnabled ? "Enabled — waiting to activate" : "Off"}
+        </p>
+      </div>
+      )}
 
       <div className="profile-section">
         <div className="profile-section-title">Media</div>

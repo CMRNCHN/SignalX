@@ -35,32 +35,23 @@ import { IvrMenuComposer } from "./IvrMenuComposer";
 import { ProfileRail } from "./ProfileRail";
 import { isTauriRuntime } from "./runtime";
 import {
-  IconAudit,
   IconCatalog,
   IconContacts,
-  IconCustomers,
-  IconGroups,
   IconImage,
   IconMessages,
   IconOrders,
-  IconOutbox,
-  IconSearch,
   IconSettings,
 } from "./navIcons";
+import { bindProductToMenu, screensBoundToProduct } from "./IvrMenuComposer";
 
-type Panel =
-  | "threads"
-  | "search"
-  | "contacts"
-  | "groups"
-  | "products"
-  | "customers"
-  | "orders"
-  | "sales"
-  | "outbox"
-  | "audit"
-  | "settings";
-type SettingsTab = "account" | "ivr" | "auto" | "backup";
+type Panel = "inbox" | "people" | "catalog" | "orders" | "settings";
+type SettingsTab = "account" | "device" | "delivery" | "auto" | "activity" | "backup";
+type PeopleChip = "all" | "people" | "groups" | "customers";
+type InboxChip = "all" | "unread" | "needs_send" | "dms" | "groups";
+type PeopleSel =
+  | { kind: "person"; id: string }
+  | { kind: "group"; id: string }
+  | { kind: "customer"; id: string };
 
 type SellPackRow = {
   key: string;
@@ -83,16 +74,10 @@ function newPackRow(): SellPackRow {
 }
 
 const NAV_ITEMS: { id: Panel; label: string; ico: ReactNode }[] = [
-  { id: "threads", label: "Messages", ico: <IconMessages /> },
-  { id: "search", label: "Search", ico: <IconSearch /> },
-  { id: "contacts", label: "Contacts", ico: <IconContacts /> },
-  { id: "groups", label: "Groups", ico: <IconGroups /> },
-  { id: "products", label: "Catalog", ico: <IconCatalog /> },
-  { id: "customers", label: "Customers", ico: <IconCustomers /> },
+  { id: "inbox", label: "Inbox", ico: <IconMessages /> },
+  { id: "people", label: "People", ico: <IconContacts /> },
+  { id: "catalog", label: "Catalog", ico: <IconCatalog /> },
   { id: "orders", label: "Orders", ico: <IconOrders /> },
-  { id: "sales", label: "Sales", ico: <IconAudit /> },
-  { id: "outbox", label: "Outbox", ico: <IconOutbox /> },
-  { id: "audit", label: "Auto-reply log", ico: <IconAudit /> },
   { id: "settings", label: "Settings", ico: <IconSettings /> },
 ];
 
@@ -226,12 +211,6 @@ function lowStockThresholdLabel(milli: number): string {
   return Math.abs(v - Math.round(v)) < 0.001 ? String(Math.round(v)) : v.toFixed(3);
 }
 
-function productWeightLabel(p: Product): string | null {
-  if (!(p.weight > 0) || !p.weight_unit) return null;
-  const w = Number.isInteger(p.weight) ? String(p.weight) : p.weight.toFixed(2);
-  return `${w} ${p.weight_unit}`;
-}
-
 /** Normalize to E.164-ish (+digits). Returns null if invalid. */
 function normalizePhoneInput(raw: string): string | null {
   const digits = raw.trim().replace(/[^\d+]/g, "");
@@ -265,7 +244,7 @@ function orderStatusTone(status: string): "ok" | "warn" | "danger" | "muted" {
 function ivrInactiveReason(ivr: ThreadIvrStatus | null): string | null {
   if (!ivr || ivr.effective) return null;
   if (ivr.handed_off) return null;
-  if (ivr.global_enabled === false) return "Buyer menu ready · turn it on in Settings";
+  if (ivr.global_enabled === false) return "Buyer menu ready · turn it on in Catalog";
   if (!ivr.enabled) return null;
   return "Buyer menu ready · waiting to activate";
 }
@@ -276,7 +255,7 @@ function includesQ(hay: string, q: string): boolean {
 }
 
 export default function App() {
-  const [panel, setPanel] = useState<Panel>("threads");
+  const [panel, setPanel] = useState<Panel>("inbox");
   const [accountNumber, setAccountNumber] = useState<string | null>(null);
   const [session, setSession] = useState<SessionStatus | null>(null);
   const [sessionPin, setSessionPin] = useState("");
@@ -351,13 +330,19 @@ export default function App() {
   const [salesSummary, setSalesSummary] = useState<SalesSummary | null>(null);
   const [commerceAudit, setCommerceAudit] = useState<CommerceAuditEvent[]>([]);
   const [salesRange, setSalesRange] = useState<"7" | "30" | "all">("30");
-  const [salesStatus, setSalesStatus] = useState("all");
   const [salesBusy, setSalesBusy] = useState(false);
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkUri, setLinkUri] = useState<string | null>(null);
   const [linkStatus, setLinkStatus] = useState<DeviceLinkStatus | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("account");
+  const [peopleChip, setPeopleChip] = useState<PeopleChip>("all");
+  const [inboxChip, setInboxChip] = useState<InboxChip>("all");
+  const [peopleSel, setPeopleSel] = useState<PeopleSel | null>(null);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [menuBuilderOpen, setMenuBuilderOpen] = useState(false);
+  const [csvMenuOpen, setCsvMenuOpen] = useState(false);
   const [importMode, setImportMode] = useState<"replace" | "merge">("replace");
   const [backupBusy, setBackupBusy] = useState(false);
   const [restartRequired, setRestartRequired] = useState(false);
@@ -393,10 +378,6 @@ export default function App() {
     q: "",
     status: "all",
     thisThread: false,
-  });
-  const [auditFilter, setAuditFilter] = useState({
-    q: "",
-    outcome: "all",
   });
   const bottomRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<string | null>(null);
@@ -1022,6 +1003,7 @@ export default function App() {
     }
     resetProductForm();
     setStatus(productForm.id ? `Updated ${product.name}` : `Added ${product.name}`);
+    setSelectedProductId(product.id);
     await refreshMeta();
   };
 
@@ -1058,6 +1040,7 @@ export default function App() {
           : "",
     });
     setSellPacks(packsFromProduct(p));
+    setSelectedProductId(p.id);
     setProductImageFile(null);
     setClearProductImageFlag(false);
     setProductImagePreview(null);
@@ -1079,7 +1062,7 @@ export default function App() {
     const tid = `dm:${phone}`;
     await api.setContactMeta(tid, {});
     setSelectedId(tid);
-    setPanel("threads");
+    setPanel("inbox");
     setNewDmPhone("");
     setStatus(`Compose to ${phone}`);
     await refreshMeta();
@@ -1126,7 +1109,7 @@ export default function App() {
     }
     setGroupForm({ name: "", members: "" });
     setSelectedId(res.data.thread_id);
-    setPanel("threads");
+    setPanel("inbox");
     setStatus(`Group created: ${name}`);
     await refreshMeta();
     await refreshThreads();
@@ -1390,7 +1373,7 @@ export default function App() {
       api.salesSummary({
         sinceMs,
         untilMs: null,
-        status: salesStatus === "all" ? null : salesStatus,
+        status: orderFilter.status === "all" ? null : orderFilter.status,
       }),
       api.listCommerceAudit(80),
     ]);
@@ -1483,22 +1466,34 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (panel === "outbox") void refreshGlobalOutbox();
-  }, [panel]);
+    if (panel === "settings" && settingsTab === "delivery") void refreshGlobalOutbox();
+  }, [panel, settingsTab]);
 
   useEffect(() => {
-    if (panel === "sales") void refreshSales();
-  }, [panel, salesRange, salesStatus]);
+    if (panel === "orders") void refreshSales();
+  }, [panel, salesRange, orderFilter.status]);
 
   useEffect(() => {
-    if (panel === "settings" && settingsTab === "ivr" && !ivrMenusDraft) {
+    if ((menuBuilderOpen || panel === "catalog") && !ivrMenusDraft) {
       void loadIvrMenusEditor();
+    }
+  }, [panel, menuBuilderOpen]);
+
+  useEffect(() => {
+    if (panel === "settings" && (settingsTab === "activity" || settingsTab === "delivery")) {
+      if (settingsTab === "activity") {
+        void api.listCommerceAudit(80).then((r) => {
+          if (r.success) setCommerceAudit(r.data);
+        });
+        void api.listAutoReplyAudit(80).then((r) => {
+          if (r.success) setAudit(r.data);
+        });
+      }
     }
   }, [panel, settingsTab]);
 
   const tone = healthTone(health);
   const title = selectedId ? threadTitle(selectedId, contacts, groups) : "SignalX";
-  const showProfileRail = panel === "threads" && !!selectedId;
   const profileContact = selectedId
     ? contacts.find((c) => {
         const raw = selectedId.replace(/^dm:/, "");
@@ -1516,35 +1511,15 @@ export default function App() {
 
   const filteredThreads = useMemo(() => {
     return threads.filter((t) => {
-      if (threadFilter.kind === "dm" && t.id.startsWith("group:")) return false;
-      if (threadFilter.kind === "group" && !t.id.startsWith("group:")) return false;
-      if (threadFilter.unread && t.unread_count <= 0) return false;
-      if (threadFilter.pending && t.outbox_count <= 0) return false;
+      if (inboxChip === "dms" && t.id.startsWith("group:")) return false;
+      if (inboxChip === "groups" && !t.id.startsWith("group:")) return false;
+      if (inboxChip === "unread" && t.unread_count <= 0) return false;
+      if (inboxChip === "needs_send" && t.outbox_count <= 0) return false;
       const label = threadTitle(t.id, contacts, groups);
-      return includesQ(`${label} ${t.id}`, threadFilter.q);
+      const preview = t.last_preview || "";
+      return includesQ(`${label} ${t.id} ${preview}`, threadFilter.q);
     });
-  }, [threads, threadFilter, contacts, groups]);
-
-  const filteredContacts = useMemo(() => {
-    return contacts.filter((c) => {
-      if (contactFilter.favorites && !c.favorite) return false;
-      if (contactFilter.hideMuted && c.muted) return false;
-      if (contactFilter.autoOnly && !c.auto_reply_enabled) return false;
-      return includesQ(
-        `${c.display_name || ""} ${c.alias || ""} ${c.contact_id}`,
-        contactFilter.q,
-      );
-    });
-  }, [contacts, contactFilter]);
-
-  const filteredGroups = useMemo(() => {
-    return groups.filter((g) => {
-      if (groupFilter.favorites && !g.favorite) return false;
-      if (groupFilter.hideMuted && g.muted) return false;
-      if (groupFilter.autoOnly && !g.auto_reply_enabled) return false;
-      return includesQ(`${g.display_name || ""} ${g.group_id}`, groupFilter.q);
-    });
-  }, [groups, groupFilter]);
+  }, [threads, threadFilter.q, inboxChip, contacts, groups]);
 
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
@@ -1562,52 +1537,87 @@ export default function App() {
     });
   }, [products, productFilter]);
 
-  const filteredCustomers = useMemo(() => {
-    return customers.filter((c) => {
-      const orderCount = orders.filter(
-        (o) => o.customer_id === c.id || o.thread_id === c.thread_id,
-      ).length;
-      if (customerFilter.hasOrders && orderCount === 0) return false;
-      return includesQ(`${c.display_name} ${c.thread_id} ${c.notes}`, customerFilter.q);
-    });
-  }, [customers, customerFilter, orders]);
+  const peopleRows = useMemo(() => {
+    const q = peopleChip === "all" ? customerFilter.q || contactFilter.q || groupFilter.q : 
+      peopleChip === "people" ? contactFilter.q :
+      peopleChip === "groups" ? groupFilter.q : customerFilter.q;
+    type Row =
+      | { key: string; kind: "person"; id: string; name: string; meta: string }
+      | { key: string; kind: "group"; id: string; name: string; meta: string }
+      | { key: string; kind: "customer"; id: string; name: string; meta: string };
+    const rows: Row[] = [];
+    if (peopleChip === "all" || peopleChip === "people") {
+      for (const c of contacts) {
+        const name = c.display_name || c.alias || c.contact_id;
+        if (!includesQ(`${name} ${c.contact_id}`, q)) continue;
+        rows.push({
+          key: `person:${c.contact_id}`,
+          kind: "person",
+          id: c.contact_id,
+          name,
+          meta: c.contact_id.replace(/^dm:/, ""),
+        });
+      }
+    }
+    if (peopleChip === "all" || peopleChip === "groups") {
+      for (const g of groups) {
+        const name = g.display_name || g.group_id;
+        if (!includesQ(`${name} ${g.group_id}`, q)) continue;
+        rows.push({
+          key: `group:${g.group_id}`,
+          kind: "group",
+          id: g.group_id,
+          name,
+          meta: "Group",
+        });
+      }
+    }
+    if (peopleChip === "all" || peopleChip === "customers") {
+      for (const c of customers) {
+        if (peopleChip === "all" && contacts.some((ct) => {
+          const tid = ct.contact_id.startsWith("dm:") ? ct.contact_id : `dm:${ct.contact_id}`;
+          return tid === c.thread_id;
+        })) continue;
+        if (!includesQ(`${c.display_name} ${c.thread_id} ${c.notes}`, q)) continue;
+        const n = orders.filter((o) => o.customer_id === c.id || o.thread_id === c.thread_id).length;
+        rows.push({
+          key: `customer:${c.id}`,
+          kind: "customer",
+          id: c.id,
+          name: c.display_name || c.thread_id,
+          meta: n ? `${n} order${n === 1 ? "" : "s"}` : c.thread_id,
+        });
+      }
+    }
+    return rows;
+  }, [contacts, groups, customers, orders, peopleChip, contactFilter.q, groupFilter.q, customerFilter.q]);
 
   const filteredOrders = useMemo(() => {
+    const now = Date.now();
+    const since =
+      salesRange === "7"
+        ? now - 7 * 24 * 60 * 60 * 1000
+        : salesRange === "30"
+          ? now - 30 * 24 * 60 * 60 * 1000
+          : 0;
     return [...orders]
       .sort((a, b) => b.created_at - a.created_at)
       .filter((o) => {
+        if (since && o.created_at < since) return false;
         if (orderFilter.status !== "all" && o.status !== orderFilter.status) return false;
         if (orderFilter.thisThread && selectedId && o.thread_id !== selectedId) return false;
         const party = threadTitle(o.thread_id, contacts, groups);
         const lines = o.lines.map((l) => l.name).join(" ");
         return includesQ(`${party} ${o.id} ${o.status} ${lines} ${o.thread_id}`, orderFilter.q);
       });
-  }, [orders, orderFilter, selectedId, contacts, groups]);
+  }, [orders, orderFilter, selectedId, contacts, groups, salesRange]);
 
-  const filteredAudit = useMemo(() => {
-    return audit.filter((e) => {
-      if (auditFilter.outcome !== "all" && e.outcome !== auditFilter.outcome) return false;
-      return includesQ(
-        `${e.thread_id} ${e.outcome} ${e.draft} ${e.reason || ""}`,
-        auditFilter.q,
-      );
-    });
-  }, [audit, auditFilter]);
+  const filteredAudit = audit;
 
   const orderStatuses = useMemo(() => {
     const set = new Set(orders.map((o) => o.status).filter(Boolean));
     return ["all", ...Array.from(set).sort()];
   }, [orders]);
-
-  const auditOutcomes = useMemo(() => {
-    const set = new Set(audit.map((e) => e.outcome).filter(Boolean));
-    return ["all", ...Array.from(set).sort()];
-  }, [audit]);
-
-  const productUnits = useMemo(() => {
-    const set = new Set(products.map((p) => productUnit(p)));
-    return ["all", ...Array.from(set).sort()];
-  }, [products]);
 
   const setupNeeded = useMemo(
     () => needsDeviceSetup(diagnostics, health, linkStatus),
@@ -1616,7 +1626,7 @@ export default function App() {
 
   const openDeviceLinkSetup = () => {
     setPanel("settings");
-    setSettingsTab("account");
+    setSettingsTab("device");
   };
 
   const onUnlock = async () => {
@@ -1683,7 +1693,7 @@ export default function App() {
   }
 
   return (
-    <div className={showProfileRail ? "shell shell-with-profile" : "shell"}>
+    <div className={panel === "settings" && !menuBuilderOpen ? "shell shell-three" : "shell shell-with-profile"}>
       {restartRequired && (
         <div className="restart-banner" role="alert">
           <span>Imported data is on disk — quit and reopen SignalX to load it.</span>
@@ -1776,12 +1786,9 @@ export default function App() {
         </div>
 
         {setupNeeded && (
-          <div className="setup-banner">
-            <p>Link this Mac to start receiving Signal messages.</p>
-            <button type="button" className="action-btn primary" onClick={openDeviceLinkSetup}>
-              Open device link
-            </button>
-          </div>
+          <button type="button" className="ghost-btn" onClick={openDeviceLinkSetup}>
+            Link device
+          </button>
         )}
 
         <div className={`ai-pill ${ai?.configured && ai.ollama_reachable ? "ok" : "warn"}`}>
@@ -1792,12 +1799,10 @@ export default function App() {
             : "AI · not configured"}
         </div>
 
-        {autoSettings?.enabled && (
-          <div className="auto-global-banner">Auto-reply ON</div>
-        )}
-        {ivrSettings?.enabled && (
-          <div className="auto-global-banner ivr">Buyer menu ON</div>
-        )}
+        <div className="rail-chips">
+          {autoSettings?.enabled && <span className="rail-chip">Auto ON</span>}
+          {ivrSettings?.enabled && <span className="rail-chip">Menu ON</span>}
+        </div>
 
         <nav className="nav">
           {NAV_ITEMS.map(({ id, label, ico }) => (
@@ -1819,7 +1824,7 @@ export default function App() {
               {id === "orders" && orders.length > 0 && (
                 <span className="nav-count">{orders.length}</span>
               )}
-              {id === "outbox" &&
+              {id === "inbox" &&
                 outboxSummary &&
                 outboxSummary.queued + outboxSummary.sending + outboxSummary.failed > 0 && (
                   <span className="nav-count">
@@ -1843,391 +1848,784 @@ export default function App() {
         </div>
       </aside>
 
-      {panel === "threads" && (
-        <section className="thread-col">
-          <header className="col-head">Threads</header>
-          <div className="compose-strip">
-            <input
-              placeholder="New message — +15551234567"
-              value={newDmPhone}
-              onChange={(e) => setNewDmPhone(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && void openNewDm()}
-            />
-            <button type="button" className="send-btn" onClick={() => void openNewDm()}>
-              Open
-            </button>
-          </div>
-          <div className="filter-strip">
-            <input
-              placeholder="Filter threads…"
-              value={threadFilter.q}
-              onChange={(e) => setThreadFilter((f) => ({ ...f, q: e.target.value }))}
-            />
-            <select
-              aria-label="Thread type"
-              value={threadFilter.kind}
-              onChange={(e) =>
-                setThreadFilter((f) => ({
-                  ...f,
-                  kind: e.target.value as "all" | "dm" | "group",
-                }))
-              }
-            >
-              <option value="all">All types</option>
-              <option value="dm">DMs</option>
-              <option value="group">Groups</option>
-            </select>
-            <label className="filter-check">
-              <input
-                type="checkbox"
-                checked={threadFilter.unread}
-                onChange={(e) => setThreadFilter((f) => ({ ...f, unread: e.target.checked }))}
-              />
-              Unread
-            </label>
-            <label className="filter-check">
-              <input
-                type="checkbox"
-                checked={threadFilter.pending}
-                onChange={(e) => setThreadFilter((f) => ({ ...f, pending: e.target.checked }))}
-              />
-              Pending
-            </label>
-            <span className="col-meta">
-              {filteredThreads.length}/{threads.length}
-            </span>
-          </div>
-          <div className="thread-list">
-            {threads.length === 0 && (
-              <p className="empty">No threads yet — open a chat above or wait for Signal traffic.</p>
-            )}
-            {threads.length > 0 && filteredThreads.length === 0 && (
-              <p className="empty">No threads match these filters.</p>
-            )}
-            {filteredThreads.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                className={selectedId === t.id ? "thread-row active" : "thread-row"}
-                onClick={() => {
-                  setSelectedId(t.id);
-                  setPanel("threads");
-                }}
-              >
-                <span className="avatar-dot" aria-hidden>
-                  {initials(threadTitle(t.id, contacts, groups))}
-                </span>
-                <div className="thread-row-body">
-                  <div className="thread-row-top">
-                    <span className="thread-name">{threadTitle(t.id, contacts, groups)}</span>
-                    <span className="thread-time">{fmtTime(t.last_message_timestamp)}</span>
-                  </div>
-                  <div className="thread-row-meta">
-                    {t.unread_count > 0 && <span className="badge">{t.unread_count}</span>}
-                    {t.outbox_count > 0 && <span className="badge muted">{t.outbox_count} pending</span>}
-                  </div>
+      {menuBuilderOpen ? (
+        <IvrMenuComposer
+          layout="page"
+          menus={ivrMenusDraft}
+          busy={ivrMenusBusy}
+          error={ivrMenusError}
+          previewSteps={ivrPreviewSteps}
+          products={products}
+          onChange={setIvrMenusDraft}
+          onSave={() => void saveIvrMenusDraft()}
+          onReload={() => void loadIvrMenusEditor()}
+          onResetDemo={() => void resetIvrMenusDemo()}
+          onPreview={(inputs) => void previewIvrPath(inputs)}
+          onClose={() => setMenuBuilderOpen(false)}
+          listHeader={
+            ivrSettings ? (
+              <div className="settings-card" style={{ marginBottom: 10 }}>
+                <div className="settings-card-head">
+                  <h3>Buyer menu</h3>
+                  <span className={`status-pill status-${ivrSettings.enabled ? "ok" : "muted"}`}>
+                    {ivrSettings.enabled ? "ON" : "OFF"}
+                  </span>
                 </div>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {panel === "search" && (
-        <section className="thread-col">
-          <header className="col-head">Search</header>
-          <div className="search-box">
-            <input
-              value={searchQ}
-              onChange={(e) => setSearchQ(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && void onSearch()}
-              placeholder="Search messages…"
-            />
-            <button type="button" onClick={() => void onSearch()}>
-              Go
-            </button>
-          </div>
-          <div className="thread-list">
-            {searchHits.map((h) => (
-              <button
-                key={`${h.thread_id}-${h.message_id}`}
-                type="button"
-                className="thread-row"
-                onClick={() => {
-                  setSelectedId(h.thread_id);
-                  setPanel("threads");
-                }}
-              >
-                <span className="avatar-dot" aria-hidden>
-                  {initials(threadTitle(h.thread_id, contacts, groups))}
-                </span>
-                <div className="thread-row-body">
-                  <div className="thread-row-top">
-                    <span className="thread-name">{threadTitle(h.thread_id, contacts, groups)}</span>
-                    <span className="thread-time">{fmtTime(h.timestamp)}</span>
-                  </div>
-                  <div className="snippet">{h.snippet}</div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {panel === "contacts" && (
-        <section className="thread-col">
-          <header className="col-head">Contacts</header>
-          <div className="pane-section">
-            <h3 className="pane-section-title">Create new contact</h3>
-            <div className="compose-strip stacked" style={{ border: 0, padding: 0 }}>
-              <input
-                placeholder="+15551234567"
-                value={contactForm.phone}
-                onChange={(e) => setContactForm((f) => ({ ...f, phone: e.target.value }))}
-              />
-              <input
-                placeholder="Display name (optional)"
-                value={contactForm.name}
-                onChange={(e) => setContactForm((f) => ({ ...f, name: e.target.value }))}
-                onKeyDown={(e) => e.key === "Enter" && void addContact()}
-              />
-              <button type="button" className="send-btn" onClick={() => void addContact()}>
-                Add contact
-              </button>
-            </div>
-          </div>
-          {contacts.length > 0 && (
-            <div className="pane-section">
-              <h3 className="pane-section-title">Manage contacts</h3>
-              <div className="filter-strip" style={{ border: 0, padding: 0 }}>
-                <input
-                  placeholder="Filter contacts…"
-                  value={contactFilter.q}
-                  onChange={(e) => setContactFilter((f) => ({ ...f, q: e.target.value }))}
-                />
-                <label className="filter-check">
+                <label className="toggle compact">
                   <input
                     type="checkbox"
-                    checked={contactFilter.favorites}
-                    onChange={(e) => setContactFilter((f) => ({ ...f, favorites: e.target.checked }))}
+                    checked={ivrSettings.enabled}
+                    onChange={(e) => void saveIvrSettings({ enabled: e.target.checked })}
                   />
-                  Favorites
+                  Master
                 </label>
-                <label className="filter-check">
+                <label className="toggle compact">
                   <input
                     type="checkbox"
-                    checked={contactFilter.hideMuted}
-                    onChange={(e) => setContactFilter((f) => ({ ...f, hideMuted: e.target.checked }))}
+                    checked={ivrSettings.require_allowlist}
+                    onChange={(e) => void saveIvrSettings({ require_allowlist: e.target.checked })}
                   />
-                  Hide muted
+                  Allowlist only
                 </label>
-                <label className="filter-check">
+                <label className="toggle compact">
                   <input
                     type="checkbox"
-                    checked={contactFilter.autoOnly}
-                    onChange={(e) => setContactFilter((f) => ({ ...f, autoOnly: e.target.checked }))}
+                    checked={!!ivrSettings.hide_zero_stock}
+                    onChange={(e) => void saveIvrSettings({ hide_zero_stock: e.target.checked })}
                   />
-                  Auto-reply
+                  Hide zero stock
                 </label>
-                <span className="col-meta">
-                  {filteredContacts.length}/{contacts.length}
-                </span>
               </div>
+            ) : null
+          }
+        />
+      ) : panel === "inbox" ? (
+        <>
+          <section className="thread-col">
+            <header className="col-head">Inbox</header>
+            <div className="search-box">
+              <input
+                placeholder="Search threads and messages…"
+                value={threadFilter.q || searchQ}
+                onChange={(e) => {
+                  setThreadFilter((f) => ({ ...f, q: e.target.value }));
+                  setSearchQ(e.target.value);
+                }}
+                onKeyDown={(e) => e.key === "Enter" && void onSearch()}
+              />
+              <button type="button" onClick={() => void onSearch()}>
+                Search
+              </button>
             </div>
-          )}
-          <div className="thread-list">
-            {contacts.length === 0 && (
-              <p className="empty">No contacts yet — add one above.</p>
-            )}
-            {contacts.length > 0 && filteredContacts.length === 0 && (
-              <p className="empty">No contacts match these filters.</p>
-            )}
-            {filteredContacts.map((c) => (
-              <button
-                key={c.contact_id}
-                type="button"
-                className="thread-row"
-                onClick={() => {
-                  const tid = c.contact_id.startsWith("dm:")
-                    ? c.contact_id
-                    : `dm:${c.contact_id}`;
-                  setSelectedId(tid);
-                  setPanel("threads");
-                }}
-              >
-                <span className="avatar-dot" aria-hidden>
-                  {initials(c.display_name || c.alias || c.contact_id)}
-                </span>
-                <div className="thread-row-body">
-                  <div className="thread-row-top">
-                    <span className="thread-name">
-                      {c.display_name || c.alias || c.contact_id}
-                    </span>
-                    {c.auto_reply_enabled && <span className="badge danger">Auto</span>}
-                  </div>
-                  <div className="convo-sub">{c.contact_id}</div>
-                </div>
+            <div className="filter-chips" role="tablist" aria-label="Inbox filters">
+              {(
+                [
+                  ["all", "All"],
+                  ["unread", "Unread"],
+                  ["needs_send", "Needs send"],
+                  ["dms", "DMs"],
+                  ["groups", "Groups"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={inboxChip === id ? "filter-chip active" : "filter-chip"}
+                  onClick={() => setInboxChip(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="compose-strip">
+              <input
+                placeholder="New chat — +15551234567"
+                value={newDmPhone}
+                onChange={(e) => setNewDmPhone(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && void openNewDm()}
+              />
+              <button type="button" className="send-btn" onClick={() => void openNewDm()}>
+                Open
               </button>
-            ))}
-          </div>
-        </section>
-      )}
+            </div>
+            {searchHits.length > 0 && (
+              <div className="thread-list" style={{ maxHeight: 160 }}>
+                {searchHits.map((h) => (
+                  <button
+                    key={h.message_id}
+                    type="button"
+                    className="thread-row"
+                    onClick={() => {
+                      setSelectedId(h.thread_id);
+                      setSearchHits([]);
+                    }}
+                  >
+                    <div className="thread-row-body">
+                      <div className="thread-row-top">
+                        <span className="thread-name">{threadTitle(h.thread_id, contacts, groups)}</span>
+                        <span className="thread-time">{fmtTime(h.timestamp)}</span>
+                      </div>
+                      <div className="thread-preview">{h.snippet}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="thread-list">
+              {threads.length === 0 && (
+                <p className="empty">No threads yet — open a chat above or wait for Signal traffic.</p>
+              )}
+              {threads.length > 0 && filteredThreads.length === 0 && (
+                <p className="empty">No threads match these filters.</p>
+              )}
+              {filteredThreads.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={selectedId === t.id ? "thread-row active" : "thread-row"}
+                  onClick={() => setSelectedId(t.id)}
+                >
+                  <span className="avatar-dot" aria-hidden>
+                    {initials(threadTitle(t.id, contacts, groups))}
+                  </span>
+                  <div className="thread-row-body">
+                    <div className="thread-row-top">
+                      <span className="thread-name">{threadTitle(t.id, contacts, groups)}</span>
+                      <span className="thread-time">{fmtTime(t.last_message_timestamp)}</span>
+                    </div>
+                    <div className="thread-preview">{t.last_preview || "No messages yet"}</div>
+                    <div className="thread-row-meta">
+                      {t.unread_count > 0 && <span className="badge">{t.unread_count}</span>}
+                      {t.outbox_count > 0 && <span className="badge muted">{t.outbox_count} pending</span>}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
 
-      {panel === "groups" && (
-        <section className="thread-col">
-          <header className="col-head">Groups</header>
-          <div className="compose-strip stacked">
-            <p className="hint tight">
-              Creates a real Signal group via signal-cli. Members must be +E164 numbers.
-            </p>
-            <input
-              placeholder="Group name"
-              value={groupForm.name}
-              onChange={(e) => setGroupForm((f) => ({ ...f, name: e.target.value }))}
-            />
-            <input
-              placeholder="Members +1555…, +1444…"
-              value={groupForm.members}
-              onChange={(e) => setGroupForm((f) => ({ ...f, members: e.target.value }))}
-              onKeyDown={(e) => e.key === "Enter" && void createGroup()}
-            />
-            <button type="button" className="send-btn" onClick={() => void createGroup()}>
-              Create group
-            </button>
-          </div>
-          <div className="filter-strip">
-            <input
-              placeholder="Filter groups…"
-              value={groupFilter.q}
-              onChange={(e) => setGroupFilter((f) => ({ ...f, q: e.target.value }))}
-            />
-            <label className="filter-check">
-              <input
-                type="checkbox"
-                checked={groupFilter.favorites}
-                onChange={(e) => setGroupFilter((f) => ({ ...f, favorites: e.target.checked }))}
-              />
-              Favorites
-            </label>
-            <label className="filter-check">
-              <input
-                type="checkbox"
-                checked={groupFilter.hideMuted}
-                onChange={(e) => setGroupFilter((f) => ({ ...f, hideMuted: e.target.checked }))}
-              />
-              Hide muted
-            </label>
-            <label className="filter-check">
-              <input
-                type="checkbox"
-                checked={groupFilter.autoOnly}
-                onChange={(e) => setGroupFilter((f) => ({ ...f, autoOnly: e.target.checked }))}
-              />
-              Auto-reply
-            </label>
-            <span className="col-meta">
-              {filteredGroups.length}/{groups.length}
-            </span>
-          </div>
-          <div className="thread-list">
-            {groups.length === 0 && (
-              <p className="empty">No groups yet — create one above.</p>
-            )}
-            {groups.length > 0 && filteredGroups.length === 0 && (
-              <p className="empty">No groups match these filters.</p>
-            )}
-            {filteredGroups.map((g) => (
-              <button
-                key={g.group_id}
-                type="button"
-                className="thread-row"
-                onClick={() => {
-                  setSelectedId(g.group_id.startsWith("group:") ? g.group_id : `group:${g.group_id}`);
-                  setPanel("threads");
-                }}
-              >
-                <span className="avatar-dot" aria-hidden>
-                  {initials(g.display_name || g.group_id)}
-                </span>
-                <div className="thread-row-body">
-                  <div className="thread-row-top">
-                    <span className="thread-name">{g.display_name || g.group_id}</span>
-                    {g.auto_reply_enabled && <span className="badge danger">Auto</span>}
+          <main className="convo">
+            {!selectedId ? (
+              <div className="convo-empty">
+                <h1>Inbox</h1>
+                <p>Select a thread to read and reply. The profile column stays open.</p>
+              </div>
+            ) : (
+              <>
+                <header className="convo-head">
+                  <div>
+                    <h2>{title}</h2>
+                    <div className="convo-sub wrap">{selectedId}</div>
+                  </div>
+                  <div className="convo-actions">
+                    <label className="toggle compact">
+                      <input
+                        type="checkbox"
+                        checked={!!threadIvr?.enabled}
+                        disabled={!!selectedId?.startsWith("group:")}
+                        onChange={(e) => void toggleThreadIvr(e.target.checked)}
+                      />
+                      Buyer menu
+                    </label>
+                    <label className="toggle compact">
+                      <input
+                        type="checkbox"
+                        checked={!!threadAuto?.opted_in}
+                        onChange={(e) => void toggleThreadAuto(e.target.checked)}
+                      />
+                      Auto-reply
+                    </label>
+                    <button type="button" className="ghost-btn" onClick={() => void onExportThread()}>
+                      Export
+                    </button>
+                  </div>
+                </header>
+                {summaryText && (
+                  <div className="summary-box">
+                    <div className="summary-head">
+                      <strong>Summary</strong>
+                      <button type="button" className="ghost-btn" onClick={() => setSummaryText(null)}>
+                        Dismiss
+                      </button>
+                    </div>
+                    <pre>{summaryText}</pre>
+                  </div>
+                )}
+                <div className="msg-scroll">
+                  {messages.map((m) => (
+                    <div key={m.id} className={isOutgoing(m) ? "bubble out" : "bubble in"}>
+                      <div className="bubble-meta">
+                        <span>{isOutgoing(m) ? "You" : m.sender}</span>
+                        <span>{fmtTime(m.timestamp)}</span>
+                      </div>
+                      <div className="bubble-body">{m.content}</div>
+                    </div>
+                  ))}
+                  {outbox.map((o) => (
+                    <div key={o.id} className={`bubble out pending state-${o.state}`}>
+                      <div className="bubble-meta">
+                        <span>{o.state}</span>
+                        <span>{fmtTime(o.created_at)}</span>
+                      </div>
+                      <div className="bubble-body">{o.content}</div>
+                      {o.last_error && <div className="bubble-err">{o.last_error}</div>}
+                      <div className="bubble-actions">
+                        {o.state === "failed" && (
+                          <button type="button" onClick={() => void onRetry(o.id)}>
+                            Retry
+                          </button>
+                        )}
+                        <button type="button" onClick={() => void onDeleteOutbox(o.id)}>
+                          Discard
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <div ref={bottomRef} />
+                </div>
+                {status && (
+                  <div className="status-bar">
+                    <span>{status}</span>
+                    <button type="button" className="ghost-btn" onClick={() => setStatus(null)}>
+                      Dismiss
+                    </button>
+                  </div>
+                )}
+                <div className="composer">
+                  {attachPreview && (
+                    <div className="attach-chip">
+                      <img src={attachPreview} alt="" />
+                      <span>{attachFile?.name || "Attachment"}</span>
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        onClick={() => {
+                          setAttachFile(null);
+                          if (attachPreview) URL.revokeObjectURL(attachPreview);
+                          setAttachPreview(null);
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                  <div className="composer-row">
+                    <label className="attach-btn" title="Attach image or file">
+                      <IconImage />
+                      <input
+                        type="file"
+                        accept="image/*,.pdf,.txt,.csv"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] || null;
+                          setAttachFile(file);
+                          if (attachPreview) URL.revokeObjectURL(attachPreview);
+                          setAttachPreview(file ? URL.createObjectURL(file) : null);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                    <textarea
+                      value={composer}
+                      onChange={(e) => setComposer(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          void onSend();
+                        }
+                      }}
+                      placeholder="Write a message… (Enter to send, Shift+Enter for newline)"
+                      rows={3}
+                    />
+                    <button
+                      type="button"
+                      className="send-btn"
+                      disabled={sending || restartRequired || (!composer.trim() && !attachFile)}
+                      onClick={() => void onSend()}
+                    >
+                      {sending ? "…" : "Send"}
+                    </button>
                   </div>
                 </div>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
+              </>
+            )}
+          </main>
 
-      {panel === "products" && (
-        <section className="thread-col wide">
-          <header className="col-head">
-            Catalog
-            <span className="col-meta">
-              {filteredProducts.length}/{products.length} products
-            </span>
-          </header>
-          <div className="settings-body">
-            <div className="filter-strip in-panel">
+          <ProfileRail
+            threadId={selectedId}
+            title={title}
+            initials={initials(title)}
+            contact={profileContact}
+            customer={profileCustomer}
+            orders={orders}
+            products={products}
+            participants={threads.find((t) => t.id === selectedId)?.participants}
+            ai={ai}
+            aiBusy={aiBusy}
+            ivrEnabled={!!threadIvr?.enabled}
+            ivrEffective={!!threadIvr?.effective}
+            ivrHandedOff={!!threadIvr?.handed_off}
+            ivrHint={ivrHint}
+            onStatus={setStatus}
+            onSetComposer={setComposer}
+            onDraft={(intent) => void onDraft(intent)}
+            onSummarize={onSummarize}
+            onLinkCustomer={() => void linkCustomerFromThread()}
+            onOpenOrders={() => {
+              setOrderFilter((f) => ({ ...f, thisThread: true, q: "" }));
+              setPanel("orders");
+            }}
+            onOpenPeople={() => {
+              if (profileCustomer) setPeopleSel({ kind: "customer", id: profileCustomer.id });
+              else if (selectedId) setPeopleSel({ kind: "person", id: selectedId });
+              setPanel("people");
+            }}
+            onSendInvoice={(id) => void sendInvoice(id)}
+            onSendQuote={(id) => void sendQuote(id)}
+            onMarkPaid={(id) => void setOrderLifecycle(id, "paid")}
+            onResumeMenu={() => void resumeIvrBot()}
+            onPlaceOrder={() => {
+              setPanel("orders");
+              setSelectedOrderId(null);
+            }}
+            onToggleFavorite={(next) => {
+              if (!selectedId) return;
+              void (async () => {
+                const res = await api.setContactMeta(selectedId, { favorite: next });
+                if (!res.success) setStatus(res.error);
+                else await refreshMeta();
+              })();
+            }}
+            onToggleMute={(next) => {
+              if (!selectedId) return;
+              void (async () => {
+                const res = await api.setContactMeta(selectedId, { muted: next });
+                if (!res.success) setStatus(res.error);
+                else await refreshMeta();
+              })();
+            }}
+            onSaveNotes={(notes) => {
+              void (async () => {
+                if (!profileCustomer) {
+                  setStatus("Link as customer before saving notes");
+                  return;
+                }
+                const res = await api.upsertCustomer({ ...profileCustomer, notes });
+                if (!res.success) setStatus(res.error);
+                else {
+                  setStatus("Notes saved");
+                  await refreshMeta();
+                }
+              })();
+            }}
+          />
+        </>
+      ) : panel === "people" ? (
+        <>
+          <section className="thread-col">
+            <header className="col-head">People</header>
+            <div className="search-box">
+              <input
+                placeholder="Search directory…"
+                value={contactFilter.q}
+                onChange={(e) => {
+                  const q = e.target.value;
+                  setContactFilter((f) => ({ ...f, q }));
+                  setGroupFilter((f) => ({ ...f, q }));
+                  setCustomerFilter((f) => ({ ...f, q }));
+                }}
+              />
+            </div>
+            <div className="filter-chips">
+              {(
+                [
+                  ["all", "All"],
+                  ["people", "People"],
+                  ["groups", "Groups"],
+                  ["customers", "Customers"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={peopleChip === id ? "filter-chip active" : "filter-chip"}
+                  onClick={() => setPeopleChip(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="thread-list">
+              {peopleRows.length === 0 && <p className="empty">No people yet — create a contact or group.</p>}
+              {peopleRows.map((row) => (
+                <button
+                  key={row.key}
+                  type="button"
+                  className={
+                    peopleSel && peopleSel.kind === row.kind && peopleSel.id === row.id
+                      ? "thread-row active"
+                      : "thread-row"
+                  }
+                  onClick={() => setPeopleSel({ kind: row.kind, id: row.id })}
+                >
+                  <span className="avatar-dot">{initials(row.name)}</span>
+                  <div className="thread-row-body">
+                    <div className="thread-row-top">
+                      <span className="thread-name">{row.name}</span>
+                    </div>
+                    <div className="convo-sub">{row.meta}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+          <main className="convo work-pane">
+            {!peopleSel ? (
+              <div className="hero-block">
+                <h2>New record</h2>
+                <div className="form-card">
+                  <h3 className="form-card-title">Create contact</h3>
+                  <input
+                    placeholder="Phone +15551234567"
+                    value={contactForm.phone}
+                    onChange={(e) => setContactForm((f) => ({ ...f, phone: e.target.value }))}
+                  />
+                  <input
+                    placeholder="Display name"
+                    value={contactForm.name}
+                    onChange={(e) => setContactForm((f) => ({ ...f, name: e.target.value }))}
+                  />
+                  <button type="button" className="send-btn" onClick={() => void addContact()}>
+                    Save contact
+                  </button>
+                </div>
+                <div className="form-card">
+                  <h3 className="form-card-title">Create group</h3>
+                  <input
+                    placeholder="Group name"
+                    value={groupForm.name}
+                    onChange={(e) => setGroupForm((f) => ({ ...f, name: e.target.value }))}
+                  />
+                  <input
+                    placeholder="Members +1555…, +1444…"
+                    value={groupForm.members}
+                    onChange={(e) => setGroupForm((f) => ({ ...f, members: e.target.value }))}
+                  />
+                  <button type="button" className="send-btn" onClick={() => void createGroup()}>
+                    Create group
+                  </button>
+                </div>
+              </div>
+            ) : (
+              (() => {
+                const person =
+                  peopleSel.kind === "person"
+                    ? contacts.find((c) => c.contact_id === peopleSel.id)
+                    : null;
+                const group =
+                  peopleSel.kind === "group"
+                    ? groups.find((g) => g.group_id === peopleSel.id)
+                    : null;
+                const customer =
+                  peopleSel.kind === "customer"
+                    ? customers.find((c) => c.id === peopleSel.id)
+                    : person
+                      ? customers.find((c) => {
+                          const tid = person.contact_id.startsWith("dm:")
+                            ? person.contact_id
+                            : `dm:${person.contact_id}`;
+                          return c.thread_id === tid;
+                        })
+                      : null;
+                const threadId = group
+                  ? group.group_id.startsWith("group:")
+                    ? group.group_id
+                    : `group:${group.group_id}`
+                  : customer?.thread_id ||
+                    (person
+                      ? person.contact_id.startsWith("dm:")
+                        ? person.contact_id
+                        : `dm:${person.contact_id}`
+                      : "");
+                const name =
+                  person?.display_name ||
+                  person?.alias ||
+                  group?.display_name ||
+                  customer?.display_name ||
+                  threadId;
+                const relatedOrders = orders.filter(
+                  (o) => o.thread_id === threadId || (customer && o.customer_id === customer.id),
+                );
+                return (
+                  <div className="hero-block">
+                    <h2 className="wrap">{name}</h2>
+                    <div className="convo-sub wrap">{threadId}</div>
+                    {customer && (
+                      <label className="field-stack">
+                        <span className="field-label">Notes</span>
+                        <textarea
+                          className="product-desc"
+                          rows={4}
+                          defaultValue={customer.notes}
+                          key={customer.id}
+                          onBlur={(e) => {
+                            void api.upsertCustomer({ ...customer, notes: e.target.value }).then((r) => {
+                              if (!r.success) setStatus(r.error);
+                              else void refreshMeta();
+                            });
+                          }}
+                        />
+                      </label>
+                    )}
+                    {person && (
+                      <div className="profile-toggles">
+                        <label className="toggle compact">
+                          <input
+                            type="checkbox"
+                            checked={person.favorite}
+                            onChange={(e) => {
+                              void api.setContactMeta(threadId, { favorite: e.target.checked }).then(() => refreshMeta());
+                            }}
+                          />
+                          Favorite
+                        </label>
+                        <label className="toggle compact">
+                          <input
+                            type="checkbox"
+                            checked={person.muted}
+                            onChange={(e) => {
+                              void api.setContactMeta(threadId, { muted: e.target.checked }).then(() => refreshMeta());
+                            }}
+                          />
+                          Muted
+                        </label>
+                      </div>
+                    )}
+                    <p className="hint tight">
+                      {relatedOrders.length} related order{relatedOrders.length === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                );
+              })()
+            )}
+          </main>
+          <aside className="profile-rail">
+            {peopleSel ? (
+              (() => {
+                const group =
+                  peopleSel.kind === "group"
+                    ? groups.find((g) => g.group_id === peopleSel.id)
+                    : null;
+                const person =
+                  peopleSel.kind === "person"
+                    ? contacts.find((c) => c.contact_id === peopleSel.id)
+                    : null;
+                const customer =
+                  peopleSel.kind === "customer"
+                    ? customers.find((c) => c.id === peopleSel.id)
+                    : null;
+                const threadId = group
+                  ? group.group_id.startsWith("group:")
+                    ? group.group_id
+                    : `group:${group.group_id}`
+                  : customer?.thread_id ||
+                    (person
+                      ? person.contact_id.startsWith("dm:")
+                        ? person.contact_id
+                        : `dm:${person.contact_id}`
+                      : "");
+                const related = orders.filter((o) => o.thread_id === threadId).slice(0, 8);
+                return (
+                  <>
+                    <div className="profile-section">
+                      <div className="profile-section-title">Actions</div>
+                      <button
+                        type="button"
+                        className="action-btn primary"
+                        onClick={() => {
+                          setSelectedId(threadId);
+                          setPanel("inbox");
+                        }}
+                      >
+                        Open chat
+                      </button>
+                      {!threadId.startsWith("group:") && (
+                        <button
+                          type="button"
+                          className="action-btn"
+                          onClick={() => {
+                            setSelectedId(threadId);
+                            setSelectedOrderId(null);
+                            setPanel("orders");
+                          }}
+                        >
+                          Place order
+                        </button>
+                      )}
+                      {customer && (
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          onClick={() => void removeCustomer(customer.id).then(() => setPeopleSel(null))}
+                        >
+                          Unlink customer
+                        </button>
+                      )}
+                      {!threadId.startsWith("group:") && (
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          onClick={() => void addToAllowlist("ivr", threadId)}
+                        >
+                          Allow buyer menu
+                        </button>
+                      )}
+                    </div>
+                    <div className="profile-section">
+                      <div className="profile-section-title">Threads</div>
+                      <button
+                        type="button"
+                        className="thread-row"
+                        onClick={() => {
+                          setSelectedId(threadId);
+                          setPanel("inbox");
+                        }}
+                      >
+                        <div className="thread-row-body">
+                          <span className="thread-name wrap">{threadTitle(threadId, contacts, groups)}</span>
+                          <div className="convo-sub wrap">{threadId}</div>
+                        </div>
+                      </button>
+                    </div>
+                    <div className="profile-section">
+                      <div className="profile-section-title">Orders</div>
+                      {related.length === 0 && <p className="hint tight">No orders.</p>}
+                      {related.map((o) => (
+                        <button
+                          key={o.id}
+                          type="button"
+                          className="thread-row"
+                          onClick={() => {
+                            setSelectedOrderId(o.id);
+                            setPanel("orders");
+                          }}
+                        >
+                          <div className="thread-row-body">
+                            <div className="thread-row-top">
+                              <span className="thread-name">{o.id.slice(0, 8)}</span>
+                              <span className={`status-pill status-${orderStatusTone(o.status)}`}>{o.status}</span>
+                            </div>
+                            <div className="convo-sub">{money(o.total_cents)}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()
+            ) : (
+              <div className="profile-empty">
+                <strong>Related</strong>
+                <p>Select a person or group to see threads and orders.</p>
+              </div>
+            )}
+          </aside>
+        </>
+      ) : panel === "catalog" ? (
+        <>
+          <section className="thread-col">
+            <header className="col-head">
+              Catalog
+              <div className="menu-overflow">
+                <button type="button" className="ghost-btn" onClick={() => setCsvMenuOpen((o) => !o)}>
+                  ⋯
+                </button>
+                {csvMenuOpen && (
+                  <div className="menu-overflow-panel">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCsvMenuOpen(false);
+                        void exportProductsCsv();
+                      }}
+                    >
+                      Export CSV
+                    </button>
+                    <label>
+                      Import CSV
+                      <input
+                        type="file"
+                        accept=".csv,text/csv"
+                        hidden
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] || null;
+                          setCsvMenuOpen(false);
+                          void importProductsCsvFile(file);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCsvMenuOpen(false);
+                        setMenuBuilderOpen(true);
+                        void loadIvrMenusEditor();
+                      }}
+                    >
+                      Open menu builder
+                    </button>
+                  </div>
+                )}
+              </div>
+            </header>
+            <div className="search-box">
               <input
                 placeholder="Filter catalog…"
                 value={productFilter.q}
                 onChange={(e) => setProductFilter((f) => ({ ...f, q: e.target.value }))}
               />
-              <select
-                aria-label="Stock filter"
-                value={productFilter.stock}
-                onChange={(e) =>
-                  setProductFilter((f) => ({
-                    ...f,
-                    stock: e.target.value as "all" | "in" | "out" | "low",
-                  }))
-                }
-              >
-                <option value="all">All stock</option>
-                <option value="in">In stock</option>
-                <option value="out">Out of stock</option>
-                <option value="low">Below threshold</option>
-              </select>
-              <select
-                aria-label="Unit filter"
-                value={productFilter.unit}
-                onChange={(e) => setProductFilter((f) => ({ ...f, unit: e.target.value }))}
-              >
-                {productUnits.map((u) => (
-                  <option key={u} value={u}>
-                    {u === "all" ? "All units" : `Unit: ${u}`}
-                  </option>
-                ))}
-              </select>
-              <label className="filter-check">
-                <input
-                  type="checkbox"
-                  checked={productFilter.hasImage}
-                  onChange={(e) => setProductFilter((f) => ({ ...f, hasImage: e.target.checked }))}
-                />
-                Has image
-              </label>
-              <button type="button" className="ghost-btn" onClick={() => void exportProductsCsv()}>
-                Export CSV
-              </button>
-              <label className="ghost-btn file-pick-btn">
-                Import CSV
-                <input
-                  type="file"
-                  accept=".csv,text/csv"
-                  hidden
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] || null;
-                    void importProductsCsvFile(file);
-                    e.target.value = "";
-                  }}
-                />
-              </label>
             </div>
-            <div className="product-form">
+            <button
+              type="button"
+              className="ghost-btn"
+              style={{ margin: "8px 12px" }}
+              onClick={() => {
+                resetProductForm();
+                setSelectedProductId(null);
+              }}
+            >
+              New product
+            </button>
+            <div className="thread-list">
+              {filteredProducts.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={selectedProductId === p.id ? "thread-row active" : "thread-row"}
+                  onClick={() => void editProduct(p)}
+                >
+                  {p.image_path ? (
+                    <span className="avatar-dot">{initials(p.name)}</span>
+                  ) : (
+                    <span className="avatar-dot">{initials(p.name)}</span>
+                  )}
+                  <div className="thread-row-body">
+                    <div className="thread-row-top">
+                      <span className="thread-name">{p.name}</span>
+                    </div>
+                    <div className="convo-sub">
+                      {productPriceLabel(p)} · {productStockLabel(p)}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+          <main className="convo work-pane">
+            {!selectedProductId ? (
+              <div className="hero-block">
+                <h2>New product</h2>
+                            <div className="product-form">
               <div className="form-card">
                 <h3 className="form-card-title">
                   {productForm.id ? "Edit product" : "New product"} — Basic details
@@ -2492,684 +2890,656 @@ export default function App() {
                 )}
               </div>
             </div>
-            <div className="thread-list">
-              {products.length === 0 && <p className="hint">No products yet — add one above.</p>}
-              {products.length > 0 && filteredProducts.length === 0 && (
-                <p className="hint">No products match these filters.</p>
-              )}
-              {filteredProducts.map((p) => {
+
+              </div>
+            ) : (
+              (() => {
+                const p = products.find((x) => x.id === selectedProductId);
+                if (!p) return <p className="empty">Product not found.</p>;
                 return (
-                  <div key={p.id} className="thread-row product-row">
+                  <div className="hero-block">
+                    <h2 className="wrap">{p.name}</h2>
+                    {productImagePreview && (
+                      <div className="product-hero">
+                        <img src={productImagePreview} alt="" />
+                      </div>
+                    )}
+                    <p className="wrap">{p.description || "No description"}</p>
+                    <p className="convo-sub wrap">
+                      SKU {p.sku || "—"} · {productPriceLabel(p)} · {productStockLabel(p)}
+                    </p>
+                                <div className="product-form">
+              <div className="form-card">
+                <h3 className="form-card-title">
+                  {productForm.id ? "Edit product" : "New product"} — Basic details
+                </h3>
+                <input
+                  placeholder="Product name"
+                  value={productForm.name}
+                  onChange={(e) => setProductForm((f) => ({ ...f, name: e.target.value }))}
+                />
+                <textarea
+                  className="product-desc"
+                  placeholder="Short description for operators and invoices (optional)"
+                  rows={2}
+                  value={productForm.description}
+                  onChange={(e) => setProductForm((f) => ({ ...f, description: e.target.value }))}
+                />
+                <input
+                  placeholder="Supplier / source (optional)"
+                  value={productForm.supplier}
+                  onChange={(e) => setProductForm((f) => ({ ...f, supplier: e.target.value }))}
+                />
+                <label
+                  className={`dropzone ${imageDragOver ? "dragover" : ""}`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setImageDragOver(true);
+                  }}
+                  onDragLeave={() => setImageDragOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setImageDragOver(false);
+                    const file = e.dataTransfer.files?.[0] || null;
+                    if (file && file.type.startsWith("image/")) applyProductImageFile(file);
+                  }}
+                >
+                  <IconImage />
+                  {productImagePreview ? (
+                    <>
+                      <strong>Image selected</strong>
+                      <span>Drop a new file to replace, or remove below</span>
+                    </>
+                  ) : (
+                    <>
+                      <strong>Drop product image</strong>
+                      <span>or click to browse · PNG, JPEG, WebP, GIF</span>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      applyProductImageFile(file);
+                    }}
+                  />
+                </label>
+                {productImagePreview && (
+                  <div className="product-image-preview">
+                    <img src={productImagePreview} alt="" />
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      onClick={() => {
+                        setProductImageFile(null);
+                        setProductImagePreview(null);
+                        setClearProductImageFlag(true);
+                      }}
+                    >
+                      Remove image
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="form-card">
+                <h3 className="form-card-title">Units &amp; pricing</h3>
+                <div className="form-grid-2">
+                  <input
+                    placeholder="Sell price / base unit (USD)"
+                    value={productForm.price}
+                    onChange={(e) => setProductForm((f) => ({ ...f, price: e.target.value }))}
+                  />
+                  <input
+                    placeholder="Cost / base unit (USD)"
+                    value={productForm.cost}
+                    onChange={(e) => setProductForm((f) => ({ ...f, cost: e.target.value }))}
+                  />
+                </div>
+                <div className="form-grid-2">
+                  <select
+                    aria-label="Base unit"
+                    value={productForm.baseUnit}
+                    onChange={(e) => setProductForm((f) => ({ ...f, baseUnit: e.target.value }))}
+                  >
+                    {UNIT_OPTIONS.map((u) => (
+                      <option key={u} value={u}>
+                        Base UOM: {u}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="Stock unit"
+                    value={productForm.stockUnit}
+                    onChange={(e) => setProductForm((f) => ({ ...f, stockUnit: e.target.value }))}
+                  >
+                    <option value="">Stock UOM: same as base</option>
+                    {UNIT_OPTIONS.map((u) => (
+                      <option key={u} value={u}>
+                        Stock UOM: {u}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="Sales unit"
+                    value={productForm.salesUnit}
+                    onChange={(e) => setProductForm((f) => ({ ...f, salesUnit: e.target.value }))}
+                  >
+                    <option value="">Sales UOM: same as base</option>
+                    {UNIT_OPTIONS.map((u) => (
+                      <option key={u} value={u}>
+                        Sales UOM: {u}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    placeholder="Stock amount (in stock UOM)"
+                    value={productForm.stock}
+                    onChange={(e) => setProductForm((f) => ({ ...f, stock: e.target.value }))}
+                  />
+                  <input
+                    placeholder="Low-stock alert (base units, blank = off)"
+                    value={productForm.lowStockThreshold}
+                    onChange={(e) =>
+                      setProductForm((f) => ({ ...f, lowStockThreshold: e.target.value }))
+                    }
+                  />
+                </div>
+
+                <div className="pack-manager">
+                  <div className="allowlist-head">
+                    <span className="field-label">Sell packs (optional)</span>
+                    <button
+                      type="button"
+                      className="action-btn"
+                      onClick={() => setSellPacks((rows) => [...rows, newPackRow()])}
+                    >
+                      Add pack
+                    </button>
+                  </div>
+                  {sellPacks.length === 0 ? (
+                    <p className="hint tight">
+                      e.g. Half oz @ 0.5 oz with optional custom pack price — no pipe syntax needed.
+                    </p>
+                  ) : (
+                    sellPacks.map((row) => (
+                      <div key={row.key} className="pack-row">
+                        <input
+                          placeholder="Label (e.g. Half oz)"
+                          value={row.label}
+                          onChange={(e) =>
+                            setSellPacks((rows) =>
+                              rows.map((r) =>
+                                r.key === row.key ? { ...r, label: e.target.value } : r,
+                              ),
+                            )
+                          }
+                        />
+                        <input
+                          placeholder="Qty"
+                          value={row.amount}
+                          onChange={(e) =>
+                            setSellPacks((rows) =>
+                              rows.map((r) =>
+                                r.key === row.key ? { ...r, amount: e.target.value } : r,
+                              ),
+                            )
+                          }
+                        />
+                        <select
+                          aria-label="Pack unit"
+                          value={row.unit}
+                          onChange={(e) =>
+                            setSellPacks((rows) =>
+                              rows.map((r) =>
+                                r.key === row.key ? { ...r, unit: e.target.value } : r,
+                              ),
+                            )
+                          }
+                        >
+                          {UNIT_OPTIONS.map((u) => (
+                            <option key={u} value={u}>
+                              {u}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          placeholder="Price $"
+                          value={row.price}
+                          onChange={(e) =>
+                            setSellPacks((rows) =>
+                              rows.map((r) =>
+                                r.key === row.key ? { ...r, price: e.target.value } : r,
+                              ),
+                            )
+                          }
+                        />
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          aria-label="Remove pack"
+                          onClick={() =>
+                            setSellPacks((rows) => rows.filter((r) => r.key !== row.key))
+                          }
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="form-card">
+                <h3 className="form-card-title">Logistics &amp; SKU</h3>
+                <div className="form-grid-2">
+                  <input
+                    placeholder="SKU (optional)"
+                    value={productForm.sku}
+                    onChange={(e) => setProductForm((f) => ({ ...f, sku: e.target.value }))}
+                  />
+                  <input
+                    placeholder="Package weight (optional)"
+                    value={productForm.weight}
+                    onChange={(e) => setProductForm((f) => ({ ...f, weight: e.target.value }))}
+                  />
+                  <select
+                    aria-label="Weight unit"
+                    value={productForm.weightUnit}
+                    onChange={(e) => setProductForm((f) => ({ ...f, weightUnit: e.target.value }))}
+                    disabled={productForm.weight.trim() === "" || Number(productForm.weight) === 0}
+                  >
+                    <option value="g">Weight: g</option>
+                    <option value="kg">Weight: kg</option>
+                    <option value="oz">Weight: oz</option>
+                    <option value="lb">Weight: lb</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="product-form-actions">
+                <button type="button" className="send-btn" onClick={() => void saveProduct()}>
+                  {productForm.id ? "Save product" : "Add product"}
+                </button>
+                {productForm.id && (
+                  <button
+                    type="button"
+                    className="ghost-btn"
+                    onClick={() => resetProductForm()}
+                  >
+                    Cancel edit
+                  </button>
+                )}
+              </div>
+            </div>
+
+                  </div>
+                );
+              })()
+            )}
+          </main>
+          <aside className="profile-rail">
+            <div className="profile-section">
+              <div className="allowlist-head">
+                <div className="profile-section-title">Buyer menu</div>
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  onClick={() => {
+                    setMenuBuilderOpen(true);
+                    void loadIvrMenusEditor();
+                  }}
+                >
+                  Open builder
+                </button>
+              </div>
+              {selectedProductId ? (
+                <>
+                  {screensBoundToProduct(ivrMenusDraft, selectedProductId).length === 0 && (
+                    <p className="hint tight">No screens bind this product yet.</p>
+                  )}
+                  {screensBoundToProduct(ivrMenusDraft, selectedProductId).map((b) => (
+                    <div key={`${b.nodeId}-${b.digit}`} className="convo-sub wrap">
+                      {b.nodeId} · {b.digit}
+                      {b.action ? ` · ${b.action}` : ""}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="action-btn primary"
+                    disabled={!ivrMenusDraft || !selectedProductId}
+                    onClick={() => {
+                      const p = products.find((x) => x.id === selectedProductId);
+                      if (!p || !ivrMenusDraft) return;
+                      setIvrMenusDraft(bindProductToMenu(ivrMenusDraft, p));
+                      setStatus(`Bound ${p.name} to the menu — save in the builder`);
+                      setMenuBuilderOpen(true);
+                    }}
+                  >
+                    Add to menu
+                  </button>
+                  <label className="toggle compact">
+                    <input
+                      type="checkbox"
+                      checked={!!ivrSettings?.hide_zero_stock}
+                      onChange={(e) => void saveIvrSettings({ hide_zero_stock: e.target.checked })}
+                    />
+                    Hide if zero stock
+                  </label>
+                  <div className="row-actions">
+                    <button type="button" className="ghost-btn" onClick={() => {
+                      const p = products.find((x) => x.id === selectedProductId);
+                      if (p) void adjustStock(p, 1);
+                    }}>
+                      +1 stock
+                    </button>
+                    <button type="button" className="ghost-btn" onClick={() => {
+                      const p = products.find((x) => x.id === selectedProductId);
+                      if (p) void adjustStock(p, -1);
+                    }}>
+                      −1 stock
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      onClick={() => {
+                        if (selectedProductId) void removeProduct(selectedProductId).then(() => setSelectedProductId(null));
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className="hint tight">Select a product to bind it to a menu choice.</p>
+              )}
+            </div>
+          </aside>
+        </>
+      ) : panel === "orders" ? (
+        <>
+          <section className="thread-col">
+            <header className="col-head">Orders</header>
+            <div className="search-box">
+              <input
+                placeholder="Search orders…"
+                value={orderFilter.q}
+                onChange={(e) => setOrderFilter((f) => ({ ...f, q: e.target.value }))}
+              />
+            </div>
+            <div className="filter-chips">
+              {["all", ...orderStatuses.filter((s) => s !== "all")].slice(0, 8).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className={orderFilter.status === s ? "filter-chip active" : "filter-chip"}
+                  onClick={() => setOrderFilter((f) => ({ ...f, status: s }))}
+                >
+                  {s === "all" ? "All" : s}
+                </button>
+              ))}
+            </div>
+            <div className="filter-chips">
+              {(
+                [
+                  ["7", "7d"],
+                  ["30", "30d"],
+                  ["all", "All time"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={salesRange === id ? "filter-chip active" : "filter-chip"}
+                  onClick={() => setSalesRange(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="thread-list">
+              {filteredOrders.map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  className={selectedOrderId === o.id ? "thread-row active" : "thread-row"}
+                  onClick={() => setSelectedOrderId(o.id)}
+                >
+                  <div className="thread-row-body">
                     <div className="thread-row-top">
-                      <span className="thread-name">{p.name}</span>
-                      <span className="thread-time">
-                        {productPriceLabel(p)} · {productStockLabel(p)}
-                      </span>
+                      <span className="thread-name">{orderParty(o)}</span>
+                      <span className={`status-pill status-${orderStatusTone(o.status)}`}>{o.status}</span>
                     </div>
                     <div className="convo-sub">
-                      {[
-                        p.sku || p.id.slice(0, 8),
-                        p.supplier ? `from ${p.supplier}` : null,
-                        p.cost_cents
-                          ? `cost ${money(p.cost_cents)}/${productBaseUnit(p)}`
-                          : null,
-                        productWeightLabel(p),
-                        p.description ? p.description.slice(0, 40) : null,
-                        (p.sell_options || []).length
-                          ? `${p.sell_options.length} pack${p.sell_options.length === 1 ? "" : "s"}`
-                          : null,
-                        p.image_path ? "has image" : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
+                      {money(o.total_cents)} · {fmtTime(o.created_at)}
                     </div>
-                    {p.quantity_in_stock <= 0 && (p.quantity_base_milli ?? 0) <= 0 && (
-                      <span className="badge danger">Out of stock</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+          <main className="convo work-pane">
+            {(() => {
+              const o = orders.find((x) => x.id === selectedOrderId);
+              if (!o) {
+                return (
+                  <div className="hero-block">
+                    <h2>Create quote</h2>
+                    {!selectedId || selectedId.startsWith("group:") ? (
+                      <p className="warn-text">Select a DM thread first (Inbox or People).</p>
+                    ) : (
+                      <p className="hint tight">
+                        Quote for <strong>{threadTitle(selectedId, contacts, groups)}</strong>
+                      </p>
                     )}
-                    {isLowStock(p) && (p.quantity_base_milli ?? 0) > 0 && (
-                      <span className="badge warn low-stock-badge">Low stock</span>
-                    )}
-                    <div className="product-row-actions">
-                      <button type="button" className="ghost-btn" onClick={() => void editProduct(p)}>
-                        Edit
+                    <select
+                      value={orderProductId}
+                      onChange={(e) => {
+                        setOrderProductId(e.target.value);
+                        setOrderSellOptionId("");
+                      }}
+                    >
+                      {products.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} ({productPriceLabel(p)})
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      placeholder="Qty"
+                      value={orderQty}
+                      onChange={(e) => setOrderQty(e.target.value)}
+                    />
+                    <div className="row-actions">
+                      <button type="button" className="send-btn" onClick={() => void placeOrder(true)}>
+                        Create quote
                       </button>
-                      <button
-                        type="button"
-                        className="ghost-btn"
-                        title="Add 1 stock unit"
-                        onClick={() => void adjustStock(p, 1)}
-                      >
-                        +1
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost-btn"
-                        title="Remove 1 stock unit"
-                        onClick={() => void adjustStock(p, -1)}
-                      >
-                        −1
-                      </button>
-                      <button type="button" className="ghost-btn" onClick={() => void removeProduct(p.id)}>
-                        Delete
+                      <button type="button" className="action-btn" onClick={() => void placeOrder(false)}>
+                        Place order
                       </button>
                     </div>
                   </div>
                 );
-              })}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {panel === "customers" && (
-        <section className="thread-col">
-          <header className="col-head">
-            Customers
-            <button type="button" className="ghost-btn" onClick={() => void linkCustomerFromThread()}>
-              Link current chat
-            </button>
-          </header>
-          <div className="filter-strip">
-            <input
-              placeholder="Filter customers…"
-              value={customerFilter.q}
-              onChange={(e) => setCustomerFilter((f) => ({ ...f, q: e.target.value }))}
-            />
-            <label className="filter-check">
-              <input
-                type="checkbox"
-                checked={customerFilter.hasOrders}
-                onChange={(e) => setCustomerFilter((f) => ({ ...f, hasOrders: e.target.checked }))}
-              />
-              Has orders
-            </label>
-            <span className="col-meta">
-              {filteredCustomers.length}/{customers.length}
-            </span>
-          </div>
-          <div className="thread-list">
-            {customers.length === 0 && (
-              <p className="hint">Open a DM and use “Link current chat”.</p>
-            )}
-            {customers.length > 0 && filteredCustomers.length === 0 && (
-              <p className="empty">No customers match these filters.</p>
-            )}
-            {filteredCustomers.map((c) => {
-              const orderCount = orders.filter(
-                (o) => o.customer_id === c.id || o.thread_id === c.thread_id,
-              ).length;
+              }
               return (
-                <button
-                  key={c.id}
-                  type="button"
-                  className={selectedId === c.thread_id ? "thread-row active" : "thread-row"}
-                  onClick={() => {
-                    setSelectedId(c.thread_id);
-                    setPanel("threads");
-                  }}
-                >
-                  <span className="avatar-dot" aria-hidden>
-                    {initials(c.display_name || c.thread_id)}
-                  </span>
-                  <div className="thread-row-body">
-                    <div className="thread-row-top">
-                      <span className="thread-name">{c.display_name || c.thread_id}</span>
-                      <button
-                        type="button"
-                        className="ghost-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void removeCustomer(c.id);
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                    <div className="convo-sub">{c.thread_id}</div>
-                    <div className="thread-row-meta">
-                      {orderCount > 0 && (
-                        <span className="badge muted">{orderCount} order{orderCount === 1 ? "" : "s"}</span>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-            {customers.length === 0 && (
-              <p className="hint">Open a DM and use “Link current chat”.</p>
-            )}
-          </div>
-        </section>
-      )}
-
-      {panel === "orders" && (
-        <section className="thread-col wide">
-          <header className="col-head">
-            Orders
-            <span className="col-meta">
-              {filteredOrders.length}/{orders.length} total
-            </span>
-          </header>
-          <div className="settings-body wide-body">
-            <div className="filter-strip in-panel">
-              <input
-                placeholder="Filter orders…"
-                value={orderFilter.q}
-                onChange={(e) => setOrderFilter((f) => ({ ...f, q: e.target.value }))}
-              />
-              <select
-                aria-label="Order status"
-                value={orderFilter.status}
-                onChange={(e) => setOrderFilter((f) => ({ ...f, status: e.target.value }))}
-              >
-                {orderStatuses.map((s) => (
-                  <option key={s} value={s}>
-                    {s === "all" ? "All statuses" : s}
-                  </option>
-                ))}
-              </select>
-              <label className="filter-check">
-                <input
-                  type="checkbox"
-                  checked={orderFilter.thisThread}
-                  onChange={(e) => setOrderFilter((f) => ({ ...f, thisThread: e.target.checked }))}
-                />
-                This chat only
-              </label>
-            </div>
-            <div className="product-form">
-              <p className="hint tight">
-                Place order decrements stock. Create quote saves a draft (no stock change) you can
-                send, edit, or confirm later.
-              </p>
-              <div className="order-target">
-                {selectedId && !selectedId.startsWith("group:") ? (
-                  <>
-                    Ordering for <strong>{threadTitle(selectedId, contacts, groups)}</strong>
-                    <span className="convo-sub inline">{selectedId}</span>
-                  </>
-                ) : (
-                  <span className="warn-text">Select a DM thread first to place an order.</span>
-                )}
-              </div>
-              <select
-                value={orderProductId}
-                onChange={(e) => {
-                  setOrderProductId(e.target.value);
-                  setOrderSellOptionId("");
-                }}
-                disabled={products.length === 0}
-              >
-                {products.length === 0 && <option value="">No products — add in Catalog</option>}
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({productPriceLabel(p)}, {productStockLabel(p)})
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Sell pack"
-                value={orderSellOptionId}
-                onChange={(e) => setOrderSellOptionId(e.target.value)}
-                disabled={
-                  !(products.find((p) => p.id === orderProductId)?.sell_options?.length)
-                }
-              >
-                <option value="">Custom qty (sales UOM)</option>
-                {(products.find((p) => p.id === orderProductId)?.sell_options || []).map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label} — {o.amount} {o.unit}
-                    {o.price_cents != null ? ` @ ${money(o.price_cents)}` : ""}
-                  </option>
-                ))}
-              </select>
-              <input
-                placeholder="Qty (sales UOM)"
-                value={orderQty}
-                onChange={(e) => setOrderQty(e.target.value)}
-                disabled={!!orderSellOptionId}
-              />
-              <div className="row-actions">
-                <button
-                  type="button"
-                  className="send-btn"
-                  disabled={!selectedId || selectedId.startsWith("group:") || products.length === 0}
-                  onClick={() => void placeOrder(false)}
-                >
-                  Place order
-                </button>
-                <button
-                  type="button"
-                  className="action-btn"
-                  disabled={!selectedId || selectedId.startsWith("group:") || products.length === 0}
-                  onClick={() => void placeOrder(true)}
-                >
-                  Create quote
-                </button>
-              </div>
-            </div>
-            <div className="thread-list">
-              {orders.length === 0 && <p className="hint">No orders yet.</p>}
-              {orders.length > 0 && filteredOrders.length === 0 && (
-                <p className="hint">No orders match these filters.</p>
-              )}
-              {filteredOrders.map((o) => (
-                  <div key={o.id} className="thread-row product-row">
-                    <div className="thread-row-top">
-                      <span className="thread-name">
-                        {orderParty(o)}
-                        <span className="order-id"> · {o.id.slice(0, 8)}</span>
-                      </span>
-                      <span className={`status-pill status-${orderStatusTone(o.status)}`}>
-                        {o.status}
-                      </span>
-                    </div>
-                    <div className="convo-sub">
-                      {money(o.total_cents)} ·{" "}
-                      {o.lines
-                        .map((l) => {
-                          const u = (l.unit || "ea").toLowerCase();
-                          const q =
-                            Math.abs(l.quantity - Math.round(l.quantity)) < 0.001
-                              ? String(Math.round(l.quantity))
-                              : l.quantity.toFixed(3);
-                          const qty = u === "ea" ? q : `${q} ${u}`;
-                          const pack = l.sell_option_label ? ` (${l.sell_option_label})` : "";
-                          return `${l.name}${pack}×${qty}`;
-                        })
-                        .join(", ")}
-                      {" · "}
-                      {fmtTime(o.created_at)}
-                    </div>
-                    <div className="row-actions">
-                      {o.status === "draft" ? (
-                        <>
-                          <button
-                            type="button"
-                            className="action-btn primary"
-                            onClick={() => void sendQuote(o.id)}
-                            title="Queue quote text via outbox"
-                          >
-                            Send quote
-                          </button>
-                          <button
-                            type="button"
-                            className="ghost-btn"
-                            onClick={() => void confirmDraftOrder(o.id)}
-                          >
-                            Confirm
-                          </button>
-                          <button
-                            type="button"
-                            className="ghost-btn"
-                            onClick={() => void editDraftFirstLineQty(o)}
-                          >
-                            Edit lines
-                          </button>
-                          <button
-                            type="button"
-                            className="ghost-btn"
-                            onClick={() => void setOrderLifecycle(o.id, "cancelled")}
-                          >
-                            Cancel
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            className="action-btn primary"
-                            onClick={() => void sendInvoice(o.id)}
-                            title="Queue invoice text to this chat via outbox"
-                          >
-                            Send invoice
-                          </button>
-                          {o.status !== "cancelled" && o.status !== "paid" && (
-                            <button
-                              type="button"
-                              className="ghost-btn"
-                              onClick={() => void setOrderLifecycle(o.id, "paid")}
-                            >
-                              Mark paid
-                            </button>
-                          )}
-                          {o.status !== "cancelled" && o.status !== "fulfilled" && (
-                            <button
-                              type="button"
-                              className="ghost-btn"
-                              onClick={() => void setOrderLifecycle(o.id, "fulfilled")}
-                            >
-                              Mark fulfilled
-                            </button>
-                          )}
-                          {o.status !== "cancelled" && (
-                            <button
-                              type="button"
-                              className="ghost-btn"
-                              onClick={() => void setOrderLifecycle(o.id, "cancelled")}
-                            >
-                              Cancel
-                            </button>
-                          )}
-                        </>
-                      )}
-                      <button
-                        type="button"
-                        className="ghost-btn"
-                        onClick={() => void duplicateAsDraft(o.id)}
-                      >
-                        Duplicate as draft
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost-btn"
-                        onClick={() => {
-                          setSelectedId(o.thread_id);
-                          setPanel("threads");
-                        }}
-                      >
-                        Open chat
-                      </button>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {panel === "sales" && (
-        <section className="thread-col wide">
-          <header className="col-head">
-            Sales
-            <span className="col-meta">
-              {salesBusy ? "Loading…" : salesSummary ? `${salesSummary.order_count} orders` : ""}
-            </span>
-          </header>
-          <div className="settings-body wide-body">
-            <div className="filter-strip in-panel">
-              <select
-                aria-label="Date range"
-                value={salesRange}
-                onChange={(e) => setSalesRange(e.target.value as "7" | "30" | "all")}
-              >
-                <option value="7">Last 7 days</option>
-                <option value="30">Last 30 days</option>
-                <option value="all">All time</option>
-              </select>
-              <select
-                aria-label="Status filter"
-                value={salesStatus}
-                onChange={(e) => setSalesStatus(e.target.value)}
-              >
-                <option value="all">All statuses</option>
-                <option value="draft">draft</option>
-                <option value="confirmed">confirmed</option>
-                <option value="invoiced">invoiced</option>
-                <option value="paid">paid</option>
-                <option value="fulfilled">fulfilled</option>
-                <option value="cancelled">cancelled</option>
-              </select>
-              <button type="button" className="ghost-btn" onClick={() => void refreshSales()}>
-                Refresh
-              </button>
-            </div>
-
-            {salesSummary && (
-              <div className="sales-summary">
-                <div className="sales-totals">
-                  <div>
-                    <span className="field-label">Orders</span>
-                    <strong>{salesSummary.order_count}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Revenue</span>
-                    <strong>{money(salesSummary.revenue_cents)}</strong>
-                  </div>
-                </div>
-                {salesSummary.by_status.length > 0 && (
-                  <div className="sales-by-status">
-                    {salesSummary.by_status.map((row) => (
-                      <span key={row.status} className="badge muted">
-                        {row.status}: {row.count} · {money(row.total_cents)}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <h3 className="form-card-title">Top products</h3>
-                {salesSummary.top_products.length === 0 ? (
-                  <p className="hint tight">No product lines in this range.</p>
-                ) : (
-                  <ul className="sales-top-list">
-                    {salesSummary.top_products.map((p) => (
-                      <li key={p.product_id}>
-                        <span className="thread-name">{p.name}</span>
-                        <span className="convo-sub">
-                          qty {p.quantity} · {money(p.revenue_cents)}
-                        </span>
+                <div className="hero-block">
+                  <h2 className="wrap">
+                    {orderParty(o)} · {o.id.slice(0, 8)}
+                  </h2>
+                  <span className={`status-pill status-${orderStatusTone(o.status)}`}>{o.status}</span>
+                  <p>{money(o.total_cents)}</p>
+                  <ul>
+                    {o.lines.map((l, i) => (
+                      <li key={`${l.product_id}-${i}`}>
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          onClick={() => {
+                            setSelectedProductId(l.product_id);
+                            const p = products.find((x) => x.id === l.product_id);
+                            if (p) void editProduct(p);
+                            setPanel("catalog");
+                          }}
+                        >
+                          {l.name} × {l.quantity} {l.unit} — {money(l.line_total_cents ?? l.unit_price_cents)}
+                        </button>
                       </li>
                     ))}
                   </ul>
-                )}
-                <h3 className="form-card-title">Orders in range</h3>
-                <div className="thread-list">
-                  {salesSummary.orders.length === 0 && (
-                    <p className="hint">No orders match these filters.</p>
-                  )}
-                  {[...salesSummary.orders]
-                    .sort((a, b) => b.created_at - a.created_at)
-                    .slice(0, 40)
-                    .map((o) => (
-                      <div key={o.id} className="thread-row product-row">
-                        <div className="thread-row-top">
-                          <span className="thread-name">
-                            {threadTitle(o.thread_id, contacts, groups)}
-                            <span className="order-id"> · {o.id.slice(0, 8)}</span>
-                          </span>
-                          <span className={`status-pill status-${orderStatusTone(o.status)}`}>
-                            {o.status}
-                          </span>
-                        </div>
-                        <div className="convo-sub">
-                          {money(o.total_cents)} · {fmtTime(o.created_at)}
-                        </div>
-                        <div className="row-actions">
-                          <button
-                            type="button"
-                            className="ghost-btn"
-                            onClick={() => void duplicateAsDraft(o.id)}
-                          >
-                            Reorder
+                  <div className="row-actions">
+                    {o.status === "draft" ? (
+                      <>
+                        <button type="button" className="action-btn primary" onClick={() => void sendQuote(o.id)}>
+                          Send quote
+                        </button>
+                        <button type="button" className="ghost-btn" onClick={() => void confirmDraftOrder(o.id)}>
+                          Confirm
+                        </button>
+                        <button type="button" className="ghost-btn" onClick={() => void editDraftFirstLineQty(o)}>
+                          Edit lines
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button type="button" className="action-btn primary" onClick={() => void sendInvoice(o.id)}>
+                          Send invoice
+                        </button>
+                        {o.status !== "paid" && o.status !== "cancelled" && (
+                          <button type="button" className="ghost-btn" onClick={() => void setOrderLifecycle(o.id, "paid")}>
+                            Mark paid
                           </button>
-                          <button
-                            type="button"
-                            className="ghost-btn"
-                            onClick={() => {
-                              setSelectedId(o.thread_id);
-                              setPanel("threads");
-                            }}
-                          >
-                            Open chat
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            )}
-
-            <h3 className="form-card-title">Commerce audit</h3>
-            <div className="thread-list">
-              {commerceAudit.length === 0 && <p className="hint">No commerce audit events yet.</p>}
-              {commerceAudit.map((e) => (
-                <div key={e.id} className="thread-row">
-                  <div className="thread-row-top">
-                    <span className="thread-name">{e.kind}</span>
-                    <span className="thread-time">{fmtTime(e.created_at)}</span>
-                  </div>
-                  <div className="convo-sub">{e.summary}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {panel === "outbox" && (
-        <section className="thread-col wide">
-          <header className="col-head">
-            Outbox
-            <span className="col-meta">
-              {outboxSummary
-                ? `${outboxSummary.queued} queued · ${outboxSummary.sending} sending · ${outboxSummary.failed} failed`
-                : "—"}
-            </span>
-          </header>
-          <div className="filter-strip">
-            <button type="button" className="ghost-btn" onClick={() => void refreshGlobalOutbox()}>
-              Refresh
-            </button>
-            <span className="col-meta">{globalOutbox.length} open</span>
-          </div>
-          <div className="thread-list">
-            {globalOutbox.length === 0 && (
-              <p className="empty">Outbox clear — nothing queued or failed.</p>
-            )}
-            {globalOutbox.map((o) => (
-              <div key={o.id} className="thread-row product-row">
-                <div className="thread-row-top">
-                  <span className="thread-name">{threadTitle(o.thread_id, contacts, groups)}</span>
-                  <span
-                    className={`status-pill status-${
-                      o.state === "failed" ? "danger" : o.state === "sending" ? "warn" : "muted"
-                    }`}
-                  >
-                    {o.state}
-                  </span>
-                </div>
-                <div className="convo-sub">
-                  {o.attachment_path ? "📎 " : ""}
-                  {o.content.slice(0, 120) || (o.attachment_path ? "(attachment)" : "(empty)")}
-                  {o.content.length > 120 ? "…" : ""}
-                  {" · "}
-                  {fmtTime(o.created_at)}
-                  {o.attempt_count > 0 ? ` · tries ${o.attempt_count}` : ""}
-                </div>
-                {o.last_error && <div className="bubble-err">{o.last_error}</div>}
-                <div className="row-actions">
-                  {o.state === "failed" && (
-                    <button type="button" className="action-btn primary" onClick={() => void onRetry(o.id).then(() => refreshGlobalOutbox())}>
-                      Retry
+                        )}
+                      </>
+                    )}
+                    <button type="button" className="ghost-btn" onClick={() => void duplicateAsDraft(o.id)}>
+                      Duplicate
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    className="ghost-btn"
-                    onClick={() => void onDeleteOutbox(o.id).then(() => refreshGlobalOutbox())}
-                  >
-                    Discard
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-btn"
-                    onClick={() => {
-                      setSelectedId(o.thread_id);
-                      setPanel("threads");
-                    }}
-                  >
-                    Open chat
-                  </button>
+                    {o.status !== "cancelled" && (
+                      <button type="button" className="ghost-btn" onClick={() => void setOrderLifecycle(o.id, "cancelled")}>
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                 </div>
+              );
+            })()}
+          </main>
+          <aside className="profile-rail">
+            {selectedOrderId ? (
+              (() => {
+                const o = orders.find((x) => x.id === selectedOrderId);
+                if (!o) return null;
+                const others = orders.filter((x) => x.thread_id === o.thread_id && x.id !== o.id).slice(0, 6);
+                return (
+                  <>
+                    <div className="profile-section">
+                      <div className="profile-section-title">Customer</div>
+                      <button
+                        type="button"
+                        className="thread-row"
+                        onClick={() => {
+                          setSelectedId(o.thread_id);
+                          setPanel("inbox");
+                        }}
+                      >
+                        <div className="thread-row-body">
+                          <span className="thread-name wrap">{orderParty(o)}</span>
+                          <div className="convo-sub wrap">{o.thread_id}</div>
+                        </div>
+                      </button>
+                    </div>
+                    <div className="profile-section">
+                      <div className="profile-section-title">Other orders</div>
+                      {others.length === 0 && <p className="hint tight">No other orders.</p>}
+                      {others.map((x) => (
+                        <button
+                          key={x.id}
+                          type="button"
+                          className="thread-row"
+                          onClick={() => setSelectedOrderId(x.id)}
+                        >
+                          <div className="thread-row-body">
+                            <span className="thread-name">{x.id.slice(0, 8)}</span>
+                            <div className="convo-sub">
+                              {x.status} · {money(x.total_cents)}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()
+            ) : (
+              <div className="profile-section">
+                <div className="profile-section-title">Totals</div>
+                {salesSummary ? (
+                  <>
+                    <dl className="profile-stats">
+                      <div>
+                        <dt>Orders</dt>
+                        <dd>{salesSummary.order_count}</dd>
+                      </div>
+                      <div>
+                        <dt>Revenue</dt>
+                        <dd>{money(salesSummary.revenue_cents)}</dd>
+                      </div>
+                    </dl>
+                    <div className="sales-by-status">
+                      {salesSummary.by_status.map((row) => (
+                        <span key={row.status} className="badge muted">
+                          {row.status}: {row.count} · {money(row.total_cents)}
+                        </span>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p className="hint tight">{salesBusy ? "Loading…" : "No sales summary yet."}</p>
+                )}
+                <details className="collapsible-card">
+                  <summary>Commerce audit</summary>
+                  {commerceAudit.slice(0, 12).map((e) => (
+                    <div key={e.id} className="convo-sub wrap">
+                      {e.kind} · {e.summary}
+                    </div>
+                  ))}
+                </details>
               </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {panel === "audit" && (
-        <section className="thread-col wide">
-          <header className="col-head">
-            Auto-reply audit
-            <span className="col-meta">
-              {filteredAudit.length}/{audit.length}
-            </span>
-          </header>
-          <div className="filter-strip">
-            <input
-              placeholder="Filter audit…"
-              value={auditFilter.q}
-              onChange={(e) => setAuditFilter((f) => ({ ...f, q: e.target.value }))}
-            />
-            <select
-              aria-label="Audit outcome"
-              value={auditFilter.outcome}
-              onChange={(e) => setAuditFilter((f) => ({ ...f, outcome: e.target.value }))}
-            >
-              {auditOutcomes.map((o) => (
-                <option key={o} value={o}>
-                  {o === "all" ? "All outcomes" : o}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="audit-list">
-            {audit.length === 0 && <p className="empty">No auto-reply activity yet.</p>}
-            {audit.length > 0 && filteredAudit.length === 0 && (
-              <p className="empty">No audit rows match these filters.</p>
             )}
-            {filteredAudit.map((e) => (
-              <div key={e.id} className="audit-row">
-                <div className="audit-top">
-                  <span className={`outcome outcome-${e.outcome}`}>{e.outcome}</span>
-                  <span className="thread-time">{fmtTime(e.created_at)}</span>
-                </div>
-                <div className="audit-thread">{e.thread_id}</div>
-                <div className="snippet">{e.draft}</div>
-                {e.reason && <div className="reason">{e.reason}</div>}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {panel === "settings" && (
-        <section className="thread-col wide">
-          <header className="col-head">
-            <div>
-              <div>Settings</div>
-              <div className="col-head-sub">
-                {settingsTab === "account" && "Link Signal and check that messages are flowing"}
-                {settingsTab === "ivr" && "Let buyers text a number — you write the menu"}
-                {settingsTab === "auto" && "Optional AI replies — only for chats you allow"}
-                {settingsTab === "backup" && "Copy your catalog, orders, and chats to a file"}
-              </div>
-            </div>
-          </header>
-          <div className="work-tabs" role="tablist" aria-label="Settings sections">
-            {(
-              [
-                ["account", "Account"],
-                ["ivr", "Buyer menu"],
-                ["auto", "Auto-reply"],
-                ["backup", "Backup"],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={settingsTab === id}
-                className={settingsTab === id ? "work-tab active" : "work-tab"}
-                onClick={() => setSettingsTab(id)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className="settings-body wide-body">
-            {settingsTab === "account" && (
-              <>
-                <div className="settings-card">
+          </aside>
+        </>
+      ) : (
+        <>
+          <section className="thread-col">
+            <header className="col-head">Settings</header>
+            <nav className="settings-nav">
+              {(
+                [
+                  ["account", "Account"],
+                  ["device", "Device link"],
+                  ["delivery", "Delivery"],
+                  ["auto", "Auto-reply"],
+                  ["activity", "Activity"],
+                  ["backup", "Backup"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={settingsTab === id ? "nav-btn active" : "nav-btn"}
+                  onClick={() => setSettingsTab(id)}
+                >
+                  <span className="nav-btn-label">{label}</span>
+                </button>
+              ))}
+            </nav>
+          </section>
+          <main className="convo work-pane">
+            <div className="settings-body wide-body">
+              {settingsTab === "account" && (
+                <>
+                                  <div className="settings-card">
                   <div className="settings-card-head">
                     <h3>Status</h3>
                     <span
@@ -3244,84 +3614,7 @@ export default function App() {
                   </details>
                 </div>
 
-                <div className="settings-card">
-                  <div className="settings-card-head">
-                    <h3>Device link</h3>
-                    <span
-                      className={`status-pill status-${
-                        linkStatus?.state === "success"
-                          ? "ok"
-                          : linkStatus?.state === "error"
-                            ? "danger"
-                            : linkBusy || linkStatus?.state === "waiting"
-                              ? "warn"
-                              : "muted"
-                      }`}
-                    >
-                      {linkBusy || linkStatus?.state === "waiting"
-                        ? "WAITING"
-                        : linkStatus?.state === "success"
-                          ? "LINKED"
-                          : linkStatus?.state === "error"
-                            ? "FAILED"
-                            : linkStatus?.state === "cancelled"
-                              ? "CANCELLED"
-                              : "IDLE"}
-                    </span>
-                  </div>
-                  <p className="hint tight">
-                    Link this Mac to your Signal phone. After it says Linked, add the number to the
-                    roster with a PIN — do not relaunch to switch identities.
-                  </p>
-                  <div className="row-actions">
-                    <button
-                      type="button"
-                      className="action-btn primary"
-                      disabled={linkBusy || !diagnostics?.signal_cli_usable}
-                      onClick={() => void startDeviceLink()}
-                    >
-                      Start linking
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost-btn"
-                      disabled={!linkBusy}
-                      onClick={() => void cancelDeviceLink()}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                  {linkUri && (
-                    <div className="device-link-panel">
-                      <DeviceLinkQr uri={linkUri} />
-                      <div className="device-link-uri">
-                        <code className="device-link-uri-text" title={linkUri}>
-                          {linkUri}
-                        </code>
-                        <button type="button" className="action-btn" onClick={() => void copyLinkUri()}>
-                          {linkCopied ? "Copied" : "Copy"}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {linkStatus?.message && (
-                    <p
-                      className={`hint tight ${
-                        linkStatus.state === "error" ? "warn-text" : ""
-                      }`}
-                    >
-                      {linkStatus.message}
-                    </p>
-                  )}
-                  {!diagnostics?.config_path && (
-                    <p className="hint tight warn-text">
-                      Set <code>SIGNALX_SIGNALCLI_CONFIG</code> in <code>.signalx.env</code> before
-                      linking.
-                    </p>
-                  )}
-                </div>
-
-                <div className="settings-card">
+                                  <div className="settings-card">
                   <div className="settings-card-head">
                     <h3>Roster</h3>
                   </div>
@@ -3420,95 +3713,124 @@ export default function App() {
                     </button>
                   </form>
                 </div>
-              </>
-            )}
-
-            {settingsTab === "backup" && (
-              <div className="settings-card">
-                <div className="settings-card-head">
-                  <h3>Backup &amp; migrate</h3>
-                </div>
-                <p className="hint tight">
-                  Bundles cover your catalog, customers, orders, buyer menu, chats, and outbox —
-                  not your Signal login. Re-link Signal on a new computer.
-                </p>
-                <div className="backup-actions">
-                  <button
-                    type="button"
-                    className="action-btn primary"
-                    disabled={backupBusy || restartRequired}
-                    onClick={() => void onExportDataBundle()}
-                  >
-                    {backupBusy ? "Working…" : "Export data bundle"}
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-btn"
-                    disabled={backupBusy}
-                    onClick={() =>
-                      void api.exportAccount("json").then((r) => {
-                        if (r.success) setStatus("Chat (messages) exported");
-                        else setStatus(r.error);
-                      })
-                    }
-                  >
-                    Export chat only
-                  </button>
-                </div>
-                <div className="backup-import">
-                  <div className="profile-section-title">Import</div>
-                  <div className="profile-toggles">
-                    <label className="toggle compact">
-                      <input
-                        type="radio"
-                        name="import-mode"
-                        checked={importMode === "replace"}
-                        disabled={restartRequired}
-                        onChange={() => setImportMode("replace")}
-                      />
-                      Replace
-                    </label>
-                    <label className="toggle compact">
-                      <input
-                        type="radio"
-                        name="import-mode"
-                        checked={importMode === "merge"}
-                        disabled={restartRequired}
-                        onChange={() => setImportMode("merge")}
-                      />
-                      Merge
-                    </label>
+                </>
+              )}
+              {settingsTab === "device" && (                <div className="settings-card">
+                  <div className="settings-card-head">
+                    <h3>Device link</h3>
+                    <span
+                      className={`status-pill status-${
+                        linkStatus?.state === "success"
+                          ? "ok"
+                          : linkStatus?.state === "error"
+                            ? "danger"
+                            : linkBusy || linkStatus?.state === "waiting"
+                              ? "warn"
+                              : "muted"
+                      }`}
+                    >
+                      {linkBusy || linkStatus?.state === "waiting"
+                        ? "WAITING"
+                        : linkStatus?.state === "success"
+                          ? "LINKED"
+                          : linkStatus?.state === "error"
+                            ? "FAILED"
+                            : linkStatus?.state === "cancelled"
+                              ? "CANCELLED"
+                              : "IDLE"}
+                    </span>
                   </div>
-                  <label className="field-stack">
-                    <span className="field-label">Choose .zip bundle</span>
-                    <input
-                      type="file"
-                      accept=".zip,application/zip"
-                      disabled={backupBusy || restartRequired}
-                      onChange={(e) => {
-                        const f = e.target.files?.[0] ?? null;
-                        e.target.value = "";
-                        void onImportDataBundleFile(f);
-                      }}
-                    />
-                  </label>
-                </div>
-                {restartRequired && (
-                  <div className="restart-gate">
-                    <p>
-                      Restart SignalX to apply imported data. Writes stay locked until you quit and
-                      reopen.
-                    </p>
-                    <button type="button" className="action-btn primary" onClick={() => void quitForRestart()}>
-                      Quit now
+                  <p className="hint tight">
+                    Link this Mac to your Signal phone. After it says Linked, add the number to the
+                    roster with a PIN — do not relaunch to switch identities.
+                  </p>
+                  <div className="row-actions">
+                    <button
+                      type="button"
+                      className="action-btn primary"
+                      disabled={linkBusy || !diagnostics?.signal_cli_usable}
+                      onClick={() => void startDeviceLink()}
+                    >
+                      Start linking
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      disabled={!linkBusy}
+                      onClick={() => void cancelDeviceLink()}
+                    >
+                      Cancel
                     </button>
                   </div>
-                )}
-              </div>
-            )}
-
-            {settingsTab === "auto" && (
-              <div className="settings-card">
+                  {linkUri && (
+                    <div className="device-link-panel">
+                      <DeviceLinkQr uri={linkUri} />
+                      <div className="device-link-uri">
+                        <code className="device-link-uri-text" title={linkUri}>
+                          {linkUri}
+                        </code>
+                        <button type="button" className="action-btn" onClick={() => void copyLinkUri()}>
+                          {linkCopied ? "Copied" : "Copy"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {linkStatus?.message && (
+                    <p
+                      className={`hint tight ${
+                        linkStatus.state === "error" ? "warn-text" : ""
+                      }`}
+                    >
+                      {linkStatus.message}
+                    </p>
+                  )}
+                  {!diagnostics?.config_path && (
+                    <p className="hint tight warn-text">
+                      Set <code>SIGNALX_SIGNALCLI_CONFIG</code> in <code>.signalx.env</code> before
+                      linking.
+                    </p>
+                  )}
+                </div>
+              )}
+              {settingsTab === "delivery" && (
+                <div className="settings-card">
+                  <div className="settings-card-head">
+                    <h3>Outbox</h3>
+                    <span className="col-meta">
+                      {outboxSummary
+                        ? `${outboxSummary.queued} queued · ${outboxSummary.sending} sending · ${outboxSummary.failed} failed`
+                        : "—"}
+                    </span>
+                  </div>
+                  <button type="button" className="ghost-btn" onClick={() => void refreshGlobalOutbox()}>
+                    Refresh
+                  </button>
+                  {globalOutbox.length === 0 && <p className="hint tight">Outbox clear.</p>}
+                  {globalOutbox.map((o) => (
+                    <div key={o.id} className="thread-row">
+                      <div className="thread-row-top">
+                        <span className="thread-name wrap">{threadTitle(o.thread_id, contacts, groups)}</span>
+                        <span className={`status-pill status-${o.state === "failed" ? "danger" : "muted"}`}>
+                          {o.state}
+                        </span>
+                      </div>
+                      <div className="convo-sub wrap">{o.content || "(attachment)"}</div>
+                      {o.last_error && <div className="bubble-err wrap">{o.last_error}</div>}
+                      <div className="row-actions">
+                        {o.state === "failed" && (
+                          <button type="button" className="action-btn" onClick={() => void onRetry(o.id).then(() => refreshGlobalOutbox())}>
+                            Retry
+                          </button>
+                        )}
+                        <button type="button" className="ghost-btn" onClick={() => void onDeleteOutbox(o.id).then(() => refreshGlobalOutbox())}>
+                          Discard
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {settingsTab === "auto" &&               <div className="settings-card">
                 <div className="settings-card-head">
                   <h3>Auto-reply</h3>
                   <span className={`status-pill status-${autoSettings?.enabled ? "warn" : "muted"}`}>
@@ -3621,397 +3943,132 @@ export default function App() {
                     )}
                   </>
                 )}
-              </div>
-            )}
-
-            {settingsTab === "ivr" && (
-              <>
-                <div className="settings-card">
-                  <div className="settings-card-head">
-                    <h3>Buyer text menu</h3>
-                    <span className={`status-pill status-${ivrSettings?.enabled ? "ok" : "muted"}`}>
-                      {ivrSettings?.enabled ? "ON" : "OFF"}
-                    </span>
-                  </div>
-                  <p className="hint tight">
-                    When it’s on, buyers can text a number (1 for products, 2 to order, and so on)
-                    and SignalX answers for you. Turn it on here, then turn it on for each chat you
-                    want. Group chats are never automated.
-                  </p>
-                  {ivrSettings && (
-                    <>
-                      <label className="toggle">
-                        <input
-                          type="checkbox"
-                          checked={ivrSettings.enabled}
-                          onChange={(e) => void saveIvrSettings({ enabled: e.target.checked })}
-                        />
-                        Turn on buyer menus for this account
-                      </label>
-                      <label className="toggle">
-                        <input
-                          type="checkbox"
-                          checked={ivrSettings.require_allowlist}
-                          onChange={(e) =>
-                            void saveIvrSettings({ require_allowlist: e.target.checked })
-                          }
-                        />
-                        Only chats I approve (recommended)
-                      </label>
-                      <label className="toggle">
-                        <input
-                          type="checkbox"
-                          checked={!!ivrSettings.hide_zero_stock}
-                          onChange={(e) =>
-                            void saveIvrSettings({ hide_zero_stock: e.target.checked })
-                          }
-                        />
-                        Don’t show products that are out of stock
-                      </label>
-                      <div className="allowlist-head">
-                        <span className="field-label">
-                          Approved chats ({ivrSettings.allowlist.length})
-                        </span>
-                        <button
-                          type="button"
-                          className="ghost-btn"
-                          onClick={() => void addToAllowlist("ivr", selectedId)}
-                        >
-                          Add this chat
-                        </button>
+              </div>}
+              {settingsTab === "activity" && (
+                <>
+                  <div className="settings-card">
+                    <h3>Auto-reply log</h3>
+                    {filteredAudit.length === 0 && <p className="hint tight">No auto-reply activity yet.</p>}
+                    {filteredAudit.map((e) => (
+                      <div key={e.id} className="audit-row">
+                        <div className="audit-top">
+                          <span className={`outcome outcome-${e.outcome}`}>{e.outcome}</span>
+                          <span className="thread-time">{fmtTime(e.created_at)}</span>
+                        </div>
+                        <div className="audit-thread wrap">{e.thread_id}</div>
+                        <div className="snippet wrap">{e.draft}</div>
                       </div>
-                      {ivrSettings.allowlist.length === 0 ? (
-                        <p className="hint tight">
-                          None yet — open a 1:1 chat and turn on the buyer menu there, or add it
-                          here.
-                        </p>
-                      ) : (
-                        <ul className="allowlist-list">
-                          {ivrSettings.allowlist.map((tid) => (
-                            <li key={tid}>
-                              <div>
-                                <div className="thread-name">{threadTitle(tid, contacts, groups)}</div>
-                                <div className="convo-sub">{tid}</div>
-                              </div>
-                              <button
-                                type="button"
-                                className="ghost-btn"
-                                onClick={() => void removeFromAllowlist("ivr", tid)}
-                              >
-                                Remove
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                <div className="settings-card">
-                  <div className="settings-card-head">
-                    <h3>Build the menu</h3>
+                    ))}
                   </div>
-                  <p className="hint tight">
-                    Switch between a visual map of the conversation and a plain text script. Edit a
-                    screen, test it on the phone pad, then save.
-                  </p>
-                  <IvrMenuComposer
-                    menus={ivrMenusDraft}
-                    busy={ivrMenusBusy}
-                    error={ivrMenusError}
-                    previewSteps={ivrPreviewSteps}
-                    onChange={setIvrMenusDraft}
-                    onSave={() => void saveIvrMenusDraft()}
-                    onReload={() => void loadIvrMenusEditor()}
-                    onResetDemo={() => void resetIvrMenusDemo()}
-                    onPreview={(inputs) => void previewIvrPath(inputs)}
-                  />
+                  <div className="settings-card">
+                    <h3>Commerce audit</h3>
+                    {commerceAudit.length === 0 && <p className="hint tight">No commerce events yet.</p>}
+                    {commerceAudit.map((e) => (
+                      <div key={e.id} className="thread-row">
+                        <div className="thread-row-top">
+                          <span className="thread-name">{e.kind}</span>
+                          <span className="thread-time">{fmtTime(e.created_at)}</span>
+                        </div>
+                        <div className="convo-sub wrap">{e.summary}</div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              {settingsTab === "backup" &&               <div className="settings-card">
+                <div className="settings-card-head">
+                  <h3>Backup &amp; migrate</h3>
                 </div>
-              </>
-            )}
-          </div>
-        </section>
-      )}
-
-      {(panel === "audit" ||
-        panel === "settings" ||
-        panel === "products" ||
-        panel === "orders" ||
-        panel === "sales" ||
-        panel === "outbox") ? null : (
-      <main className="convo">
-        {!selectedId ? (
-          <div className="convo-empty">
-            <h1>SignalX</h1>
-            <p>Select a thread, or jump to a quick action.</p>
-            <div className="quick-actions">
-              <button type="button" className="quick-action" onClick={() => setPanel("threads")}>
-                <strong>Messages</strong>
-                <span>Open the thread list and reply over Signal.</span>
-              </button>
-              <button type="button" className="quick-action" onClick={() => setPanel("products")}>
-                <strong>Catalog</strong>
-                <span>Manage products, packs, and stock.</span>
-              </button>
-              <button type="button" className="quick-action" onClick={() => setPanel("orders")}>
-                <strong>Orders</strong>
-                <span>Place orders and queue invoices via outbox.</span>
-              </button>
-              <button type="button" className="quick-action" onClick={() => setPanel("customers")}>
-                <strong>Customers</strong>
-                <span>Linked chats and order history.</span>
-              </button>
-            </div>
-          </div>
-        ) : (
-          <>
-            <header className="convo-head">
-              <div>
-                <h2>{title}</h2>
-                <div className="convo-sub">{selectedId}</div>
-              </div>
-              <div className="convo-actions">
-                {threadAuto?.effective && (
-                  <span className="auto-thread-badge">Auto-reply ON</span>
-                )}
-                {threadIvr?.effective && (
-                  <span className="auto-thread-badge">Buyer menu ON</span>
-                )}
-                {threadIvr?.handed_off && (
-                  <span className="auto-thread-badge warn">Waiting on you</span>
-                )}
-                {ivrHint && (
-                  <span className="auto-thread-badge warn" title={ivrHint}>
-                    {ivrHint}
-                  </span>
-                )}
-                <label className="toggle compact">
-                  <input
-                    type="checkbox"
-                    checked={!!threadIvr?.enabled}
-                    disabled={!!selectedId?.startsWith("group:")}
-                    onChange={(e) => void toggleThreadIvr(e.target.checked)}
-                  />
-                  Buyer menu
-                </label>
-                {threadIvr?.handed_off && (
-                  <button type="button" className="ghost-btn" onClick={() => void resumeIvrBot()}>
-                    Resume menu
+                <p className="hint tight">
+                  Bundles cover your catalog, customers, orders, buyer menu, chats, and outbox —
+                  not your Signal login. Re-link Signal on a new computer.
+                </p>
+                <div className="backup-actions">
+                  <button
+                    type="button"
+                    className="action-btn primary"
+                    disabled={backupBusy || restartRequired}
+                    onClick={() => void onExportDataBundle()}
+                  >
+                    {backupBusy ? "Working…" : "Export data bundle"}
                   </button>
-                )}
-                {!threadIvr?.enabled && ivrSettings?.enabled && !selectedId?.startsWith("group:") && (
-                  <span className="convo-sub inline-hint">Turn on to let this chat use the menu</span>
-                )}
-                <label className="toggle compact">
-                  <input
-                    type="checkbox"
-                    checked={!!threadAuto?.opted_in}
-                    onChange={(e) => void toggleThreadAuto(e.target.checked)}
-                  />
-                  Opt-in auto
-                </label>
-                <button type="button" className="ghost-btn" disabled={aiBusy || !ai?.configured} onClick={() => void onSummarize()}>
-                  Summarize
-                </button>
-                <button type="button" className="ghost-btn" disabled={aiBusy || !ai?.configured} onClick={() => void onDraft()}>
-                  Draft reply
-                </button>
-                <button type="button" className="ghost-btn" onClick={() => void onExportThread()}>
-                  Export
-                </button>
-              </div>
-            </header>
-
-            {summaryText && (
-              <div className="summary-box">
-                <div className="summary-head">
-                  <strong>Summary</strong>
-                  <button type="button" className="ghost-btn" onClick={() => setSummaryText(null)}>
-                    Dismiss
-                  </button>
-                </div>
-                <pre>{summaryText}</pre>
-              </div>
-            )}
-
-            <div className="msg-scroll">
-              {messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={isOutgoing(m) ? "bubble out" : "bubble in"}
-                >
-                  <div className="bubble-meta">
-                    <span>{isOutgoing(m) ? "You" : m.sender}</span>
-                    <span>{fmtTime(m.timestamp)}</span>
-                  </div>
-                  <div className="bubble-body">{m.content}</div>
-                </div>
-              ))}
-              {outbox.map((o) => (
-                <div key={o.id} className={`bubble out pending state-${o.state}`}>
-                  <div className="bubble-meta">
-                    <span>{o.state}</span>
-                    <span>{fmtTime(o.created_at)}</span>
-                  </div>
-                  <div className="bubble-body">{o.content}</div>
-                  {o.last_error && <div className="bubble-err">{o.last_error}</div>}
-                  <div className="bubble-actions">
-                    {o.state === "failed" && (
-                      <button type="button" onClick={() => void onRetry(o.id)}>
-                        Retry
-                      </button>
-                    )}
-                    <button type="button" onClick={() => void onDeleteOutbox(o.id)}>
-                      Discard
-                    </button>
-                  </div>
-                </div>
-              ))}
-              <div ref={bottomRef} />
-            </div>
-
-            {status && (
-              <div className="status-bar">
-                <span>{status}</span>
-                <button type="button" className="ghost-btn" onClick={() => setStatus(null)}>
-                  Dismiss
-                </button>
-              </div>
-            )}
-
-            <div className="composer">
-              {attachPreview && (
-                <div className="attach-chip">
-                  <img src={attachPreview} alt="" />
-                  <span>{attachFile?.name || "Attachment"}</span>
                   <button
                     type="button"
                     className="ghost-btn"
-                    onClick={() => {
-                      setAttachFile(null);
-                      if (attachPreview) URL.revokeObjectURL(attachPreview);
-                      setAttachPreview(null);
-                    }}
+                    disabled={backupBusy}
+                    onClick={() =>
+                      void api.exportAccount("json").then((r) => {
+                        if (r.success) setStatus("Chat (messages) exported");
+                        else setStatus(r.error);
+                      })
+                    }
                   >
-                    Remove
+                    Export chat only
                   </button>
                 </div>
-              )}
-              <div className="composer-row">
-                <label className="attach-btn" title="Attach image or file">
-                  <IconImage />
-                  <input
-                    type="file"
-                    accept="image/*,.pdf,.txt,.csv"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0] || null;
-                      setAttachFile(file);
-                      if (attachPreview) URL.revokeObjectURL(attachPreview);
-                      setAttachPreview(file ? URL.createObjectURL(file) : null);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-                <textarea
-                  value={composer}
-                  onChange={(e) => setComposer(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      void onSend();
-                    }
-                  }}
-                  placeholder="Write a message… (Enter to send, Shift+Enter for newline)"
-                  rows={3}
-                />
-                <button
-                  type="button"
-                  className="send-btn"
-                  disabled={sending || restartRequired || (!composer.trim() && !attachFile)}
-                  onClick={() => void onSend()}
-                >
-                  {sending ? "…" : "Send"}
-                </button>
-              </div>
+                <div className="backup-import">
+                  <div className="profile-section-title">Import</div>
+                  <div className="profile-toggles">
+                    <label className="toggle compact">
+                      <input
+                        type="radio"
+                        name="import-mode"
+                        checked={importMode === "replace"}
+                        disabled={restartRequired}
+                        onChange={() => setImportMode("replace")}
+                      />
+                      Replace
+                    </label>
+                    <label className="toggle compact">
+                      <input
+                        type="radio"
+                        name="import-mode"
+                        checked={importMode === "merge"}
+                        disabled={restartRequired}
+                        onChange={() => setImportMode("merge")}
+                      />
+                      Merge
+                    </label>
+                  </div>
+                  <label className="field-stack">
+                    <span className="field-label">Choose .zip bundle</span>
+                    <input
+                      type="file"
+                      accept=".zip,application/zip"
+                      disabled={backupBusy || restartRequired}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] ?? null;
+                        e.target.value = "";
+                        void onImportDataBundleFile(f);
+                      }}
+                    />
+                  </label>
+                </div>
+                {restartRequired && (
+                  <div className="restart-gate">
+                    <p>
+                      Restart SignalX to apply imported data. Writes stay locked until you quit and
+                      reopen.
+                    </p>
+                    <button type="button" className="action-btn primary" onClick={() => void quitForRestart()}>
+                      Quit now
+                    </button>
+                  </div>
+                )}
+              </div>}
             </div>
-          </>
-        )}
-      </main>
+          </main>
+        </>
       )}
 
-      {showProfileRail && selectedId && (
-        <ProfileRail
-          threadId={selectedId}
-          title={title}
-          initials={initials(title)}
-          contact={profileContact}
-          customer={profileCustomer}
-          orders={orders}
-          products={products}
-          ai={ai}
-          aiBusy={aiBusy}
-          onStatus={setStatus}
-          onSetComposer={setComposer}
-          onDraft={(intent) => void onDraft(intent)}
-          onSummarize={onSummarize}
-          onLinkCustomer={() => void linkCustomerFromThread()}
-          onOpenOrders={() => {
-            setOrderFilter((f) => ({ ...f, thisThread: true, q: "" }));
-            setPanel("orders");
-          }}
-          onSendInvoice={(id) => void sendInvoice(id)}
-          onSendQuote={(id) => void sendQuote(id)}
-          onMarkPaid={(id) => void setOrderLifecycle(id, "paid")}
-          onToggleFavorite={(next) => {
-            void (async () => {
-              const res = await api.setContactMeta(selectedId, { favorite: next });
-              if (!res.success) setStatus(res.error);
-              else await refreshMeta();
-            })();
-          }}
-          onToggleMute={(next) => {
-            void (async () => {
-              const res = await api.setContactMeta(selectedId, { muted: next });
-              if (!res.success) setStatus(res.error);
-              else await refreshMeta();
-            })();
-          }}
-          onSaveNotes={(notes) => {
-            void (async () => {
-              if (!profileCustomer) {
-                setStatus("Link as customer before saving notes");
-                return;
-              }
-              const res = await api.upsertCustomer({
-                ...profileCustomer,
-                notes,
-              });
-              if (!res.success) setStatus(res.error);
-              else {
-                setStatus("Notes saved");
-                await refreshMeta();
-              }
-            })();
-          }}
-        />
+      {status && panel !== "inbox" && (
+        <div className="shell-status" role="status">
+          <span>{status}</span>
+          <button type="button" className="ghost-btn" onClick={() => setStatus(null)}>
+            Dismiss
+          </button>
+        </div>
       )}
-
-      {status &&
-        (panel === "audit" ||
-          panel === "settings" ||
-          panel === "products" ||
-          panel === "orders" ||
-          panel === "sales" ||
-          panel === "outbox" ||
-          !selectedId) && (
-          <div className="shell-status" role="status">
-            <span>{status}</span>
-            <button type="button" className="ghost-btn" onClick={() => setStatus(null)}>
-              Dismiss
-            </button>
-          </div>
-        )}
     </div>
   );
 }

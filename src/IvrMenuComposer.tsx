@@ -1,14 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type {
   IvrChoice,
   IvrMenus,
   IvrNode,
   IvrPreviewStep,
+  Product,
 } from "./api";
 
 const IVR_ACTIONS = [
   { id: "", label: "Nothing extra" },
   { id: "list_catalog", label: "Send the product list" },
+  { id: "offer_product", label: "Offer bound product" },
   { id: "place_order", label: "Create their order" },
   { id: "order_status", label: "Send order status" },
   { id: "handoff", label: "Hand off to you" },
@@ -29,6 +31,7 @@ type ChoiceRow = {
   goto: string;
   action: string;
   reply: string;
+  productId: string;
 };
 
 function actionLabel(id: string): string {
@@ -80,6 +83,7 @@ function choicesToRows(node: IvrNode | undefined): ChoiceRow[] {
     goto: c.goto ?? "",
     action: c.action ?? "",
     reply: c.reply ?? "",
+    productId: c.product_id ?? "",
   }));
 }
 
@@ -92,6 +96,7 @@ function rowsToChoices(rows: ChoiceRow[]): Record<string, IvrChoice> {
     if (row.goto.trim()) choice.goto = row.goto.trim();
     if (row.action.trim()) choice.action = row.action.trim();
     if (row.reply.trim()) choice.reply = row.reply.trim();
+    if (row.productId.trim()) choice.product_id = row.productId.trim();
     out[digit] = choice;
   }
   return out;
@@ -160,6 +165,7 @@ function menusToScript(menus: IvrMenus): string {
       for (const [digit, c] of Object.entries(n.choices)) {
         const bits = [
           `${digit} → ${c.goto?.trim() || "stay"}`,
+          c.product_id ? `product ${c.product_id}` : "",
           c.action ? actionLabel(c.action) : "",
           c.reply ? `“${c.reply}”` : "",
         ].filter(Boolean);
@@ -171,16 +177,66 @@ function menusToScript(menus: IvrMenus): string {
   return lines.join("\n").trim() + "\n";
 }
 
+export function screensBoundToProduct(
+  menus: IvrMenus | null,
+  productId: string,
+): { nodeId: string; digit: string; action: string }[] {
+  if (!menus || !productId) return [];
+  const out: { nodeId: string; digit: string; action: string }[] = [];
+  for (const [nodeId, node] of Object.entries(menus.nodes)) {
+    for (const [digit, c] of Object.entries(node.choices || {})) {
+      if ((c.product_id || "").trim() === productId) {
+        out.push({ nodeId, digit, action: c.action || "" });
+      }
+    }
+  }
+  return out;
+}
+
+export function bindProductToMenu(
+  menus: IvrMenus,
+  product: Product,
+  nodeId?: string,
+): IvrMenus {
+  const next = structuredClone(menus);
+  const targetId = nodeId && next.nodes[nodeId] ? nodeId : next.entry;
+  const node = next.nodes[targetId];
+  if (!node) return next;
+  const used = new Set(Object.keys(node.choices || {}));
+  let digit = "1";
+  for (let i = 1; i <= 9; i++) {
+    if (!used.has(String(i))) {
+      digit = String(i);
+      break;
+    }
+  }
+  node.choices = node.choices || {};
+  node.choices[digit] = {
+    goto: next.nodes.order_qty ? "order_qty" : next.entry,
+    action: "offer_product",
+    product_id: product.id,
+  };
+  const line = `${digit} · ${product.name}`;
+  if (!node.prompt.includes(product.name)) {
+    node.prompt = `${node.prompt.trimEnd()}\n${line}`;
+  }
+  return next;
+}
+
 export interface IvrMenuComposerProps {
   menus: IvrMenus | null;
   busy?: boolean;
   error?: string | null;
   previewSteps?: IvrPreviewStep[];
+  products?: Product[];
+  layout?: "embedded" | "page";
   onChange: (menus: IvrMenus) => void;
   onSave: () => void;
   onReload: () => void;
   onResetDemo: () => void;
   onPreview: (inputs: string[]) => void;
+  onClose?: () => void;
+  listHeader?: ReactNode;
 }
 
 export function IvrMenuComposer({
@@ -188,11 +244,15 @@ export function IvrMenuComposer({
   busy,
   error,
   previewSteps = [],
+  products = [],
+  layout = "embedded",
   onChange,
   onSave,
   onReload,
   onResetDemo,
   onPreview,
+  onClose,
+  listHeader,
 }: IvrMenuComposerProps) {
   const working = menus ?? emptyMenus();
   const ids = useMemo(() => nodeIds(working), [working]);
@@ -253,7 +313,7 @@ export function IvrMenuComposer({
     }
     setChoiceRows([
       ...choiceRows,
-      { key: `new-${Date.now()}`, digit, goto: working.entry, action: "", reply: "" },
+      { key: `new-${Date.now()}`, digit, goto: working.entry, action: "", reply: "", productId: "" },
     ]);
   };
 
@@ -357,19 +417,20 @@ export function IvrMenuComposer({
 
   const renderChoiceEditor = (nodeId: string, rows: ChoiceRow[]) => (
     <div className="ivr-choice-table" role="table">
-      <div className="ivr-choice-row head" role="row">
-        <span>They type</span>
+      <div className="ivr-choice-row head has-product" role="row">
+        <span>Digit</span>
         <span>Next screen</span>
-        <span>Also do</span>
-        <span>Custom reply</span>
+        <span>Product</span>
+        <span>Extra action</span>
+        <span>Label / reply</span>
         <span />
       </div>
       {rows.map((row, idx) => (
-        <div className="ivr-choice-row" role="row" key={row.key}>
+        <div className="ivr-choice-row has-product" role="row" key={row.key}>
           <input
             value={row.digit}
             disabled={busy}
-            aria-label="What they type"
+            aria-label="Digit"
             onChange={(e) => {
               const next = [...rows];
               next[idx] = { ...row, digit: e.target.value };
@@ -394,9 +455,26 @@ export function IvrMenuComposer({
             ))}
           </select>
           <select
+            value={row.productId}
+            disabled={busy}
+            aria-label="Bound product"
+            onChange={(e) => {
+              const next = [...rows];
+              next[idx] = { ...row, productId: e.target.value };
+              setChoiceRowsFor(nodeId, next);
+            }}
+          >
+            <option value="">No product</option>
+            {products.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <select
             value={row.action}
             disabled={busy}
-            aria-label="Also do"
+            aria-label="Extra action"
             onChange={(e) => {
               const next = [...rows];
               next[idx] = { ...row, action: e.target.value };
@@ -412,8 +490,8 @@ export function IvrMenuComposer({
           <input
             value={row.reply}
             disabled={busy}
-            placeholder="Optional text"
-            aria-label="Custom reply"
+            placeholder="Optional label"
+            aria-label="Label"
             onChange={(e) => {
               const next = [...rows];
               next[idx] = { ...row, reply: e.target.value };
@@ -570,9 +648,14 @@ export function IvrMenuComposer({
   };
 
   return (
-    <div className={`ivr-composer ivr-composer-${viewMode}`}>
+    <div className={`ivr-composer ivr-composer-${viewMode} ivr-composer-${layout}`}>
       <div className="ivr-composer-toolbar">
         <div className="ivr-composer-toolbar-main">
+          {onClose && (
+            <button type="button" className="ghost-btn" onClick={onClose}>
+              ← Catalog
+            </button>
+          )}
           <div className="ivr-view-toggle" role="tablist" aria-label="Menu editor view">
             <button
               type="button"
@@ -651,6 +734,31 @@ export function IvrMenuComposer({
 
       {viewMode === "visual" ? (
         <div className="ivr-visual">
+          {layout === "page" && (
+            <div className="ivr-screen-list" aria-label="Screens">
+              {listHeader}
+              {ids.map((id) => {
+                const n = working.nodes[id];
+                const bound = n?.choices
+                  ? Object.values(n.choices).filter((c) => c.product_id).length
+                  : 0;
+                return (
+                  <button
+                    type="button"
+                    key={id}
+                    className={selectedId === id ? "ivr-screen-list-row active" : "ivr-screen-list-row"}
+                    onClick={() => setSelectedId(id)}
+                  >
+                    <strong>{id}</strong>
+                    <span>
+                      {id === working.entry ? "start" : ""}
+                      {bound ? `${bound} bound product${bound === 1 ? "" : "s"}` : "no products"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <div className="ivr-canvas-wrap">
             <div className="ivr-canvas" aria-label="Menu flow">
               {columns.map((col, colIdx) => (
@@ -686,7 +794,7 @@ export function IvrMenuComposer({
                           </div>
                         </div>
                         <div className="ivr-screen-bubble">
-                          {(n?.prompt || "No message yet").split("\n").slice(0, 4).join("\n")}
+                          {n?.prompt || "No message yet"}
                         </div>
                         {choices.length > 0 && (
                           <div className="ivr-screen-exits">
@@ -695,6 +803,9 @@ export function IvrMenuComposer({
                                 <em>{digit}</em>
                                 <span aria-hidden>→</span>
                                 {c.goto?.trim() || "stay"}
+                                {c.product_id
+                                  ? ` · ${products.find((p) => p.id === c.product_id)?.name || "product"}`
+                                  : ""}
                                 {c.action ? ` · ${actionLabel(c.action)}` : ""}
                               </span>
                             ))}
