@@ -25,6 +25,7 @@ export interface ThreadSummary {
   unread_count: number;
   message_count: number;
   outbox_count: number;
+  last_preview?: string;
 }
 
 export interface OutboxItem {
@@ -197,6 +198,8 @@ export interface IvrChoice {
   goto?: string | null;
   action?: string | null;
   reply?: string | null;
+  /** Bound catalog product id — stable across catalog reorder. */
+  product_id?: string | null;
 }
 
 export interface IvrAfterCapture {

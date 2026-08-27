@@ -241,6 +241,7 @@ struct ThreadSummary {
   unread_count: u32,
   message_count: u32,
   outbox_count: u32,
+  last_preview: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -938,6 +939,21 @@ impl ThreadState {
           .get(&t.id)
           .map(|list| list.iter().filter(|o| o.status != OutboxStatus::Sent).count() as u32)
           .unwrap_or(0),
+        last_preview: t
+          .messages
+          .iter()
+          .max_by_key(|m| m.timestamp)
+          .map(|m| {
+            let flat = m.content.replace('\n', " ");
+            let trimmed = flat.trim();
+            let taken: String = trimmed.chars().take(140).collect();
+            if trimmed.chars().count() > 140 {
+              format!("{taken}…")
+            } else {
+              taken
+            }
+          })
+          .unwrap_or_default(),
       })
       .collect();
 
@@ -4866,12 +4882,25 @@ fn maybe_handle_ivr(state: &AppState, thread_id: &str, content: &str) -> bool {
     } else {
       format!("{}\n\n{}", list, follow)
     });
+  } else if result.action.as_deref() == Some("offer_product") {
+    let offer = ivr_offer_product(state, &result.session);
+    let follow = menus
+      .nodes
+      .get(&result.session.node_id)
+      .map(|n| n.prompt.as_str())
+      .unwrap_or("");
+    reply = Some(if follow.is_empty() {
+      offer
+    } else {
+      format!("{}\n\n{}", offer, follow)
+    });
   } else if result.action.as_deref() == Some("place_order") {
     reply = Some(ivr_place_order(state, thread_id, &result.session));
     // Clear order slots after attempt
     let mut cleared = result.session.clone();
     cleared.slots.remove("order_idx");
     cleared.slots.remove("order_qty");
+    cleared.slots.remove("product_id");
     let _ = state.ivr.save_session(&account, cleared);
   } else if result.action.as_deref() == Some("order_status") {
     reply = Some(ivr_order_status(state, thread_id));
@@ -4910,29 +4939,76 @@ fn ivr_order_status(state: &AppState, thread_id: &str) -> String {
   }
 }
 
+fn ivr_offer_product(state: &AppState, session: &ivr::IvrSession) -> String {
+  let pid = session
+    .slots
+    .get("product_id")
+    .map(|s| s.trim())
+    .filter(|s| !s.is_empty());
+  let Some(pid) = pid else {
+    return "That menu item isn’t bound to a product. Reply 0 for the main menu.".to_string();
+  };
+  let products = state.commerce.list_products();
+  let Some(mut product) = products.iter().find(|p| p.id == pid).cloned() else {
+    return "That product is no longer in the catalog. Reply 0 for the main menu.".to_string();
+  };
+  product.migrate_legacy();
+  if state.ivr.get_settings().hide_zero_stock && product.quantity_base_milli <= 0 {
+    return format!(
+      "{} is out of stock. Reply 0 for the main menu.",
+      product.name
+    );
+  }
+  format_catalog_list(&[product], 1)
+}
+
 fn ivr_place_order(state: &AppState, thread_id: &str, session: &ivr::IvrSession) -> String {
   let products = ivr_catalog_products(state);
-  if products.is_empty() {
-    return "No products available right now. Reply 0 for the main menu.".to_string();
-  }
-  let idx: usize = match session
+  let all_products = state.commerce.list_products();
+  let bound_id = session
     .slots
-    .get("order_idx")
-    .and_then(|s| s.parse::<usize>().ok())
-  {
-    Some(i) if i >= 1 && i <= products.len() => i - 1,
-    _ => {
-      return format!(
-        "That product number isn’t on the list. Reply 2 to try again.\n\n{}",
-        format_catalog_list(&products, 15)
-      );
+    .get("product_id")
+    .map(|s| s.trim().to_string())
+    .filter(|s| !s.is_empty());
+  let product = if let Some(pid) = bound_id {
+    match all_products.into_iter().find(|p| p.id == pid) {
+      Some(p) => p,
+      None => {
+        return "That product is no longer in the catalog. Reply 0 for the main menu.".to_string();
+      }
     }
+  } else {
+    if products.is_empty() {
+      return "No products available right now. Reply 0 for the main menu.".to_string();
+    }
+    let idx: usize = match session
+      .slots
+      .get("order_idx")
+      .and_then(|s| s.parse::<usize>().ok())
+    {
+      Some(i) if i >= 1 && i <= products.len() => i - 1,
+      _ => {
+        return format!(
+          "That product number isn’t on the list. Reply 2 to try again.\n\n{}",
+          format_catalog_list(&products, 15)
+        );
+      }
+    };
+    products[idx].clone()
   };
   let qty: f64 = match session.slots.get("order_qty").and_then(|s| s.parse::<f64>().ok()) {
     Some(q) if q.is_finite() && q > 0.0 => q,
+    _ if session
+      .slots
+      .get("product_id")
+      .map(|s| !s.trim().is_empty())
+      .unwrap_or(false) =>
+    {
+      1.0
+    }
     _ => return "Quantity must be a positive number. Reply 2 to try again.".to_string(),
   };
-  let product = &products[idx];
+  let product = &product;
   let customer = match state.commerce.customer_by_thread(thread_id) {
     Some(c) => c,
     None => {
