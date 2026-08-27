@@ -209,6 +209,27 @@ fn seed_products(state: &AppState) -> std::collections::HashMap<String, String> 
   ids
 }
 
+fn drop_duplicate_named_products(state: &AppState) {
+  let keep: std::collections::HashSet<String> = [
+    PID_WIDGET, PID_INCENSE, PID_COLDBREW, PID_TOTE, PID_HONEY,
+  ]
+  .into_iter()
+  .map(|s| s.to_string())
+  .collect();
+  let names: std::collections::HashSet<String> = state
+    .commerce
+    .list_products()
+    .into_iter()
+    .filter(|p| keep.contains(&p.id))
+    .map(|p| p.name.to_lowercase())
+    .collect();
+  for p in state.commerce.list_products() {
+    if names.contains(&p.name.to_lowercase()) && !keep.contains(&p.id) {
+      let _ = state.commerce.delete_product(&p.id);
+    }
+  }
+}
+
 fn seed_people(state: &AppState, account: &str) {
   let _ = state.contact_store.upsert_patch(
     account,
@@ -563,15 +584,15 @@ fn bind_ivr(state: &AppState, ids: &std::collections::HashMap<String, String>) {
 /// Fill empty local stores so Inbox / People / Catalog / Orders have records.
 pub fn seed_if_empty(state: &AppState, account: &str) {
   let ts = state.account_manager.get_or_create(account);
-  if !ts.get_threads().is_empty() {
-    return;
+  if ts.get_threads().is_empty() {
+    eprintln!("SignalX: loading sample CRM data for {account}");
+    let ids = seed_products(state);
+    seed_people(state, account);
+    seed_threads(state, account);
+    seed_customers_orders(state, account, &ids);
+    bind_ivr(state, &ids);
   }
-  eprintln!("SignalX: loading sample CRM data for {account}");
-  let ids = seed_products(state);
-  seed_people(state, account);
-  seed_threads(state, account);
-  seed_customers_orders(state, account, &ids);
-  bind_ivr(state, &ids);
+  drop_duplicate_named_products(state);
 }
 
 #[cfg(test)]
