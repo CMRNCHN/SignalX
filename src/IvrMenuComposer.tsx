@@ -927,7 +927,7 @@ export function IvrMenuComposer({
                     {id === working.entry ? " · start" : ""}
                     {n?.capture_slot ? ` · ${captureBadge(n.capture_slot)}` : ""}
                     <span className="ivr-text-summary-snip">
-                      {(n?.prompt || "").split("\n")[0].slice(0, 60)}
+                      {(n?.prompt || "").split("\n")[0]}
                     </span>
                   </summary>
                   <div className="ivr-text-block-body">
