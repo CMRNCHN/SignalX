@@ -10,6 +10,8 @@ import {
   type Product,
   type ThreadActionSuggestion,
 } from "./api";
+import { deriveCustomerSegments } from "./segments";
+import { isPrimaryAction, orderStatusLabel, orderStatusTone } from "./status";
 
 function money(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
@@ -19,14 +21,6 @@ function fmtTime(ts: number): string {
   if (!ts) return "";
   const d = new Date(ts);
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
-}
-
-function orderStatusTone(status: string): "ok" | "warn" | "danger" | "muted" {
-  const s = status.toLowerCase();
-  if (s === "paid" || s === "fulfilled" || s === "completed") return "ok";
-  if (s === "cancelled" || s === "canceled" || s === "failed") return "danger";
-  if (s === "confirmed" || s === "invoiced" || s === "sent" || s === "pending") return "warn";
-  return "muted";
 }
 
 export function computeStanding(orders: Order[]): {
@@ -172,6 +166,10 @@ export function ProfileRail(props: Props) {
     [orders, threadId],
   );
   const standing = useMemo(() => computeStanding(threadOrders), [threadOrders]);
+  const segments = useMemo(
+    () => deriveCustomerSegments(contact, customer, threadOrders, products, standing.lifetimeCents),
+    [contact, customer, threadOrders, products, standing.lifetimeCents],
+  );
 
   useEffect(() => {
     setNotes(customer?.notes ?? "");
@@ -355,6 +353,19 @@ export function ProfileRail(props: Props) {
         )}
       </div>
 
+      {!isGroup && segments.length > 0 && (
+      <div className="profile-section">
+        <div className="profile-section-title">Segments</div>
+        <div className="segment-chips">
+          {segments.map((seg) => (
+            <span key={seg.label} className={`segment-pill segment-${seg.tone}`}>
+              {seg.label}
+            </span>
+          ))}
+        </div>
+      </div>
+      )}
+
       {!isGroup && (
       <div className="profile-section">
         <div className="profile-section-title">Standing</div>
@@ -482,7 +493,7 @@ export function ProfileRail(props: Props) {
             <button
               key={`${a.kind}-${i}`}
               type="button"
-              className="action-btn"
+              className={isPrimaryAction(a.kind) ? "action-btn primary" : "action-btn"}
               disabled={
                 aiBusy ||
                 ((a.kind === "draft" || a.kind === "summarize") && !ai?.configured)
@@ -505,7 +516,9 @@ export function ProfileRail(props: Props) {
             <li key={o.id}>
               <div className="thread-row-top">
                 <span className="thread-name">{o.id.slice(0, 8)}</span>
-                <span className={`status-pill status-${orderStatusTone(o.status)}`}>{o.status}</span>
+                <span className={`status-pill status-${orderStatusTone(o.status)}`}>
+                  {orderStatusLabel(o.status)}
+                </span>
               </div>
               <div className="convo-sub">
                 {money(o.total_cents)} · {fmtTime(o.created_at)}
@@ -518,12 +531,12 @@ export function ProfileRail(props: Props) {
                 )}
                 {o.status === "draft" ? (
                   onSendQuote && (
-                    <button type="button" className="ghost-btn" onClick={() => onSendQuote(o.id)}>
+                    <button type="button" className="action-btn primary" onClick={() => onSendQuote(o.id)}>
                       Quote
                     </button>
                   )
                 ) : (
-                  <button type="button" className="ghost-btn" onClick={() => onSendInvoice(o.id)}>
+                  <button type="button" className="action-btn primary" onClick={() => onSendInvoice(o.id)}>
                     Invoice
                   </button>
                 )}

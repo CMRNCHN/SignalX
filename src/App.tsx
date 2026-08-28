@@ -31,8 +31,10 @@ import {
   type ThreadSummary,
 } from "./api";
 import { DeviceLinkQr } from "./DeviceLinkQr";
+import { EmptyState } from "./EmptyState";
 import { IvrMenuComposer } from "./IvrMenuComposer";
 import { ProfileRail } from "./ProfileRail";
+import { orderStatusLabel, orderStatusTone, threadReplyLabel, threadReplyTone } from "./status";
 import { isTauriRuntime } from "./runtime";
 import {
   IconCatalog,
@@ -232,14 +234,6 @@ async function fileToBase64(file: File): Promise<{ b64: string; ext: string }> {
   return { b64, ext };
 }
 
-function orderStatusTone(status: string): "ok" | "warn" | "danger" | "muted" {
-  const s = status.toLowerCase();
-  if (s === "paid" || s === "fulfilled" || s === "completed") return "ok";
-  if (s === "cancelled" || s === "canceled" || s === "failed") return "danger";
-  if (s === "invoiced" || s === "sent" || s === "pending" || s === "confirmed") return "warn";
-  if (s === "draft") return "muted";
-  return "muted";
-}
 
 function ivrInactiveReason(ivr: ThreadIvrStatus | null): string | null {
   if (!ivr || ivr.effective) return null;
@@ -1973,10 +1967,18 @@ export default function App() {
             )}
             <div className="thread-list">
               {threads.length === 0 && (
-                <p className="empty">No threads yet — open a chat above or wait for Signal traffic.</p>
+                <EmptyState
+                  icon="✉"
+                  title="Inbox is empty"
+                  description="Open a chat above or wait for Signal traffic to arrive."
+                />
               )}
               {threads.length > 0 && filteredThreads.length === 0 && (
-                <p className="empty">No threads match these filters.</p>
+                <EmptyState
+                  icon="⌕"
+                  title="No matches"
+                  description="Try a different filter or clear your search."
+                />
               )}
               {filteredThreads.map((t) => (
                 <button
@@ -1995,8 +1997,15 @@ export default function App() {
                     </div>
                     <div className="thread-preview">{t.last_preview || "No messages yet"}</div>
                     <div className="thread-row-meta">
+                      {(() => {
+                        const reply = threadReplyLabel(t);
+                        const tone = threadReplyTone(t);
+                        return reply && tone ? (
+                          <span className={`status-pill status-${tone}`}>{reply}</span>
+                        ) : null;
+                      })()}
                       {t.unread_count > 0 && <span className="badge">{t.unread_count}</span>}
-                      {t.outbox_count > 0 && <span className="badge muted">{t.outbox_count} pending</span>}
+                      {t.outbox_count > 0 && <span className="badge warn">{t.outbox_count} pending</span>}
                     </div>
                   </div>
                 </button>
@@ -2006,10 +2015,11 @@ export default function App() {
 
           <main className="convo">
             {!selectedId ? (
-              <div className="convo-empty">
-                <h1>Inbox</h1>
-                <p>Select a thread to read and reply. The profile column stays open.</p>
-              </div>
+              <EmptyState
+                icon="💬"
+                title="Select a conversation"
+                description="Pick a thread from the list to read and reply. The profile column shows customer context."
+              />
             ) : (
               <>
                 <header className="convo-head">
@@ -2255,7 +2265,13 @@ export default function App() {
               ))}
             </div>
             <div className="thread-list">
-              {peopleRows.length === 0 && <p className="empty">No people yet — create a contact or group.</p>}
+              {peopleRows.length === 0 && (
+                <EmptyState
+                  icon="👤"
+                  title="No people yet"
+                  description="Create a contact or group in the workspace panel, or link a customer from a thread."
+                />
+              )}
               {peopleRows.map((row) => (
                 <button
                   key={row.key}
@@ -2512,7 +2528,9 @@ export default function App() {
                           <div className="thread-row-body">
                             <div className="thread-row-top">
                               <span className="thread-name">{o.id.slice(0, 8)}</span>
-                              <span className={`status-pill status-${orderStatusTone(o.status)}`}>{o.status}</span>
+                              <span className={`status-pill status-${orderStatusTone(o.status)}`}>
+                                {orderStatusLabel(o.status)}
+                              </span>
                             </div>
                             <div className="convo-sub">{money(o.total_cents)}</div>
                           </div>
@@ -3299,6 +3317,17 @@ export default function App() {
               ))}
             </div>
             <div className="thread-list">
+              {filteredOrders.length === 0 && (
+                <EmptyState
+                  icon="📋"
+                  title={orders.length === 0 ? "No orders yet" : "No orders match"}
+                  description={
+                    orders.length === 0
+                      ? "Create a quote from a DM thread or use the buyer menu to take an order."
+                      : "Try a different status filter or search term."
+                  }
+                />
+              )}
               {filteredOrders.map((o) => (
                 <button
                   key={o.id}
@@ -3309,7 +3338,9 @@ export default function App() {
                   <div className="thread-row-body">
                     <div className="thread-row-top">
                       <span className="thread-name">{orderParty(o)}</span>
-                      <span className={`status-pill status-${orderStatusTone(o.status)}`}>{o.status}</span>
+                      <span className={`status-pill status-${orderStatusTone(o.status)}`}>
+                        {orderStatusLabel(o.status)}
+                      </span>
                     </div>
                     <div className="convo-sub">
                       {money(o.total_cents)} · {fmtTime(o.created_at)}
@@ -3367,7 +3398,9 @@ export default function App() {
                   <h2 className="wrap">
                     {orderParty(o)} · {o.id.slice(0, 8)}
                   </h2>
-                  <span className={`status-pill status-${orderStatusTone(o.status)}`}>{o.status}</span>
+                  <span className={`status-pill status-${orderStatusTone(o.status)}`}>
+                    {orderStatusLabel(o.status)}
+                  </span>
                   <p>{money(o.total_cents)}</p>
                   <ul>
                     {o.lines.map((l, i) => (
