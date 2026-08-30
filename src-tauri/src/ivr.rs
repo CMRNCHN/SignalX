@@ -588,12 +588,18 @@ impl IvrStore {
 
   pub fn reload_from(&self, account_data_dir: &Path) {
     let fresh = Self::new(account_data_dir);
-    *self.settings_path.lock().unwrap() = fresh.settings_path.lock().unwrap().clone();
-    *self.menus_path.lock().unwrap() = fresh.menus_path.lock().unwrap().clone();
-    *self.sessions_dir.lock().unwrap() = fresh.sessions_dir.lock().unwrap().clone();
-    *self.settings.lock().unwrap() = fresh.settings.lock().unwrap().clone();
-    *self.menus.lock().unwrap() = fresh.menus.lock().unwrap().clone();
-    *self.sessions.lock().unwrap() = HashMap::new();
+    let mut settings_path = self.settings_path.lock().unwrap();
+    let mut menus_path = self.menus_path.lock().unwrap();
+    let mut sessions_dir = self.sessions_dir.lock().unwrap();
+    let mut settings = self.settings.lock().unwrap();
+    let mut menus = self.menus.lock().unwrap();
+    let mut sessions = self.sessions.lock().unwrap();
+    *settings_path = fresh.settings_path.lock().unwrap().clone();
+    *menus_path = fresh.menus_path.lock().unwrap().clone();
+    *sessions_dir = fresh.sessions_dir.lock().unwrap().clone();
+    *settings = fresh.settings.lock().unwrap().clone();
+    *menus = fresh.menus.lock().unwrap().clone();
+    *sessions = HashMap::new();
   }
 
   pub fn get_settings(&self) -> IvrSettings {
@@ -601,12 +607,12 @@ impl IvrStore {
   }
 
   pub fn set_settings(&self, s: IvrSettings) -> Result<IvrSettings, String> {
-    {
-      *self.settings.lock().unwrap() = s.clone();
-    }
     let json = serde_json::to_string_pretty(&s).map_err(|e| e.to_string())?;
-    let path = self.settings_path.lock().unwrap().clone();
-    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+    {
+      let path = self.settings_path.lock().unwrap();
+      *self.settings.lock().unwrap() = s.clone();
+      std::fs::write(&*path, json).map_err(|e| e.to_string())?;
+    }
     Ok(s)
   }
 
@@ -616,12 +622,12 @@ impl IvrStore {
 
   pub fn set_menus(&self, menus: IvrMenus) -> Result<IvrMenus, String> {
     validate_menus(&menus)?;
-    {
-      *self.menus.lock().unwrap() = menus.clone();
-    }
     let json = serde_json::to_string_pretty(&menus).map_err(|e| e.to_string())?;
-    let path = self.menus_path.lock().unwrap().clone();
-    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+    {
+      let path = self.menus_path.lock().unwrap();
+      *self.menus.lock().unwrap() = menus.clone();
+      std::fs::write(&*path, json).map_err(|e| e.to_string())?;
+    }
     Ok(menus)
   }
 
@@ -664,8 +670,7 @@ impl IvrStore {
   }
 
   fn ensure_sessions_loaded(&self, account_id: &str) {
-    let mut all = self.sessions.lock().unwrap();
-    if all.contains_key(account_id) {
+    if self.sessions.lock().unwrap().contains_key(account_id) {
       return;
     }
     let path = self.sessions_path(account_id);
@@ -677,15 +682,30 @@ impl IvrStore {
     } else {
       HashMap::new()
     };
-    all.insert(account_id.to_string(), map);
+    let mut all = self.sessions.lock().unwrap();
+    all.entry(account_id.to_string()).or_insert(map);
   }
 
   fn persist_sessions(&self, account_id: &str) -> Result<(), String> {
     self.ensure_sessions_loaded(account_id);
-    let all = self.sessions.lock().unwrap();
-    let map = all.get(account_id).cloned().unwrap_or_default();
-    let json = serde_json::to_string_pretty(&map).map_err(|e| e.to_string())?;
-    std::fs::write(self.sessions_path(account_id), json).map_err(|e| e.to_string())
+    let (json, path) = {
+      let dir = self.sessions_dir.lock().unwrap();
+      let all = self.sessions.lock().unwrap();
+      let map = all.get(account_id).cloned().unwrap_or_default();
+      let json = serde_json::to_string_pretty(&map).map_err(|e| e.to_string())?;
+      let safe: String = account_id
+        .chars()
+        .map(|c| {
+          if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+            c
+          } else {
+            '_'
+          }
+        })
+        .collect();
+      (json, dir.join(format!("{}.json", safe)))
+    };
+    std::fs::write(path, json).map_err(|e| e.to_string())
   }
 
   pub fn get_session(&self, account_id: &str, thread_id: &str) -> Option<IvrSession> {

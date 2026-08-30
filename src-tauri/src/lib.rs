@@ -2341,10 +2341,14 @@ impl AutoReplyStore {
 
   fn reload_from(&self, account_data_dir: &Path) {
     let fresh = Self::new(account_data_dir);
-    *self.settings_path.lock().unwrap() = fresh.settings_path.lock().unwrap().clone();
-    *self.audit_path.lock().unwrap() = fresh.audit_path.lock().unwrap().clone();
-    *self.settings.lock().unwrap() = fresh.settings.lock().unwrap().clone();
-    *self.audit.lock().unwrap() = fresh.audit.lock().unwrap().clone();
+    let mut settings_path = self.settings_path.lock().unwrap();
+    let mut audit_path = self.audit_path.lock().unwrap();
+    let mut settings = self.settings.lock().unwrap();
+    let mut audit = self.audit.lock().unwrap();
+    *settings_path = fresh.settings_path.lock().unwrap().clone();
+    *audit_path = fresh.audit_path.lock().unwrap().clone();
+    *settings = fresh.settings.lock().unwrap().clone();
+    *audit = fresh.audit.lock().unwrap().clone();
     self.recent_sends.lock().unwrap().clear();
   }
 
@@ -2353,15 +2357,15 @@ impl AutoReplyStore {
   }
 
   fn set_settings(&self, s: AutoReplySettings) -> Result<AutoReplySettings, String> {
-    {
-      *self.settings.lock().unwrap() = s.clone();
-    }
     let json = serde_json::to_string_pretty(&s).map_err(|e| e.to_string())?;
-    let path = self.settings_path.lock().unwrap().clone();
-    if let Some(parent) = path.parent() {
-      std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    {
+      let path = self.settings_path.lock().unwrap();
+      *self.settings.lock().unwrap() = s.clone();
+      if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+      }
+      std::fs::write(&*path, json).map_err(|e| e.to_string())?;
     }
-    std::fs::write(&path, json).map_err(|e| e.to_string())?;
     Ok(s)
   }
 
@@ -2373,18 +2377,18 @@ impl AutoReplyStore {
   }
 
   fn append_audit(&self, entry: AutoReplyAuditEntry) {
-    {
+    let (json, path) = {
+      let path_guard = self.audit_path.lock().unwrap();
       let mut a = self.audit.lock().unwrap();
       a.entries.push(entry);
-      // Cap at 500
       if a.entries.len() > 500 {
         let excess = a.entries.len() - 500;
         a.entries.drain(0..excess);
       }
       let json = serde_json::to_string_pretty(&*a).unwrap_or_else(|_| "{}".to_string());
-      let path = self.audit_path.lock().unwrap().clone();
-      let _ = std::fs::write(&path, json);
-    }
+      (json, path_guard.clone())
+    };
+    let _ = std::fs::write(&path, json);
   }
 
   fn record_send(&self, thread_id: &str) {
@@ -2503,6 +2507,8 @@ struct AppState {
   outbox_send_locks: Arc<Mutex<HashMap<String, Arc<AsyncMutex<()>>>>>, // account_id -> send mutex
   outbox_workers: Arc<Mutex<HashSet<String>>>, // account_id set
   session: SessionControl,
+  /// Serializes shop reload vs in-flight catalog/order/IVR writes across a switch.
+  shop_gate: Arc<Mutex<()>>,
   auto_reply: AutoReplyStore,
   ivr: IvrStore,
   commerce: CommerceStore,
@@ -2580,6 +2586,7 @@ fn persist_live_number(state: &AppState, e164: &str) -> Result<(), String> {
 }
 
 fn reload_shop_stores(state: &AppState, account_id: &str) {
+  let _gate = state.shop_gate.lock().unwrap();
   let dir = session::account_data_dir(&state.app_data_dir, account_id);
   let _ = std::fs::create_dir_all(dir.join("commerce"));
   let _ = std::fs::create_dir_all(dir.join("ivr").join("sessions"));
@@ -2588,6 +2595,19 @@ fn reload_shop_stores(state: &AppState, account_id: &str) {
   state.commerce_audit.reload_from(&dir);
   state.ivr.reload_from(&dir);
   state.auto_reply.reload_from(&dir);
+}
+
+/// Block shop mutations while locked or while a switch is replacing the live stores.
+fn require_live_shop(state: &AppState) -> Result<std::sync::MutexGuard<'_, ()>, Value> {
+  if state.session.is_locked() {
+    return Err(err("session locked".to_string()));
+  }
+  let gen = state.session.current_gen();
+  let guard = state.shop_gate.lock().unwrap();
+  if !state.session.is_current(gen) {
+    return Err(err("session switched".to_string()));
+  }
+  Ok(guard)
 }
 
 fn stop_identity_workers(state: &AppState) {
@@ -4117,6 +4137,10 @@ fn import_data_bundle_cmd(
   bytes_base64: Option<String>,
   mode: String,
 ) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return err("No active account".to_string()),
@@ -4185,6 +4209,7 @@ fn trigger_agent_draft(state: AppState, agent: AgentModeConfig, ts: ThreadState,
   let constraints_for_prompt = constraints.clone();
   let ts_for_add = ts.clone();
   let state_for_auto = state.clone();
+  let origin_gen = state.session.current_gen();
 
   tokio::spawn(async move {
     let res = tokio::task::spawn_blocking(move || {
@@ -4202,6 +4227,12 @@ fn trigger_agent_draft(state: AppState, agent: AgentModeConfig, ts: ThreadState,
           created_at: now_ms(),
         };
         ts_for_add.add_pending_reply(&tid, pending.clone());
+
+        // Do not auto-send or attribute the draft to a shop that was switched
+        // in while Ollama was running — that queues as the live (wrong) identity.
+        if !state_for_auto.session.is_current(origin_gen) {
+          return;
+        }
 
         let account_id = state_for_auto
           .account_manager
@@ -4366,6 +4397,12 @@ async fn receive_loop(state: AppState, agent_mode: Option<AgentModeConfig>) {
               let msg_id = msg.id.clone();
               ts.add_message(msg.clone(), participants);
               emit_message_new(&account, &msg);
+              if !state.session.is_current(my_gen) {
+                // Message is already on the receiving account's thread store.
+                // Skip IVR/auto-reply so they cannot mutate the newly bound shop
+                // or queue a reply as the switched identity.
+                continue;
+              }
               let ivr_handled = maybe_handle_ivr(&state, &thread_id, &msg.content);
               if !ivr_handled {
                 if let Some(agent_cfg) = agent_mode.clone() {
@@ -4647,6 +4684,10 @@ fn get_auto_reply_settings(state: &AppState) -> Value {
 }
 
 fn set_auto_reply_settings(state: &AppState, settings: AutoReplySettings) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   match state.auto_reply.set_settings(settings) {
     Ok(s) => {
       emit_event("auto-reply://settings", s.clone());
@@ -4662,6 +4703,10 @@ fn list_auto_reply_audit(state: &AppState, limit: Option<u32>) -> Value {
 }
 
 fn set_thread_auto_reply(state: &AppState, thread_id: String, enabled: bool) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   let account = match require_active_account(state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -4781,6 +4826,7 @@ fn build_app_state() -> AppState {
     outbox_send_locks: Arc::new(Mutex::new(HashMap::new())),
     outbox_workers: Arc::new(Mutex::new(HashSet::new())),
     session: SessionControl::default(),
+    shop_gate: Arc::new(Mutex::new(())),
     auto_reply: AutoReplyStore::new(&app_data_dir),
     ivr: IvrStore::new(&app_data_dir),
     commerce: CommerceStore::new(&app_data_dir),
@@ -4821,6 +4867,11 @@ fn bootstrap_accounts(state: &AppState) {
 /// Returns true when IVR claimed this inbound (skip AI auto-send path).
 fn maybe_handle_ivr(state: &AppState, thread_id: &str, content: &str) -> bool {
   if state.session.is_locked() {
+    return false;
+  }
+  let gen = state.session.current_gen();
+  let _gate = state.shop_gate.lock().unwrap();
+  if !state.session.is_current(gen) {
     return false;
   }
   if thread_id.starts_with("group:") {
@@ -4999,6 +5050,10 @@ fn get_ivr_settings(state: &AppState) -> Value {
 }
 
 fn set_ivr_settings(state: &AppState, settings: IvrSettings) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   match state.ivr.set_settings(settings) {
     Ok(s) => {
       emit_event("ivr://settings", s.clone());
@@ -5013,6 +5068,10 @@ fn get_ivr_menus(state: &AppState) -> Value {
 }
 
 fn set_ivr_menus(state: &AppState, menus: IvrMenus) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   match state.ivr.set_menus(menus) {
     Ok(m) => {
       emit_event("ivr://menus", m.clone());
@@ -5023,6 +5082,10 @@ fn set_ivr_menus(state: &AppState, menus: IvrMenus) -> Value {
 }
 
 fn reset_ivr_menus(state: &AppState) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   match state.ivr.reset_menus_to_demo() {
     Ok(m) => {
       emit_event("ivr://menus", m.clone());
@@ -5070,6 +5133,10 @@ fn get_thread_ivr(state: &AppState, thread_id: String) -> Value {
 }
 
 fn set_thread_ivr(state: &AppState, thread_id: String, enabled: bool) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   let tid = thread_id.trim().to_string();
   if tid.is_empty() {
     return err("thread_id required".to_string());
@@ -5112,6 +5179,10 @@ fn set_thread_ivr(state: &AppState, thread_id: String, enabled: bool) -> Value {
 }
 
 fn clear_thread_handoff(state: &AppState, thread_id: String) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   let tid = thread_id.trim().to_string();
   if tid.is_empty() {
     return err("thread_id required".to_string());
@@ -5144,6 +5215,10 @@ fn list_products(state: &AppState) -> Value {
 }
 
 fn upsert_product(state: &AppState, product: Product) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   match state.commerce.upsert_product(product, now_ms()) {
     Ok(p) => {
       emit_event("commerce://products", state.commerce.list_products());
@@ -5154,6 +5229,10 @@ fn upsert_product(state: &AppState, product: Product) -> Value {
 }
 
 fn delete_product(state: &AppState, id: String) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   match state.commerce.delete_product(id.trim()) {
     Ok(deleted) => {
       emit_event("commerce://products", state.commerce.list_products());
@@ -5164,6 +5243,10 @@ fn delete_product(state: &AppState, id: String) -> Value {
 }
 
 fn set_product_image(state: &AppState, id: String, bytes_base64: String, ext: String) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   let bytes = match base64::engine::general_purpose::STANDARD.decode(bytes_base64.trim()) {
     Ok(b) => b,
     Err(e) => return err(format!("invalid image base64: {}", e)),
@@ -5181,6 +5264,10 @@ fn set_product_image(state: &AppState, id: String, bytes_base64: String, ext: St
 }
 
 fn clear_product_image(state: &AppState, id: String) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   match state.commerce.clear_product_image(id.trim(), now_ms()) {
     Ok(p) => {
       emit_event("commerce://products", state.commerce.list_products());
@@ -5352,6 +5439,10 @@ fn list_customers(state: &AppState) -> Value {
 }
 
 fn upsert_customer(state: &AppState, customer: Customer) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   match state.commerce.upsert_customer(customer, now_ms()) {
     Ok(c) => {
       emit_event("commerce://customers", state.commerce.list_customers());
@@ -5362,6 +5453,10 @@ fn upsert_customer(state: &AppState, customer: Customer) -> Value {
 }
 
 fn delete_customer(state: &AppState, id: String) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   match state.commerce.delete_customer(id.trim()) {
     Ok(deleted) => {
       emit_event("commerce://customers", state.commerce.list_customers());
@@ -5407,6 +5502,10 @@ fn create_order(
   lines: Vec<OrderLineInput>,
   as_draft: Option<bool>,
 ) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   let tid = thread_id.trim().to_string();
   if tid.is_empty() {
     return err("thread_id required".to_string());
@@ -5475,6 +5574,10 @@ fn update_draft_order_lines(
   id: String,
   lines: Vec<OrderLineInput>,
 ) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   match state
     .orders
     .update_draft_lines(&state.commerce, id.trim(), lines, now_ms())
@@ -5496,9 +5599,10 @@ fn update_draft_order_lines(
 }
 
 fn confirm_order(state: &AppState, id: String) -> Value {
-  if state.session.is_locked() {
-    return err("session locked".to_string());
-  }
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   match state.orders.confirm(&state.commerce, id.trim(), now_ms()) {
     Ok(order) => {
       state.commerce_audit.record(
@@ -5518,6 +5622,10 @@ fn confirm_order(state: &AppState, id: String) -> Value {
 }
 
 fn duplicate_order_as_draft(state: &AppState, id: String) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   match state
     .orders
     .duplicate_as_draft(&state.commerce, id.trim(), now_ms())
@@ -5539,6 +5647,10 @@ fn duplicate_order_as_draft(state: &AppState, id: String) -> Value {
 }
 
 fn set_order_status(state: &AppState, id: String, status: String) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   match state.orders.set_status(id.trim(), status.trim(), now_ms()) {
     Ok(order) => {
       state.commerce_audit.record(
@@ -5557,6 +5669,10 @@ fn set_order_status(state: &AppState, id: String, status: String) -> Value {
 }
 
 fn send_order_invoice(state: &AppState, id: String) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   let order = match state.orders.get(id.trim()) {
     Some(o) => o,
     None => return err("order not found".to_string()),
@@ -5583,6 +5699,10 @@ fn send_order_invoice(state: &AppState, id: String) -> Value {
 }
 
 fn send_order_quote(state: &AppState, id: String) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   let order = match state.orders.get(id.trim()) {
     Some(o) => o,
     None => return err("order not found".to_string()),
@@ -5614,6 +5734,10 @@ fn adjust_product_stock(
   delta: f64,
   reason: Option<String>,
 ) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   let pid = id.trim();
   if pid.is_empty() {
     return err("product id required".into());
@@ -5676,6 +5800,10 @@ fn export_products_csv(state: &AppState) -> Value {
 }
 
 fn import_products_csv(state: &AppState, csv: String, dry_run: bool) -> Value {
+  let _gate = match require_live_shop(state) {
+    Ok(g) => g,
+    Err(v) => return v,
+  };
   match state
     .commerce
     .import_products_csv(&csv, dry_run, now_ms())
