@@ -36,18 +36,46 @@ pub fn account_data_dir(app_data_dir: &Path, account_id: &str) -> PathBuf {
 
 /// Shop files live under `accounts/{id}/`. Legacy global `commerce/` / `ivr/`
 /// are used only when the namespaced tree is absent (pre-migration).
+///
+/// Empty `commerce/` / `ivr/` dirs created by `add_account` are not a shop —
+/// treating them as migrated hid the live global catalog from backup export
+/// and made `migrate_global_shop` skip the move.
 pub fn shop_root(app_data_dir: &Path, account_id: &str) -> PathBuf {
   let namespaced = account_data_dir(app_data_dir, account_id);
-  if namespaced.join("commerce").exists()
-    || namespaced.join("ivr").exists()
-    || namespaced.join("auto_reply_settings.json").is_file()
-  {
+  if has_shop_payload(&namespaced) {
     namespaced
-  } else if app_data_dir.join("commerce").exists() || app_data_dir.join("ivr").exists() {
+  } else if has_shop_payload(app_data_dir) {
     app_data_dir.to_path_buf()
   } else {
     namespaced
   }
+}
+
+fn path_has_regular_file(path: &Path) -> bool {
+  if path.is_file() {
+    return true;
+  }
+  let Ok(entries) = std::fs::read_dir(path) else {
+    return false;
+  };
+  for entry in entries.flatten() {
+    let child = entry.path();
+    if child.is_file() || path_has_regular_file(&child) {
+      return true;
+    }
+  }
+  false
+}
+
+fn has_shop_payload(root: &Path) -> bool {
+  root.join("auto_reply_settings.json").is_file()
+    || root.join("auto_reply_audit.json").is_file()
+    || path_has_regular_file(&root.join("commerce"))
+    || path_has_regular_file(&root.join("ivr"))
+}
+
+fn is_placeholder_dir(path: &Path) -> bool {
+  path.is_dir() && !path_has_regular_file(path)
 }
 
 fn move_path(src: &Path, dest: &Path) -> Result<(), String> {
@@ -55,7 +83,11 @@ fn move_path(src: &Path, dest: &Path) -> Result<(), String> {
     return Ok(());
   }
   if dest.exists() {
-    return Ok(());
+    if is_placeholder_dir(dest) {
+      std::fs::remove_dir_all(dest).map_err(|e| e.to_string())?;
+    } else {
+      return Ok(());
+    }
   }
   if let Some(parent) = dest.parent() {
     std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -407,6 +439,51 @@ mod tests {
       .join("accounts/_12025551212/commerce/products.json")
       .is_file());
     assert!(!root.join("commerce/products.json").is_file());
+    let _ = std::fs::remove_dir_all(&root);
+  }
+
+  #[test]
+  fn migrate_moves_global_shop_over_add_account_placeholders() {
+    let root = tmp("mig-placeholder");
+    std::fs::create_dir_all(root.join("commerce")).unwrap();
+    std::fs::write(
+      root.join("commerce/products.json"),
+      r#"{"version":1,"products":[{"id":"p1"}]}"#,
+    )
+    .unwrap();
+    std::fs::create_dir_all(root.join("ivr/menus")).unwrap();
+    std::fs::write(root.join("ivr/menus.json"), r#"{"version":1,"menus":[]}"#).unwrap();
+    // add_account creates these empty trees before the first migrate.
+    let dest = root.join("accounts/_12025551212");
+    std::fs::create_dir_all(dest.join("commerce")).unwrap();
+    std::fs::create_dir_all(dest.join("ivr/sessions")).unwrap();
+
+    assert_eq!(shop_root(&root, "_12025551212"), root);
+    let moved = migrate_global_shop(&root, "+12025551212").unwrap();
+    assert!(moved);
+    let products = dest.join("commerce/products.json");
+    assert!(products.is_file());
+    assert!(std::fs::read_to_string(&products)
+      .unwrap()
+      .contains("p1"));
+    assert!(dest.join("ivr/menus.json").is_file());
+    assert!(!root.join("commerce/products.json").is_file());
+    assert_eq!(shop_root(&root, "_12025551212"), dest);
+    let _ = std::fs::remove_dir_all(&root);
+  }
+
+  #[test]
+  fn shop_root_ignores_empty_namespaced_dirs() {
+    let root = tmp("shop-root");
+    std::fs::create_dir_all(root.join("commerce")).unwrap();
+    std::fs::write(
+      root.join("commerce/products.json"),
+      r#"{"version":1,"products":[{"id":"live"}]}"#,
+    )
+    .unwrap();
+    std::fs::create_dir_all(root.join("accounts/_12025551212/commerce")).unwrap();
+    std::fs::create_dir_all(root.join("accounts/_12025551212/ivr/sessions")).unwrap();
+    assert_eq!(shop_root(&root, "_12025551212"), root);
     let _ = std::fs::remove_dir_all(&root);
   }
 
