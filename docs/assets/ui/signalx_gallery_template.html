@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SignalX UI Gallery</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #09090b;
+      --panel: #18181b;
+      --border: #27272a;
+      --text: #fafafa;
+      --muted: #d4d4d8;
+      --accent: #22c55e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(9, 9, 11, 0.92);
+      backdrop-filter: blur(8px);
+    }
+    header h1 { margin: 0 0 4px; font-size: 20px; }
+    header p { margin: 0; color: var(--muted); font-size: 14px; }
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    nav a {
+      color: var(--text);
+      text-decoration: none;
+      font-size: 12px;
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--panel);
+    }
+    nav a:hover { border-color: var(--accent); color: var(--accent); }
+    main { max-width: 1280px; margin: 0 auto; padding: 24px; }
+    section {
+      margin-bottom: 48px;
+      padding-bottom: 48px;
+      border-bottom: 1px solid var(--border);
+    }
+    section:last-child { border-bottom: 0; }
+    .meta { margin-bottom: 16px; }
+    .meta h2 { margin: 0 0 6px; font-size: 18px; }
+    .meta p { margin: 0; color: var(--muted); font-size: 14px; max-width: 720px; }
+    figure {
+      margin: 0;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      background: #000;
+    }
+    figure img {
+      display: block;
+      width: 100%;
+      height: auto;
+      min-height: 120px;
+      object-fit: contain;
+    }
+    figcaption {
+      padding: 10px 14px;
+      font-size: 12px;
+      color: var(--muted);
+      background: var(--panel);
+      border-top: 1px solid var(--border);
+    }
+    .missing {
+      padding: 48px 24px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SignalX UI Gallery</h1>
+    <p>Seven screens · four-panel CRM shell · place assets alongside this file</p>
+    <nav>
+      <a href="#01">1 Inbox</a>
+      <a href="#02">2 People</a>
+      <a href="#03">3 Catalog</a>
+      <a href="#04">4 Orders</a>
+      <a href="#05">5 Settings · Account</a>
+      <a href="#06">6 Settings · Delivery</a>
+      <a href="#07">7 Menu builder</a>
+    </nav>
+  </header>
+  <main>
+    <!-- Update src paths below if your files use ui_01_* naming instead -->
+    <section id="01">
+      <div class="meta">
+        <h2>1 · Inbox</h2>
+        <p>Thread list, conversation, profile rail with segments and order badges.</p>
+      </div>
+      <figure>
+        <img src="01-inbox.webp" alt="Inbox" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'missing',textContent:'Add 01-inbox.webp to this folder'}))" />
+        <figcaption>01-inbox.webp</figcaption>
+      </figure>
+    </section>
+    <section id="02">
+      <div class="meta">
+        <h2>2 · People</h2>
+        <p>Directory, contact record, related threads and orders.</p>
+      </div>
+      <figure>
+        <img src="02-people.webp" alt="People" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'missing',textContent:'Add 02-people.webp to this folder'}))" />
+        <figcaption>02-people.webp</figcaption>
+      </figure>
+    </section>
+    <section id="03">
+      <div class="meta">
+        <h2>3 · Catalog</h2>
+        <p>Product list, edit form, buyer-menu panel.</p>
+      </div>
+      <figure>
+        <img src="03-catalog.webp" alt="Catalog" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'missing',textContent:'Add 03-catalog.webp to this folder'}))" />
+        <figcaption>03-catalog.webp</figcaption>
+      </figure>
+    </section>
+    <section id="04">
+      <div class="meta">
+        <h2>4 · Orders</h2>
+        <p>Order list with status colors, detail workspace, customer context.</p>
+      </div>
+      <figure>
+        <img src="04-orders.webp" alt="Orders" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'missing',textContent:'Add 04-orders.webp to this folder'}))" />
+        <figcaption>04-orders.webp</figcaption>
+      </figure>
+    </section>
+    <section id="05">
+      <div class="meta">
+        <h2>5 · Settings — Account</h2>
+        <p>Account status, diagnostics, roster.</p>
+      </div>
+      <figure>
+        <img src="05-settings-account.webp" alt="Settings account" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'missing',textContent:'Add 05-settings-account.webp to this folder'}))" />
+        <figcaption>05-settings-account.webp</figcaption>
+      </figure>
+    </section>
+    <section id="06">
+      <div class="meta">
+        <h2>6 · Settings — Delivery</h2>
+        <p>Global outbox and send queue.</p>
+      </div>
+      <figure>
+        <img src="06-settings-delivery.webp" alt="Settings delivery" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'missing',textContent:'Add 06-settings-delivery.webp to this folder'}))" />
+        <figcaption>06-settings-delivery.webp</figcaption>
+      </figure>
+    </section>
+    <section id="07">
+      <div class="meta">
+        <h2>7 · Menu builder</h2>
+        <p>Visual IVR canvas, buyer preview, choice editor.</p>
+      </div>
+      <figure>
+        <img src="07-menu-builder.webp" alt="Menu builder" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'missing',textContent:'Add 07-menu-builder.webp to this folder'}))" />
+        <figcaption>07-menu-builder.webp</figcaption>
+      </figure>
+    </section>
+  </main>
+</body>
+</html>

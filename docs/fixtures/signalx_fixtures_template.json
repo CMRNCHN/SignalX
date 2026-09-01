@@ -1,0 +1,278 @@
+{
+  "$schema": "signalx-fixtures-v1",
+  "description": "Demo CRM data aligned with src/api.ts and src-tauri/src/demo.rs. Import for docs, tests, or mock APIs.",
+  "account_id": "_local",
+  "contacts": [
+    {
+      "contact_id": "dm:+14155550101",
+      "display_name": "Maya Chen",
+      "favorite": true,
+      "muted": false,
+      "auto_reply_enabled": false
+    },
+    {
+      "contact_id": "dm:+14155550102",
+      "display_name": "Jordan Hale",
+      "favorite": false,
+      "muted": false,
+      "auto_reply_enabled": false
+    },
+    {
+      "contact_id": "dm:+12025550103",
+      "display_name": "Priya Shah",
+      "favorite": false,
+      "muted": false,
+      "auto_reply_enabled": true
+    },
+    {
+      "contact_id": "dm:+13035550104",
+      "display_name": "Sam Ortiz",
+      "favorite": false,
+      "muted": true,
+      "auto_reply_enabled": false
+    }
+  ],
+  "groups": [
+    {
+      "group_id": "group:saturday-drop",
+      "display_name": "Saturday drop",
+      "favorite": true,
+      "muted": false,
+      "member_notes": ["+14155550101", "+14155550102", "+12025550103"]
+    }
+  ],
+  "customers": [
+    {
+      "id": "cust-maya",
+      "thread_id": "dm:+14155550101",
+      "display_name": "Maya Chen",
+      "notes": "Favorite. Saturday pickup. Prefers incense and honey."
+    },
+    {
+      "id": "cust-jordan",
+      "thread_id": "dm:+14155550102",
+      "display_name": "Jordan Hale",
+      "notes": "Waiting on linen tote restock. Quote out for widgets."
+    },
+    {
+      "id": "cust-priya",
+      "thread_id": "dm:+12025550103",
+      "display_name": "Priya Shah",
+      "notes": "Uses the buyer menu. Auto-reply on."
+    }
+  ],
+  "threads": [
+    {
+      "id": "dm:+14155550101",
+      "participants": ["dm:+14155550101"],
+      "unread_count": 1,
+      "message_count": 5,
+      "outbox_count": 0,
+      "last_preview": "Can you add a honey jar to the next drop?"
+    },
+    {
+      "id": "dm:+14155550102",
+      "participants": ["dm:+14155550102"],
+      "unread_count": 1,
+      "message_count": 3,
+      "outbox_count": 0,
+      "last_preview": "Ok, send the quote. I'll wait on the tote."
+    },
+    {
+      "id": "group:saturday-drop",
+      "participants": ["group:saturday-drop"],
+      "unread_count": 2,
+      "message_count": 3,
+      "outbox_count": 0,
+      "last_preview": "I'll skip this week if the tote isn't in."
+    }
+  ],
+  "messages_sample": [
+    {
+      "id": "m-maya-5",
+      "thread_id": "dm:+14155550101",
+      "sender": "+14155550101",
+      "direction": "Incoming",
+      "content": "Can you add a honey jar to the next drop?"
+    },
+    {
+      "id": "m-maya-4",
+      "thread_id": "dm:+14155550101",
+      "sender": "me",
+      "direction": "Outgoing",
+      "content": "Packed. Invoice is in this chat — paid, thank you."
+    }
+  ],
+  "products": [
+    {
+      "id": "demo-cedar-incense",
+      "name": "Cedar incense cones",
+      "description": "Hand-rolled cones, box of 20.",
+      "sku": "INC-CED-20",
+      "price_cents": 1600,
+      "cost_cents": 480,
+      "supplier": "North Shore Goods",
+      "quantity_base_milli": 40000,
+      "low_stock_threshold_milli": 8000
+    },
+    {
+      "id": "demo-cold-brew",
+      "name": "Cold brew concentrate",
+      "description": "12 oz bottle, café strength.",
+      "sku": "BEV-CB-12",
+      "price_cents": 1800,
+      "cost_cents": 610,
+      "quantity_base_milli": 6000,
+      "low_stock_threshold_milli": 6000
+    },
+    {
+      "id": "demo-honey-8oz",
+      "name": "Wildflower honey",
+      "description": "8 oz jar, local apiary.",
+      "sku": "FOOD-HNY-8",
+      "price_cents": 1400,
+      "cost_cents": 520,
+      "quantity_base_milli": 18000
+    },
+    {
+      "id": "demo-hello-widget",
+      "name": "Hello World Widget",
+      "sku": "WGT-HW-1",
+      "price_cents": 999,
+      "quantity_base_milli": 24000
+    },
+    {
+      "id": "demo-linen-tote",
+      "name": "Linen tote",
+      "sku": "ACC-TOTE-L",
+      "price_cents": 2400,
+      "quantity_base_milli": 0
+    }
+  ],
+  "orders": [
+    {
+      "id": "ord-maya-paid",
+      "customer_id": "cust-maya",
+      "thread_id": "dm:+14155550101",
+      "status": "paid",
+      "total_cents": 3200,
+      "lines": [
+        {
+          "product_id": "demo-cedar-incense",
+          "name": "Cedar incense cones",
+          "quantity": 2,
+          "unit_price_cents": 1600,
+          "unit": "ea",
+          "line_total_cents": 3200
+        }
+      ]
+    },
+    {
+      "id": "ord-maya-open",
+      "customer_id": "cust-maya",
+      "thread_id": "dm:+14155550101",
+      "status": "confirmed",
+      "total_cents": 1400,
+      "lines": [
+        {
+          "product_id": "demo-honey-8oz",
+          "name": "Wildflower honey",
+          "quantity": 1,
+          "unit_price_cents": 1400,
+          "unit": "ea",
+          "sell_option_label": "8 oz jar",
+          "line_total_cents": 1400
+        }
+      ]
+    },
+    {
+      "id": "ord-jordan-quote",
+      "customer_id": "cust-jordan",
+      "thread_id": "dm:+14155550102",
+      "status": "draft",
+      "total_cents": 2997,
+      "lines": [
+        {
+          "product_id": "demo-hello-widget",
+          "name": "Hello World Widget",
+          "quantity": 3,
+          "unit_price_cents": 999,
+          "unit": "ea",
+          "line_total_cents": 2997
+        }
+      ]
+    },
+    {
+      "id": "ord-priya-fulfilled",
+      "customer_id": "cust-priya",
+      "thread_id": "dm:+12025550103",
+      "status": "fulfilled",
+      "total_cents": 3600,
+      "lines": [
+        {
+          "product_id": "demo-cold-brew",
+          "name": "Cold brew concentrate",
+          "quantity": 2,
+          "unit_price_cents": 1800,
+          "unit": "ea",
+          "line_total_cents": 3600
+        }
+      ]
+    },
+    {
+      "id": "ord-maya-cancelled",
+      "customer_id": "cust-maya",
+      "thread_id": "dm:+14155550101",
+      "status": "cancelled",
+      "total_cents": 2800,
+      "lines": []
+    }
+  ],
+  "ivr": {
+    "settings": {
+      "enabled": true,
+      "hide_zero_stock": true
+    },
+    "menus": {
+      "entry": "main",
+      "nodes": {
+        "main": {
+          "prompt": "Welcome! Reply with a number:\n1 — See products\n2 — Place an order\n0 — Talk to a person",
+          "choices": [
+            { "digit": "1", "goto": "browse" },
+            { "digit": "2", "goto": "order_pick" },
+            { "digit": "5", "action": "offer_product", "product_id": "demo-cedar-incense" },
+            { "digit": "6", "action": "offer_product", "product_id": "demo-cold-brew" }
+          ]
+        },
+        "browse": {
+          "prompt": "Catalog listing…",
+          "choices": [{ "digit": "0", "goto": "main" }]
+        }
+      }
+    }
+  },
+  "settings": {
+    "auto_reply": {
+      "enabled": false,
+      "allowlist": []
+    },
+    "diagnostics_unconfigured": {
+      "number": null,
+      "signal_cli_usable": false,
+      "ai_configured": false
+    }
+  },
+  "status_mapping": {
+    "paid": { "tone": "ok", "label": "✓ paid" },
+    "confirmed": { "tone": "ok", "label": "✓ confirmed" },
+    "fulfilled": { "tone": "ok", "label": "✓ fulfilled" },
+    "draft": { "tone": "warn", "label": "⚠ draft" },
+    "cancelled": { "tone": "danger", "label": "✗ cancelled" }
+  },
+  "segments_rules": {
+    "favorite": "contact.favorite → chip Favorite",
+    "vip": "lifetime_cents >= 3000 → chip VIP",
+    "buyer_tag": "top ordered product name → '{product} buyer'"
+  }
+}
