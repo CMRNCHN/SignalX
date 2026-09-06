@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #222326;
+  --panel: #2c2e33;
+  --panel-2: #35383f;
+  --text: #f0f2f5;
+  --text-dim: #9aa0a8;
+  --border: rgba(255, 255, 255, 0.1);
+  --accent-cta: #3d8bfd;
+  --accent-cta-hover: #5a9dff;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --danger: #f87171;
+  --bubble-in: #3a3d45;
+  --bubble-out: #1f3a5c;
+}
+
+.light {
+  --bg: #f9fafb;
+  --panel: #ffffff;
+  --panel-2: #f3f4f6;
+  --text: #111827;
+  --text-dim: #6b7280;
+  --border: rgba(0, 0, 0, 0.1);
+  --accent-cta: #3b82f6;
+  --accent-cta-hover: #2563eb;
+  --ok: #059669;
+  --warn: #d97706;
+  --danger: #dc2626;
+  --bubble-in: #e5e7eb;
+  --bubble-out: #dbeafe;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--bg);
+  color-scheme: dark;
+}
+
+html.light body {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}

@@ -1,0 +1,196 @@
+{
+  "threads": [
+    {
+      "id": "th-maya",
+      "buyerId": "c-maya",
+      "kind": "dm",
+      "status": "open",
+      "lastMessage": "Hold one. I’ll pick up Friday.",
+      "unread": 2,
+      "needsSend": true,
+      "messages": [
+        {
+          "id": "m1",
+          "role": "buyer",
+          "text": "You still have Blue Dream eighths?",
+          "timestamp": 1757082840000,
+          "read": true
+        },
+        {
+          "id": "m2",
+          "role": "seller",
+          "text": "Yes — $35 for an eighth. Want me to hold one?",
+          "timestamp": 1757082900000,
+          "read": true
+        },
+        {
+          "id": "m3",
+          "role": "buyer",
+          "text": "Hold one. I’ll pick up Friday.",
+          "timestamp": 1757086320000,
+          "read": false
+        }
+      ]
+    },
+    {
+      "id": "th-jordan",
+      "buyerId": "c-jordan",
+      "kind": "dm",
+      "status": "open",
+      "lastMessage": "Can you send the quote again?",
+      "unread": 1,
+      "needsSend": false,
+      "messages": [
+        {
+          "id": "m4",
+          "role": "buyer",
+          "text": "Can you send the quote again?",
+          "timestamp": 1757000000000,
+          "read": false
+        }
+      ]
+    },
+    {
+      "id": "th-priya",
+      "buyerId": "c-priya",
+      "kind": "dm",
+      "status": "resolved",
+      "lastMessage": "Paid — thanks.",
+      "unread": 0,
+      "needsSend": false,
+      "messages": [
+        {
+          "id": "m5",
+          "role": "seller",
+          "text": "Invoice for gummies is $50.",
+          "timestamp": 1756800000000,
+          "read": true
+        },
+        {
+          "id": "m6",
+          "role": "buyer",
+          "text": "Paid — thanks.",
+          "timestamp": 1756803600000,
+          "read": true
+        }
+      ]
+    },
+    {
+      "id": "th-friday",
+      "buyerId": "c-alex",
+      "kind": "group",
+      "status": "open",
+      "lastMessage": "Dropping the order in the group thread.",
+      "unread": 0,
+      "needsSend": false,
+      "messages": [
+        {
+          "id": "m7",
+          "role": "buyer",
+          "text": "Dropping the order in the group thread.",
+          "timestamp": 1756900000000,
+          "read": true
+        }
+      ]
+    },
+    {
+      "id": "th-sam",
+      "buyerId": "c-sam",
+      "kind": "dm",
+      "status": "open",
+      "lastMessage": "Need an invoice when you can.",
+      "unread": 0,
+      "needsSend": true,
+      "messages": [
+        {
+          "id": "m8",
+          "role": "buyer",
+          "text": "Need an invoice when you can.",
+          "timestamp": 1756990000000,
+          "read": true
+        }
+      ]
+    }
+  ],
+  "contacts": [
+    {
+      "id": "c-maya",
+      "name": "Maya Chen",
+      "phone": "+15551230001",
+      "alias": "Maya",
+      "email": "maya@example.com",
+      "meta": {
+        "favorite": true,
+        "vip": true,
+        "coresBuyer": true,
+        "notes": "Prefers eighths. Pickup Fridays.",
+        "standing": "Open balance"
+      }
+    },
+    {
+      "id": "c-jordan",
+      "name": "Jordan Hale",
+      "phone": "+15551230002",
+      "alias": "Jordan",
+      "meta": { "favorite": true, "vip": false, "coresBuyer": false, "notes": "Asks for quotes before confirming.", "standing": "New" }
+    },
+    {
+      "id": "c-priya",
+      "name": "Priya Shah",
+      "phone": "+15551230003",
+      "email": "priya@example.com",
+      "meta": { "favorite": false, "vip": true, "coresBuyer": true, "notes": "Always pays same day.", "standing": "Good" }
+    },
+    {
+      "id": "c-alex",
+      "name": "Alex Rivera",
+      "phone": "+15551230004",
+      "meta": { "favorite": false, "vip": false, "coresBuyer": false, "notes": "In Friday pickup group.", "standing": "New" }
+    },
+    {
+      "id": "c-sam",
+      "name": "Sam Ortiz",
+      "phone": "+15551230005",
+      "alias": "Sam",
+      "meta": { "favorite": false, "vip": false, "coresBuyer": true, "notes": "Weekly gummies.", "standing": "Good" }
+    }
+  ],
+  "products": [
+    { "id": "prod-blue", "name": "Blue Dream flower", "priceCents": 3500, "unit": "eighth", "quantity": 12 },
+    { "id": "prod-gummies", "name": "Citrus gummies 10pk", "priceCents": 2500, "unit": "pack", "quantity": 24 }
+  ],
+  "orders": [
+    {
+      "id": "ord-1001",
+      "buyerId": "c-maya",
+      "total": 3500,
+      "status": "pending",
+      "items": [{ "productId": "prod-blue", "qty": 1 }]
+    },
+    {
+      "id": "ord-1002",
+      "buyerId": "c-maya",
+      "total": 5000,
+      "status": "confirmed",
+      "items": [{ "productId": "prod-gummies", "qty": 2 }]
+    },
+    {
+      "id": "ord-1003",
+      "buyerId": "c-priya",
+      "total": 2500,
+      "status": "delivered",
+      "items": [{ "productId": "prod-gummies", "qty": 1 }]
+    }
+  ],
+  "menus": [
+    {
+      "id": "menu-main",
+      "name": "Shop line",
+      "choices": [
+        { "id": "ch-1", "text": "Browse the catalog", "action": "list_catalog" },
+        { "id": "ch-2", "text": "Place an order", "action": "place_order" },
+        { "id": "ch-3", "text": "Talk to a person", "action": "handoff" }
+      ]
+    }
+  ]
+}
