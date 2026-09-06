@@ -1,0 +1,143 @@
+{
+  "url": "http://127.0.0.1:5173/",
+  "title": "SignalX",
+  "tokens": {
+    "--bg": "#16171a",
+    "--bg-lift": "#1e1f23",
+    "--bg-2": "#26282d",
+    "--bg-3": "#30333a",
+    "--surface-0": "#1c1d21",
+    "--surface-1": "#232529",
+    "--surface-2": "#2c2e34",
+    "--surface-3": "#363940",
+    "--panel": "#232529",
+    "--panel-2": "#2c2e34",
+    "--border": "rgba(255, 255, 255, 0.045)",
+    "--border-strong": "rgba(255, 255, 255, 0.09)",
+    "--text": "#eef0f3",
+    "--text-dim": "#8e949e",
+    "--muted": "#8e949e",
+    "--accent": "#eef0f3",
+    "--accent-soft": "rgba(61, 139, 253, 0.14)",
+    "--accent-cta": "#3d8bfd",
+    "--accent-cta-hover": "#5a9dff",
+    "--danger": "#f87171",
+    "--warn": "#fbbf24",
+    "--ok": "#34d399",
+    "--ok-soft": "rgba(52, 211, 153, 0.12)",
+    "--ok-border": "rgba(52, 211, 153, 0.28)",
+    "--ok-text": "#a7f3d0",
+    "--warn-soft": "rgba(251, 191, 36, 0.12)",
+    "--warn-border": "rgba(251, 191, 36, 0.28)",
+    "--warn-text": "#fde68a",
+    "--danger-soft": "rgba(248, 113, 113, 0.12)",
+    "--danger-border": "rgba(248, 113, 113, 0.28)",
+    "--danger-text": "#fecaca",
+    "--cta-text": "#93c5fd",
+    "--bubble-in": "#2f3239",
+    "--bubble-out": "#1f3a5c",
+    "--radius": "14px",
+    "--radius-sm": "10px",
+    "--radius-xs": "7px",
+    "--radius-composer": "16px",
+    "--radius-bubble": "12px",
+    "--glass": "rgba(36, 38, 44, 0.78)",
+    "--glass-border": "rgba(255, 255, 255, 0.08)",
+    "--shadow": "none",
+    "--shadow-float": "0 12px 32px rgba(0, 0, 0, 0.4)",
+    "--space-1": "4px",
+    "--space-2": "8px",
+    "--space-3": "12px",
+    "--space-4": "16px",
+    "--space-5": "20px",
+    "--pad-panel": "14px",
+    "--pad-section": "12px 14px"
+  },
+  "components": [
+    {
+      "classes": "desktop-gate.shell",
+      "tag": "div",
+      "text": "SIGNALX Open the desktop app This browser view is layout-only. Messaging, Sign",
+      "styles": {
+        "display": "grid",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(22, 23, 26)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "24px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "10px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "desktop-gate-panel",
+      "tag": "main",
+      "text": "SIGNALX Open the desktop app This browser view is layout-only. Messaging, Sign",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(35, 37, 41)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "28px 24px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "14px",
+        "gap": "12px",
+        "boxShadow": "rgba(0, 0, 0, 0.4) 0px 12px 32px 0px"
+      }
+    },
+    {
+      "classes": "brand-mark",
+      "tag": "p",
+      "text": "SIGNALX",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "600 15px/21.75px \"IBM Plex Sans\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "desktop-gate-cmd",
+      "tag": "pre",
+      "text": "./run-dev.sh",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(44, 46, 52)",
+        "font": "400 14px/20.3px \"IBM Plex Mono\", ui-monospace, monospace",
+        "padding": "12px 14px",
+        "margin": "4px 0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "10px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "hint.tight",
+      "tag": "p",
+      "text": "Or double-click SignalX-Dev.command. Needs Rust 1.88+ (see rust-toolchain.toml)",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 12px/17.4px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    }
+  ]
+}

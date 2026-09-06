@@ -1,0 +1,806 @@
+{
+  "url": "http://127.0.0.1:5173/?handoff=1&lock=1",
+  "title": "SignalX",
+  "tokens": {
+    "--bg": "#16171a",
+    "--bg-lift": "#1e1f23",
+    "--bg-2": "#26282d",
+    "--bg-3": "#30333a",
+    "--surface-0": "#1c1d21",
+    "--surface-1": "#232529",
+    "--surface-2": "#2c2e34",
+    "--surface-3": "#363940",
+    "--panel": "#232529",
+    "--panel-2": "#2c2e34",
+    "--border": "rgba(255, 255, 255, 0.045)",
+    "--border-strong": "rgba(255, 255, 255, 0.09)",
+    "--text": "#eef0f3",
+    "--text-dim": "#8e949e",
+    "--muted": "#8e949e",
+    "--accent": "#eef0f3",
+    "--accent-soft": "rgba(61, 139, 253, 0.14)",
+    "--accent-cta": "#3d8bfd",
+    "--accent-cta-hover": "#5a9dff",
+    "--danger": "#f87171",
+    "--warn": "#fbbf24",
+    "--ok": "#34d399",
+    "--ok-soft": "rgba(52, 211, 153, 0.12)",
+    "--ok-border": "rgba(52, 211, 153, 0.28)",
+    "--ok-text": "#a7f3d0",
+    "--warn-soft": "rgba(251, 191, 36, 0.12)",
+    "--warn-border": "rgba(251, 191, 36, 0.28)",
+    "--warn-text": "#fde68a",
+    "--danger-soft": "rgba(248, 113, 113, 0.12)",
+    "--danger-border": "rgba(248, 113, 113, 0.28)",
+    "--danger-text": "#fecaca",
+    "--cta-text": "#93c5fd",
+    "--bubble-in": "#2f3239",
+    "--bubble-out": "#1f3a5c",
+    "--radius": "14px",
+    "--radius-sm": "10px",
+    "--radius-xs": "7px",
+    "--radius-composer": "16px",
+    "--radius-bubble": "12px",
+    "--glass": "rgba(36, 38, 44, 0.78)",
+    "--glass-border": "rgba(255, 255, 255, 0.08)",
+    "--shadow": "none",
+    "--shadow-float": "0 12px 32px rgba(0, 0, 0, 0.4)",
+    "--space-1": "4px",
+    "--space-2": "8px",
+    "--space-3": "12px",
+    "--space-4": "16px",
+    "--space-5": "20px",
+    "--pad-panel": "14px",
+    "--pad-section": "12px 14px"
+  },
+  "components": [
+    {
+      "classes": "shell.shell-with-profile",
+      "tag": "div",
+      "text": "SIGNALX Unlock account One live session. Locked numbers do not send or receive",
+      "styles": {
+        "display": "grid",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(22, 23, 26)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "10px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "lock-overlay",
+      "tag": "div",
+      "text": "SIGNALX Unlock account One live session. Locked numbers do not send or receive",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "color(srgb 0.0707451 0.0739608 0.0836078)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "24px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "lock-card",
+      "tag": "div",
+      "text": "SIGNALX Unlock account One live session. Locked numbers do not send or receive",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(35, 37, 41)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "24px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "14px",
+        "gap": "12px",
+        "boxShadow": "rgba(0, 0, 0, 0.4) 0px 12px 32px 0px"
+      }
+    },
+    {
+      "classes": "brand-mark",
+      "tag": "p",
+      "text": "SIGNALX",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "600 15px/21.75px \"IBM Plex Sans\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "hint.tight",
+      "tag": "p",
+      "text": "One live session. Locked numbers do not send or receive.",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 12px/17.4px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "lock-accounts",
+      "tag": "div",
+      "text": "Shop line ••••6000 · PIN",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "6px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "active.lock-account",
+      "tag": "button",
+      "text": "Shop line ••••6000 · PIN",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(61, 139, 253, 0.14)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "10px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "10px",
+        "gap": "2px",
+        "boxShadow": "rgba(61, 139, 253, 0.35) 0px 0px 0px 1px inset"
+      }
+    },
+    {
+      "classes": "lock-account-label",
+      "tag": "span",
+      "text": "Shop line",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "600 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "lock-account-meta",
+      "tag": "span",
+      "text": "••••6000 · PIN",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 12px/17.4px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "field-label",
+      "tag": "label",
+      "text": "PIN",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 11px/15.95px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "4px 0px 0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "action-btn.primary",
+      "tag": "button",
+      "text": "Unlock",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(61, 139, 253)",
+        "font": "600 12px/17.4px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "7px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(255, 255, 255)",
+        "borderRadius": "10px",
+        "gap": "6px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "rail",
+      "tag": "aside",
+      "text": "SIGNALX ACCOUNT Locked ▾ Link this Mac to start receiving Signal messages. Ope",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(35, 37, 41)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "14px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "14px",
+        "gap": "10px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "brand",
+      "tag": "div",
+      "text": "SIGNALX",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "2px 6px",
+        "margin": "0px 0px 2px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "health.health-green",
+      "tag": "span",
+      "text": "",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(52, 211, 153)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "50%",
+        "gap": "normal",
+        "boxShadow": "rgba(52, 211, 153, 0.12) 0px 0px 0px 3px"
+      }
+    },
+    {
+      "classes": "account-switch",
+      "tag": "div",
+      "text": "Locked ▾",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "account-label.account-label-btn",
+      "tag": "button",
+      "text": "Locked ▾",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(44, 46, 52)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "9px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "10px",
+        "gap": "8px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "account-label-text",
+      "tag": "span",
+      "text": "Locked",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "account-chevron",
+      "tag": "span",
+      "text": "▾",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 10px/10px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "setup-banner",
+      "tag": "div",
+      "text": "Link this Mac to start receiving Signal messages. Open device link",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(251, 191, 36, 0.12)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "10px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "10px",
+        "gap": "8px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "rail-status",
+      "tag": "div",
+      "text": "AI",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px 2px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "6px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ok.rail-chip",
+      "tag": "span",
+      "text": "AI",
+      "styles": {
+        "display": "block",
+        "color": "rgb(167, 243, 208)",
+        "background": "rgba(52, 211, 153, 0.12)",
+        "font": "600 11px/15.95px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "4px 9px",
+        "margin": "0px",
+        "border": "0px none rgb(167, 243, 208)",
+        "borderRadius": "999px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "nav",
+      "tag": "nav",
+      "text": "Messages Search Contacts Groups Catalog Customers Orders Sales Outbox Auto-reply",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px 2px 0px 0px",
+        "margin": "6px 0px 0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "2px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "active.nav-btn",
+      "tag": "button",
+      "text": "Messages",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(255, 255, 255, 0.05)",
+        "font": "600 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "8px 10px",
+        "margin": "0px",
+        "border": "0px none rgba(0, 0, 0, 0)",
+        "borderRadius": "10px",
+        "gap": "8px",
+        "boxShadow": "rgb(61, 139, 253) 2px 0px 0px 0px inset"
+      }
+    },
+    {
+      "classes": "nav-btn-label",
+      "tag": "span",
+      "text": "Messages",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "600 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "10px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "nav-ico",
+      "tag": "span",
+      "text": "",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(61, 139, 253)",
+        "background": "rgba(61, 139, 253, 0.14)",
+        "font": "600 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(61, 139, 253)",
+        "borderRadius": "10px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "nav-btn",
+      "tag": "button",
+      "text": "Search",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "8px 10px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "10px",
+        "gap": "8px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "rail-foot",
+      "tag": "div",
+      "text": "Export chat",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "8px 0px 0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ghost-btn",
+      "tag": "button",
+      "text": "Export chat",
+      "styles": {
+        "display": "inline-block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "8px 10px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "10px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "thread-col",
+      "tag": "section",
+      "text": "Threads Open All types DMs Groups Unread Pending 0/0 No threads yet — open a ch",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(28, 29, 33)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "14px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "col-head",
+      "tag": "header",
+      "text": "Threads",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "600 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "14px 16px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "8px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "compose-strip",
+      "tag": "div",
+      "text": "Open",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "10px 14px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "8px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "filter-strip",
+      "tag": "div",
+      "text": "All types DMs Groups Unread Pending 0/0",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "8px 14px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "8px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "filter-check",
+      "tag": "label",
+      "text": "Unread",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 12px/17.4px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "5px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "col-meta",
+      "tag": "span",
+      "text": "0/0",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "500 12px/17.4px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "thread-list",
+      "tag": "div",
+      "text": "No threads yet — open a chat above or wait for Signal traffic.",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "empty",
+      "tag": "p",
+      "text": "No threads yet — open a chat above or wait for Signal traffic.",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "16px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "convo",
+      "tag": "main",
+      "text": "SIGNALX Select a thread, or jump to a quick action. Messages Open the thread l",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(28, 29, 33)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "14px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "convo-empty",
+      "tag": "div",
+      "text": "SIGNALX Select a thread, or jump to a quick action. Messages Open the thread l",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "32px 24px",
+        "margin": "272.141px 73px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "quick-actions",
+      "tag": "div",
+      "text": "Messages Open the thread list and reply over Signal. Catalog Manage products, pa",
+      "styles": {
+        "display": "grid",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "24px 0px 0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "10px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "quick-action",
+      "tag": "button",
+      "text": "Messages Open the thread list and reply over Signal.",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgb(35, 37, 41)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "14px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "10px",
+        "gap": "6px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "profile-rail.profile-rail-empty",
+      "tag": "aside",
+      "text": "CONTEXT Select a conversation to see standing, notes, and actions.",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(28, 29, 33)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "14px",
+        "gap": "0px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "profile-rail-empty-inner",
+      "tag": "div",
+      "text": "CONTEXT Select a conversation to see standing, notes, and actions.",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "24px 18px",
+        "margin": "377.641px 40px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "profile-section-title",
+      "tag": "p",
+      "text": "CONTEXT",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "600 11px/15.95px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "11px 0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "shell-status",
+      "tag": "div",
+      "text": "Unlock an account to send and receive Dismiss",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(253, 230, 138)",
+        "background": "rgb(44, 46, 52)",
+        "font": "400 12px/17.4px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "10px 14px",
+        "margin": "0px",
+        "border": "0px none rgb(253, 230, 138)",
+        "borderRadius": "14px",
+        "gap": "12px",
+        "boxShadow": "rgba(0, 0, 0, 0.4) 0px 12px 32px 0px"
+      }
+    }
+  ]
+}

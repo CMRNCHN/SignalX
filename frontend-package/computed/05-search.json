@@ -1,0 +1,925 @@
+{
+  "url": "http://127.0.0.1:5173/?handoff=1",
+  "title": "SignalX",
+  "tokens": {
+    "--bg": "#16171a",
+    "--bg-lift": "#1e1f23",
+    "--bg-2": "#26282d",
+    "--bg-3": "#30333a",
+    "--surface-0": "#1c1d21",
+    "--surface-1": "#232529",
+    "--surface-2": "#2c2e34",
+    "--surface-3": "#363940",
+    "--panel": "#232529",
+    "--panel-2": "#2c2e34",
+    "--border": "rgba(255, 255, 255, 0.045)",
+    "--border-strong": "rgba(255, 255, 255, 0.09)",
+    "--text": "#eef0f3",
+    "--text-dim": "#8e949e",
+    "--muted": "#8e949e",
+    "--accent": "#eef0f3",
+    "--accent-soft": "rgba(61, 139, 253, 0.14)",
+    "--accent-cta": "#3d8bfd",
+    "--accent-cta-hover": "#5a9dff",
+    "--danger": "#f87171",
+    "--warn": "#fbbf24",
+    "--ok": "#34d399",
+    "--ok-soft": "rgba(52, 211, 153, 0.12)",
+    "--ok-border": "rgba(52, 211, 153, 0.28)",
+    "--ok-text": "#a7f3d0",
+    "--warn-soft": "rgba(251, 191, 36, 0.12)",
+    "--warn-border": "rgba(251, 191, 36, 0.28)",
+    "--warn-text": "#fde68a",
+    "--danger-soft": "rgba(248, 113, 113, 0.12)",
+    "--danger-border": "rgba(248, 113, 113, 0.28)",
+    "--danger-text": "#fecaca",
+    "--cta-text": "#93c5fd",
+    "--bubble-in": "#2f3239",
+    "--bubble-out": "#1f3a5c",
+    "--radius": "14px",
+    "--radius-sm": "10px",
+    "--radius-xs": "7px",
+    "--radius-composer": "16px",
+    "--radius-bubble": "12px",
+    "--glass": "rgba(36, 38, 44, 0.78)",
+    "--glass-border": "rgba(255, 255, 255, 0.08)",
+    "--shadow": "none",
+    "--shadow-float": "0 12px 32px rgba(0, 0, 0, 0.4)",
+    "--space-1": "4px",
+    "--space-2": "8px",
+    "--space-3": "12px",
+    "--space-4": "16px",
+    "--space-5": "20px",
+    "--pad-panel": "14px",
+    "--pad-section": "12px 14px"
+  },
+  "components": [
+    {
+      "classes": "shell",
+      "tag": "div",
+      "text": "SIGNALX ACCOUNT +15559876000 ▾ AI Auto IVR Messages Search Contacts Groups Catal",
+      "styles": {
+        "display": "grid",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(22, 23, 26)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "10px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "rail",
+      "tag": "aside",
+      "text": "SIGNALX ACCOUNT +15559876000 ▾ AI Auto IVR Messages Search Contacts Groups Catal",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(35, 37, 41)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "14px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "14px",
+        "gap": "10px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "brand",
+      "tag": "div",
+      "text": "SIGNALX",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "2px 6px",
+        "margin": "0px 0px 2px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "brand-mark",
+      "tag": "span",
+      "text": "SIGNALX",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "600 15px/21.75px \"IBM Plex Sans\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "health.health-green",
+      "tag": "span",
+      "text": "",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(52, 211, 153)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "50%",
+        "gap": "normal",
+        "boxShadow": "rgba(52, 211, 153, 0.12) 0px 0px 0px 3px"
+      }
+    },
+    {
+      "classes": "field-label",
+      "tag": "label",
+      "text": "ACCOUNT",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 11px/15.95px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "account-switch",
+      "tag": "div",
+      "text": "+15559876000 ▾",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "account-label.account-label-btn",
+      "tag": "button",
+      "text": "+15559876000 ▾",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(44, 46, 52)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "9px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "10px",
+        "gap": "8px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "account-label-text",
+      "tag": "span",
+      "text": "+15559876000",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "account-chevron",
+      "tag": "span",
+      "text": "▾",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 10px/10px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "rail-status",
+      "tag": "div",
+      "text": "AI Auto IVR",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px 2px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "6px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ok.rail-chip",
+      "tag": "span",
+      "text": "AI",
+      "styles": {
+        "display": "block",
+        "color": "rgb(167, 243, 208)",
+        "background": "rgba(52, 211, 153, 0.12)",
+        "font": "600 11px/15.95px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "4px 9px",
+        "margin": "0px",
+        "border": "0px none rgb(167, 243, 208)",
+        "borderRadius": "999px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "danger.rail-chip",
+      "tag": "span",
+      "text": "Auto",
+      "styles": {
+        "display": "block",
+        "color": "rgb(254, 202, 202)",
+        "background": "rgba(248, 113, 113, 0.12)",
+        "font": "600 11px/15.95px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "4px 9px",
+        "margin": "0px",
+        "border": "0px none rgb(254, 202, 202)",
+        "borderRadius": "999px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "nav",
+      "tag": "nav",
+      "text": "Messages Search Contacts Groups Catalog Customers Orders 2 Sales Outbox 1 Auto-r",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px 2px 0px 0px",
+        "margin": "6px 0px 0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "2px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "nav-btn",
+      "tag": "button",
+      "text": "Messages",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "8px 10px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "10px",
+        "gap": "8px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "nav-btn-label",
+      "tag": "span",
+      "text": "Messages",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "10px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "nav-ico",
+      "tag": "span",
+      "text": "",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "10px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "active.nav-btn",
+      "tag": "button",
+      "text": "Search",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(255, 255, 255, 0.05)",
+        "font": "600 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "8px 10px",
+        "margin": "0px",
+        "border": "0px none rgba(0, 0, 0, 0)",
+        "borderRadius": "10px",
+        "gap": "8px",
+        "boxShadow": "rgb(61, 139, 253) 2px 0px 0px 0px inset"
+      }
+    },
+    {
+      "classes": "nav-count",
+      "tag": "span",
+      "text": "2",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgb(54, 57, 64)",
+        "font": "600 11px/15.95px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "2px 7px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "999px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "rail-foot",
+      "tag": "div",
+      "text": "Export chat",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "8px 0px 0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ghost-btn",
+      "tag": "button",
+      "text": "Export chat",
+      "styles": {
+        "display": "inline-block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "8px 10px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "10px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "thread-col",
+      "tag": "section",
+      "text": "Search Go MC Maya Chen 12:36 PM You still have Blue Dream eighths?",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(28, 29, 33)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "14px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "col-head",
+      "tag": "header",
+      "text": "Search",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "600 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "14px 16px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "8px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "search-box",
+      "tag": "div",
+      "text": "Go",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "8px 14px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "8px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "thread-list",
+      "tag": "div",
+      "text": "MC Maya Chen 12:36 PM You still have Blue Dream eighths?",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "thread-row",
+      "tag": "button",
+      "text": "MC Maya Chen 12:36 PM You still have Blue Dream eighths?",
+      "styles": {
+        "display": "grid",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "10px 14px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "10px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "avatar-dot",
+      "tag": "span",
+      "text": "MC",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(44, 46, 52)",
+        "font": "600 12px/17.4px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "50%",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "thread-row-body",
+      "tag": "div",
+      "text": "Maya Chen 12:36 PM You still have Blue Dream eighths?",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "thread-row-top",
+      "tag": "div",
+      "text": "Maya Chen 12:36 PM",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "8px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "thread-name",
+      "tag": "span",
+      "text": "Maya Chen",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "600 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "thread-time",
+      "tag": "span",
+      "text": "12:36 PM",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 11px/15.95px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "snippet",
+      "tag": "div",
+      "text": "You still have Blue Dream eighths?",
+      "styles": {
+        "display": "flow-root",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 12px/17.4px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "4px 0px 0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "convo",
+      "tag": "main",
+      "text": "Maya Chen dm:+15551230001 Auto-reply ON Buyer menu ON Buyer menu Opt-in auto Sum",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(28, 29, 33)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "14px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "convo-head",
+      "tag": "header",
+      "text": "Maya Chen dm:+15551230001 Auto-reply ON Buyer menu ON Buyer menu Opt-in auto Sum",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "14px 16px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "12px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "convo-sub",
+      "tag": "div",
+      "text": "dm:+15551230001",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 12px/17.4px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "3px 0px 0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "convo-actions",
+      "tag": "div",
+      "text": "Auto-reply ON Buyer menu ON Buyer menu Opt-in auto Summarize Draft reply Export",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "6px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "auto-thread-badge",
+      "tag": "span",
+      "text": "Auto-reply ON",
+      "styles": {
+        "display": "block",
+        "color": "rgb(254, 202, 202)",
+        "background": "rgba(248, 113, 113, 0.12)",
+        "font": "600 11px/15.95px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "4px 8px",
+        "margin": "0px",
+        "border": "0px none rgb(254, 202, 202)",
+        "borderRadius": "999px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "compact.toggle",
+      "tag": "label",
+      "text": "Buyer menu",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgb(44, 46, 52)",
+        "font": "400 12px/17.4px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "5px 10px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "999px",
+        "gap": "8px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "msg-scroll",
+      "tag": "div",
+      "text": "Maya Chen 12:36 PM You still have Blue Dream eighths? You 12:38 PM Yes — $35 for",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "12px 16px 18px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "12px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "bubble.in",
+      "tag": "div",
+      "text": "Maya Chen 12:36 PM You still have Blue Dream eighths?",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(47, 50, 57)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "10px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "12px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "bubble-meta",
+      "tag": "div",
+      "text": "Maya Chen 12:36 PM",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 11px/15.95px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px 0px 5px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "12px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "bubble-body",
+      "tag": "div",
+      "text": "You still have Blue Dream eighths?",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "bubble.out",
+      "tag": "div",
+      "text": "You 12:38 PM Yes — $35 for an eighth. Want me to hold one?",
+      "styles": {
+        "display": "block",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(31, 58, 92)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "10px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(255, 255, 255)",
+        "borderRadius": "12px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "bubble.out.pending.state-queued",
+      "tag": "div",
+      "text": "queued 01:35 PM Invoice for eighth — $35.00 Discard",
+      "styles": {
+        "display": "block",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(31, 58, 92)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "10px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(255, 255, 255)",
+        "borderRadius": "12px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "bubble-actions",
+      "tag": "div",
+      "text": "Discard",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "8px 0px 0px",
+        "border": "0px none rgb(255, 255, 255)",
+        "borderRadius": "0px",
+        "gap": "6px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "bubble.out.pending.state-failed",
+      "tag": "div",
+      "text": "failed 11:36 AM Pickup reminder for Friday signal-cli: rate limited Retry Discar",
+      "styles": {
+        "display": "block",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(31, 58, 92)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "10px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(255, 255, 255)",
+        "borderRadius": "12px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "bubble-err",
+      "tag": "div",
+      "text": "signal-cli: rate limited",
+      "styles": {
+        "display": "block",
+        "color": "rgb(248, 113, 113)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 12px/17.4px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "6px 0px 0px",
+        "border": "0px none rgb(248, 113, 113)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "composer",
+      "tag": "div",
+      "text": "Send",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(35, 37, 41)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "12px 14px",
+        "margin": "0px 12px 14px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "16px",
+        "gap": "8px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "composer-row",
+      "tag": "div",
+      "text": "Send",
+      "styles": {
+        "display": "grid",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "10px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "attach-btn",
+      "tag": "label",
+      "text": "",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgb(44, 46, 52)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "10px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "send-btn",
+      "tag": "button",
+      "text": "Send",
+      "styles": {
+        "display": "block",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(61, 139, 253)",
+        "font": "600 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "10px 18px",
+        "margin": "0px",
+        "border": "0px none rgb(255, 255, 255)",
+        "borderRadius": "10px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    }
+  ]
+}

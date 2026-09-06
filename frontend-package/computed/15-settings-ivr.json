@@ -1,0 +1,1486 @@
+{
+  "url": "http://127.0.0.1:5173/?handoff=1",
+  "title": "SignalX",
+  "tokens": {
+    "--bg": "#16171a",
+    "--bg-lift": "#1e1f23",
+    "--bg-2": "#26282d",
+    "--bg-3": "#30333a",
+    "--surface-0": "#1c1d21",
+    "--surface-1": "#232529",
+    "--surface-2": "#2c2e34",
+    "--surface-3": "#363940",
+    "--panel": "#232529",
+    "--panel-2": "#2c2e34",
+    "--border": "rgba(255, 255, 255, 0.045)",
+    "--border-strong": "rgba(255, 255, 255, 0.09)",
+    "--text": "#eef0f3",
+    "--text-dim": "#8e949e",
+    "--muted": "#8e949e",
+    "--accent": "#eef0f3",
+    "--accent-soft": "rgba(61, 139, 253, 0.14)",
+    "--accent-cta": "#3d8bfd",
+    "--accent-cta-hover": "#5a9dff",
+    "--danger": "#f87171",
+    "--warn": "#fbbf24",
+    "--ok": "#34d399",
+    "--ok-soft": "rgba(52, 211, 153, 0.12)",
+    "--ok-border": "rgba(52, 211, 153, 0.28)",
+    "--ok-text": "#a7f3d0",
+    "--warn-soft": "rgba(251, 191, 36, 0.12)",
+    "--warn-border": "rgba(251, 191, 36, 0.28)",
+    "--warn-text": "#fde68a",
+    "--danger-soft": "rgba(248, 113, 113, 0.12)",
+    "--danger-border": "rgba(248, 113, 113, 0.28)",
+    "--danger-text": "#fecaca",
+    "--cta-text": "#93c5fd",
+    "--bubble-in": "#2f3239",
+    "--bubble-out": "#1f3a5c",
+    "--radius": "14px",
+    "--radius-sm": "10px",
+    "--radius-xs": "7px",
+    "--radius-composer": "16px",
+    "--radius-bubble": "12px",
+    "--glass": "rgba(36, 38, 44, 0.78)",
+    "--glass-border": "rgba(255, 255, 255, 0.08)",
+    "--shadow": "none",
+    "--shadow-float": "0 12px 32px rgba(0, 0, 0, 0.4)",
+    "--space-1": "4px",
+    "--space-2": "8px",
+    "--space-3": "12px",
+    "--space-4": "16px",
+    "--space-5": "20px",
+    "--pad-panel": "14px",
+    "--pad-section": "12px 14px"
+  },
+  "components": [
+    {
+      "classes": "shell",
+      "tag": "div",
+      "text": "SIGNALX ACCOUNT +15559876000 ▾ AI Auto IVR Messages Search Contacts Groups Catal",
+      "styles": {
+        "display": "grid",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(22, 23, 26)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "10px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "rail",
+      "tag": "aside",
+      "text": "SIGNALX ACCOUNT +15559876000 ▾ AI Auto IVR Messages Search Contacts Groups Catal",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(35, 37, 41)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "14px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "14px",
+        "gap": "10px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "brand",
+      "tag": "div",
+      "text": "SIGNALX",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "2px 6px",
+        "margin": "0px 0px 2px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "brand-mark",
+      "tag": "span",
+      "text": "SIGNALX",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "600 15px/21.75px \"IBM Plex Sans\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "health.health-green",
+      "tag": "span",
+      "text": "",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(52, 211, 153)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "50%",
+        "gap": "normal",
+        "boxShadow": "rgba(52, 211, 153, 0.12) 0px 0px 0px 3px"
+      }
+    },
+    {
+      "classes": "field-label",
+      "tag": "label",
+      "text": "ACCOUNT",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 11px/15.95px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "account-switch",
+      "tag": "div",
+      "text": "+15559876000 ▾",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "account-label.account-label-btn",
+      "tag": "button",
+      "text": "+15559876000 ▾",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(44, 46, 52)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "9px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "10px",
+        "gap": "8px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "account-label-text",
+      "tag": "span",
+      "text": "+15559876000",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "account-chevron",
+      "tag": "span",
+      "text": "▾",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 10px/10px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "rail-status",
+      "tag": "div",
+      "text": "AI Auto IVR",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px 2px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "6px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ok.rail-chip",
+      "tag": "span",
+      "text": "AI",
+      "styles": {
+        "display": "block",
+        "color": "rgb(167, 243, 208)",
+        "background": "rgba(52, 211, 153, 0.12)",
+        "font": "600 11px/15.95px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "4px 9px",
+        "margin": "0px",
+        "border": "0px none rgb(167, 243, 208)",
+        "borderRadius": "999px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "danger.rail-chip",
+      "tag": "span",
+      "text": "Auto",
+      "styles": {
+        "display": "block",
+        "color": "rgb(254, 202, 202)",
+        "background": "rgba(248, 113, 113, 0.12)",
+        "font": "600 11px/15.95px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "4px 9px",
+        "margin": "0px",
+        "border": "0px none rgb(254, 202, 202)",
+        "borderRadius": "999px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "nav",
+      "tag": "nav",
+      "text": "Messages Search Contacts Groups Catalog Customers Orders 2 Sales Outbox 1 Auto-r",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px 2px 0px 0px",
+        "margin": "6px 0px 0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "2px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "nav-btn",
+      "tag": "button",
+      "text": "Messages",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "8px 10px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "10px",
+        "gap": "8px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "nav-btn-label",
+      "tag": "span",
+      "text": "Messages",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "10px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "nav-ico",
+      "tag": "span",
+      "text": "",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "10px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "nav-count",
+      "tag": "span",
+      "text": "2",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgb(54, 57, 64)",
+        "font": "600 11px/15.95px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "2px 7px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "999px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "active.nav-btn",
+      "tag": "button",
+      "text": "Settings",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(255, 255, 255, 0.05)",
+        "font": "600 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "8px 10px",
+        "margin": "0px",
+        "border": "0px none rgba(0, 0, 0, 0)",
+        "borderRadius": "10px",
+        "gap": "8px",
+        "boxShadow": "rgb(61, 139, 253) 2px 0px 0px 0px inset"
+      }
+    },
+    {
+      "classes": "rail-foot",
+      "tag": "div",
+      "text": "Export chat",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "8px 0px 0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ghost-btn",
+      "tag": "button",
+      "text": "Export chat",
+      "styles": {
+        "display": "inline-block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "8px 10px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "10px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "thread-col.wide",
+      "tag": "section",
+      "text": "Settings Let buyers text a number — you write the menu Account Buyer menu Auto-r",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(28, 29, 33)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "14px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "col-head",
+      "tag": "header",
+      "text": "Settings Let buyers text a number — you write the menu",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "600 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "14px 16px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "8px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "col-head-sub",
+      "tag": "div",
+      "text": "Let buyers text a number — you write the menu",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 12px/17.4px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "2px 0px 0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "work-tabs",
+      "tag": "div",
+      "text": "Account Buyer menu Auto-reply Backup",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "4px 12px 0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "2px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "work-tab",
+      "tag": "button",
+      "text": "Account",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "10px 14px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "10px 10px 0px 0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "active.work-tab",
+      "tag": "button",
+      "text": "Buyer menu",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(255, 255, 255, 0.06)",
+        "font": "600 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "10px 14px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "10px 10px 0px 0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "settings-body.wide-body",
+      "tag": "div",
+      "text": "Buyer text menu ON When it’s on, buyers can text a number (1 for products, 2 to",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "16px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "14px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "settings-card",
+      "tag": "div",
+      "text": "Buyer text menu ON When it’s on, buyers can text a number (1 for products, 2 to",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(35, 37, 41)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "16px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "14px",
+        "gap": "12px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "settings-card-head",
+      "tag": "div",
+      "text": "Buyer text menu ON",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "10px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "status-ok.status-pill",
+      "tag": "span",
+      "text": "ON",
+      "styles": {
+        "display": "block",
+        "color": "rgb(167, 243, 208)",
+        "background": "rgba(52, 211, 153, 0.12)",
+        "font": "600 11px/15.95px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "4px 8px",
+        "margin": "0px",
+        "border": "0px none rgb(167, 243, 208)",
+        "borderRadius": "999px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "hint.tight",
+      "tag": "p",
+      "text": "When it’s on, buyers can text a number (1 for products, 2 to order, and so on) a",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 12px/17.4px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "toggle",
+      "tag": "label",
+      "text": "Turn on buyer menus for this account",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "8px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "allowlist-head",
+      "tag": "div",
+      "text": "APPROVED CHATS (1) Add this chat",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "8px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "allowlist-list",
+      "tag": "ul",
+      "text": "Maya Chen dm:+15551230001 Remove",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(35, 37, 41)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "4px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "14px",
+        "gap": "2px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "thread-name",
+      "tag": "div",
+      "text": "Maya Chen",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "600 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "convo-sub",
+      "tag": "div",
+      "text": "dm:+15551230001",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 12px/17.4px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "3px 0px 0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-composer.ivr-composer-visual",
+      "tag": "div",
+      "text": "Visual Text FIRST SCREEN welcome human menu order qty REMEMBER (MIN) + Screen Di",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "14px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-composer-toolbar",
+      "tag": "div",
+      "text": "Visual Text FIRST SCREEN welcome human menu order qty REMEMBER (MIN) + Screen Di",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "12px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-composer-toolbar-main",
+      "tag": "div",
+      "text": "Visual Text FIRST SCREEN welcome human menu order qty REMEMBER (MIN)",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "12px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-view-toggle",
+      "tag": "div",
+      "text": "Visual Text",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(35, 37, 41)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "3px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "999px",
+        "gap": "2px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "active.ivr-view-btn",
+      "tag": "button",
+      "text": "Visual",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(61, 139, 253, 0.14)",
+        "font": "600 12px/17.4px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "7px 14px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "999px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-view-btn",
+      "tag": "button",
+      "text": "Text",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "600 12px/17.4px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "7px 14px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "999px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "compact.field-stack",
+      "tag": "label",
+      "text": "FIRST SCREEN welcome human menu order qty",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "4px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "row-actions",
+      "tag": "div",
+      "text": "+ Screen Discard edits Start from demo Save menu",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "6px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "action-btn.primary",
+      "tag": "button",
+      "text": "Save menu",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(61, 139, 253)",
+        "font": "600 12px/17.4px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "7px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(255, 255, 255)",
+        "borderRadius": "10px",
+        "gap": "6px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-visual",
+      "tag": "div",
+      "text": "welcome START Hi — text 1 for the menu, 2 to order, 0 for a human. 0 → human · H",
+      "styles": {
+        "display": "grid",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "14px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-canvas-wrap",
+      "tag": "div",
+      "text": "welcome START Hi — text 1 for the menu, 2 to order, 0 for a human. 0 → human · H",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(35, 37, 41)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "14px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-canvas",
+      "tag": "div",
+      "text": "welcome START Hi — text 1 for the menu, 2 to order, 0 for a human. 0 → human · H",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "24px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "28px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-canvas-col",
+      "tag": "div",
+      "text": "welcome START Hi — text 1 for the menu, 2 to order, 0 for a human. 0 → human · H",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "16px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "active.ivr-screen-card",
+      "tag": "button",
+      "text": "welcome START Hi — text 1 for the menu, 2 to order, 0 for a human. 0 → human · H",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(61, 139, 253, 0.14)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "12px",
+        "margin": "0px",
+        "border": "0px none rgba(0, 0, 0, 0)",
+        "borderRadius": "14px",
+        "gap": "normal",
+        "boxShadow": "rgba(61, 139, 253, 0.4) 0px 0px 0px 1px inset"
+      }
+    },
+    {
+      "classes": "ivr-screen-card-top",
+      "tag": "div",
+      "text": "welcome START",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px 0px 8px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "8px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-node-badges",
+      "tag": "div",
+      "text": "START",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "4px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "entry.ivr-badge",
+      "tag": "span",
+      "text": "START",
+      "styles": {
+        "display": "block",
+        "color": "rgb(147, 197, 253)",
+        "background": "rgba(61, 139, 253, 0.14)",
+        "font": "400 10px/14.5px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "3px 7px",
+        "margin": "0px",
+        "border": "0px none rgba(0, 0, 0, 0)",
+        "borderRadius": "7px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-screen-bubble",
+      "tag": "div",
+      "text": "Hi — text 1 for the menu, 2 to order, 0 for a human.",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(47, 50, 57)",
+        "font": "400 12px/17.4px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "10px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "12px 12px 12px 7px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-screen-exits",
+      "tag": "div",
+      "text": "0 → human · Hand off to you 1 → menu 2 → order · Create their order",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "10px 0px 0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "4px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-exit-chip",
+      "tag": "span",
+      "text": "0 → human · Hand off to you",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgb(44, 46, 52)",
+        "font": "400 11px/15.95px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "5px 8px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "7px",
+        "gap": "6px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-col-connector",
+      "tag": "div",
+      "text": "",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(255, 255, 255, 0.09)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-screen-card",
+      "tag": "button",
+      "text": "human Handed off.",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(28, 29, 33)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "14px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "capture.ivr-badge",
+      "tag": "span",
+      "text": "ASKS PRODUCT #",
+      "styles": {
+        "display": "block",
+        "color": "rgb(253, 230, 138)",
+        "background": "rgba(251, 191, 36, 0.12)",
+        "font": "400 10px/14.5px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "3px 7px",
+        "margin": "0px",
+        "border": "0px none rgba(0, 0, 0, 0)",
+        "borderRadius": "7px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "capture.ivr-exit-chip",
+      "tag": "span",
+      "text": "answer → qty",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(253, 230, 138)",
+        "background": "rgb(44, 46, 52)",
+        "font": "400 11px/15.95px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "5px 8px",
+        "margin": "0px",
+        "border": "0px none rgba(251, 191, 36, 0.28)",
+        "borderRadius": "7px",
+        "gap": "6px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-visual-side",
+      "tag": "div",
+      "text": "BUYER SEES Hi — text 1 for the menu, 2 to order, 0 for a human. 1 2 3 4 5 6 7",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "12px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-phone",
+      "tag": "div",
+      "text": "BUYER SEES Hi — text 1 for the menu, 2 to order, 0 for a human. 1 2 3 4 5 6 7",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(28, 29, 33)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "16px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "14px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-phone-notch",
+      "tag": "div",
+      "text": "",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(54, 57, 64)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px 93.1875px 12px 93.1719px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "7px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-phone-screen",
+      "tag": "div",
+      "text": "BUYER SEES Hi — text 1 for the menu, 2 to order, 0 for a human.",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(35, 37, 41)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "10px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-phone-label",
+      "tag": "div",
+      "text": "BUYER SEES",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 10px/14.5px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px 0px 8px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-phone-thread",
+      "tag": "div",
+      "text": "Hi — text 1 for the menu, 2 to order, 0 for a human.",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "2px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-dialpad",
+      "tag": "div",
+      "text": "1 2 3 4 5 6 7 8 9 0",
+      "styles": {
+        "display": "grid",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "12px 29.1875px 0px 29.1719px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "8px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-dial-key",
+      "tag": "button",
+      "text": "1",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(44, 46, 52)",
+        "font": "600 18px/26.1px \"IBM Plex Mono\", ui-monospace, monospace",
+        "padding": "1px 6px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "16px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-dial-spacer",
+      "tag": "span",
+      "text": "",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-phone-actions.row-actions",
+      "tag": "div",
+      "text": "Start over Run again",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "8px 0px 0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "6px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "hint.ivr-phone-hint.tight",
+      "tag": "p",
+      "text": "Test uses the last saved menu.",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 12px/17.4px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-inspector.ivr-inspector-panel",
+      "tag": "div",
+      "text": "EDIT SELECTED SCREEN SCREEN NAME Remove MESSAGE TO THE BUYER IF THEY TYPE SOMETH",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(35, 37, 41)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "14px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "16px",
+        "gap": "12px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-inspector-head",
+      "tag": "div",
+      "text": "SCREEN NAME Remove",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "10px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "field-stack",
+      "tag": "label",
+      "text": "SCREEN NAME",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "4px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "danger-text.ghost-btn",
+      "tag": "button",
+      "text": "Remove",
+      "styles": {
+        "display": "block",
+        "color": "rgb(248, 113, 113)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "8px 10px",
+        "margin": "0px",
+        "border": "0px none rgb(248, 113, 113)",
+        "borderRadius": "10px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-prompt",
+      "tag": "textarea",
+      "text": "",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(44, 46, 52)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", system-ui, sans-serif",
+        "padding": "10px 12px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "10px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "settings-section-label",
+      "tag": "div",
+      "text": "WHEN THEY REPLY WITH A NUMBER",
+      "styles": {
+        "display": "block",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 11px/15.95px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "4px 0px 0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-choice-table",
+      "tag": "div",
+      "text": "THEY TYPE NEXT SCREEN ALSO DO CUSTOM REPLY Stay here welcome human menu order qt",
+      "styles": {
+        "display": "flex",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "6px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "head.ivr-choice-row",
+      "tag": "div",
+      "text": "THEY TYPE NEXT SCREEN ALSO DO CUSTOM REPLY",
+      "styles": {
+        "display": "grid",
+        "color": "rgb(142, 148, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 10px/14.5px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px 2px",
+        "margin": "0px",
+        "border": "0px none rgb(142, 148, 158)",
+        "borderRadius": "0px",
+        "gap": "6px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-choice-row",
+      "tag": "div",
+      "text": "Stay here welcome human menu order qty Nothing extra Send the product list Creat",
+      "styles": {
+        "display": "grid",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "6px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "settings-grid",
+      "tag": "div",
+      "text": "WHAT TO COLLECT No — only number replies Ask which product # they want Ask how m",
+      "styles": {
+        "display": "grid",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "0px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "12px",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "classes": "ivr-json-details.settings-details",
+      "tag": "details",
+      "text": "Expert edit (raw file)",
+      "styles": {
+        "display": "block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgba(0, 0, 0, 0)",
+        "font": "400 13px/18.85px \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif",
+        "padding": "12px 0px 0px",
+        "margin": "4px 0px 0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "0px",
+        "gap": "normal",
+        "boxShadow": "rgba(255, 255, 255, 0.043) 0px 1px 0px 0px inset"
+      }
+    },
+    {
+      "classes": "ivr-menus-json",
+      "tag": "textarea",
+      "text": "",
+      "styles": {
+        "display": "inline-block",
+        "color": "rgb(238, 240, 243)",
+        "background": "rgb(35, 37, 41)",
+        "font": "400 12px/16.8px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+        "padding": "12px 14px",
+        "margin": "0px",
+        "border": "0px none rgb(238, 240, 243)",
+        "borderRadius": "10px",
+        "gap": "normal",
+        "boxShadow": "none"
+      }
+    }
+  ]
+}
