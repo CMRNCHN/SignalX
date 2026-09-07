@@ -48,3 +48,4 @@ SignalX-Cursor-Bundle.zip
 # TypeScript incremental
 *.tsbuildinfo
 .claude/
+.claude/

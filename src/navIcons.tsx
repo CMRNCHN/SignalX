@@ -103,7 +103,7 @@ export function IconSettings(p: SvgProps) {
   return (
     <IconShell {...p}>
       <circle cx="12" cy="12" r="3" />
-      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+      <path d="M19.07 4.93l-2.12 2.12M6.93 19.07l-2.12 2.12M19.07 19.07l-2.12-2.12M6.93 4.93l-2.12-2.12M12 2.5v2.5M12 19v2.5M21.5 12h-2.5M5.5 12h-2.5" />
     </IconShell>
   );
 }

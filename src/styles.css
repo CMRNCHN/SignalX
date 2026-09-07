@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
   /* Surface ladder — softer steps, less outline reliance */
   --bg: #16171a;
@@ -35,6 +39,13 @@
   --cta-text: #93c5fd;
   --bubble-in: #2f3239;
   --bubble-out: #1f3a5c;
+  --overlay-1: rgba(255, 255, 255, 0.05);
+  --overlay-2: rgba(255, 255, 255, 0.08);
+  --overlay-3: rgba(255, 255, 255, 0.12);
+  --dark-overlay: rgba(0, 0, 0, 0.18);
+  --code-text: #d7dbe2;
+  --gradient-tint: #2a2b2f;
+  --qr-bg: #fff;
 
   --radius: 14px;
   --radius-sm: 10px;
@@ -137,7 +148,7 @@ textarea {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 3px var(--overlay-1);
 }
 .health-green {
   background: var(--ok);
@@ -345,7 +356,7 @@ textarea {
 
 .lock-account.active {
   background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px rgba(61, 139, 253, 0.35);
+  box-shadow: inset 0 0 0 1px var(--accent-soft);
 }
 
 .lock-account-label {
@@ -397,7 +408,7 @@ textarea {
 .composer textarea:focus,
 .settings-body input:focus,
 .lock-card input:focus {
-  box-shadow: inset 0 0 0 1px rgba(61, 139, 253, 0.45);
+  box-shadow: inset 0 0 0 1px var(--accent-cta);
 }
 
 .ai-pill {
@@ -508,7 +519,7 @@ textarea {
 }
 
 .nav-btn.active {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--overlay-1);
   color: var(--text);
   border-color: transparent;
   font-weight: 600;
@@ -542,7 +553,7 @@ textarea {
 
 .nav-btn:hover,
 .ghost-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--overlay-1);
   color: var(--text);
 }
 
@@ -601,12 +612,12 @@ textarea {
 
 .work-tab:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--overlay-1);
 }
 
 .work-tab.active {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--overlay-2);
   font-weight: 600;
 }
 
@@ -637,7 +648,7 @@ textarea {
 }
 
 .thread-row:hover {
-  background: rgba(255, 255, 255, 0.035);
+  background: var(--overlay-1);
 }
 
 .thread-row.active {
@@ -927,7 +938,7 @@ textarea {
 }
 
 .filter-check input {
-  accent-color: #fff;
+  accent-color: var(--accent-cta);
 }
 
 .product-desc {
@@ -1028,7 +1039,7 @@ textarea {
   min-height: 110px;
   padding: 16px;
   border-radius: var(--radius-sm);
-  border: 1.5px dashed rgba(255, 255, 255, 0.12);
+  border: 1.5px dashed var(--overlay-3);
   background: var(--surface-1);
   color: var(--text-dim);
   cursor: pointer;
@@ -1143,7 +1154,7 @@ textarea {
 }
 
 .action-btn.primary {
-  color: #fff;
+  color: var(--text);
   border: none;
   background: var(--accent-cta);
   font-weight: 600;
@@ -1151,7 +1162,7 @@ textarea {
 
 .action-btn.primary:hover {
   background: var(--accent-cta-hover);
-  color: #fff;
+  color: var(--text);
 }
 
 .product-form select,
@@ -1169,7 +1180,7 @@ textarea {
 
 .product-form select:focus,
 .product-form input:focus {
-  box-shadow: inset 0 0 0 1px rgba(61, 139, 253, 0.45);
+  box-shadow: inset 0 0 0 1px var(--accent-cta);
 }
 
 .product-row {
@@ -1260,17 +1271,17 @@ textarea {
 .bubble.out {
   align-self: flex-end;
   background: var(--bubble-out);
-  color: #fff;
+  color: var(--text);
 }
 
 .bubble.pending {
   opacity: 0.85;
-  outline: 1px dashed rgba(255, 255, 255, 0.2);
+  outline: 1px dashed var(--overlay-2);
   outline-offset: -1px;
 }
 
 .bubble.state-failed {
-  outline: 1px solid rgba(248, 113, 113, 0.45);
+  outline: 1px solid var(--danger-soft);
   outline-offset: -1px;
 }
 
@@ -1303,7 +1314,7 @@ textarea {
 
 .bubble-actions button {
   border: none;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--overlay-2);
   font-size: 12px;
   padding: 4px 8px;
 }
@@ -1428,7 +1439,7 @@ textarea {
 
 .send-btn {
   background: var(--accent-cta);
-  color: white;
+  color: var(--text);
   border: 0;
   border-radius: var(--radius-sm);
   padding: 10px 18px;
@@ -1649,12 +1660,12 @@ textarea {
   height: 168px;
   padding: 10px;
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--qr-bg);
   border: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 1px var(--overlay-2);
 }
 
 .device-link-qr img {
@@ -1780,7 +1791,7 @@ textarea {
 }
 
 .profile-section + .profile-section {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  box-shadow: inset 0 1px 0 var(--overlay-1);
 }
 
 .profile-section-title {
@@ -2063,7 +2074,7 @@ textarea {
   white-space: pre-wrap;
   font-size: 12px;
   color: var(--text-dim);
-  background: rgba(0, 0, 0, 0.18);
+  background: var(--dark-overlay);
   border-radius: 6px;
   padding: 6px 8px;
 }
@@ -2231,13 +2242,13 @@ textarea {
 
 .ivr-screen-card.start {
   border-color: transparent;
-  box-shadow: inset 0 0 0 1px rgba(61, 139, 253, 0.28);
+  box-shadow: inset 0 0 0 1px var(--accent-soft);
 }
 
 .ivr-screen-card.active {
   border-color: transparent;
   background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px rgba(61, 139, 253, 0.4);
+  box-shadow: inset 0 0 0 1px var(--accent-cta);
 }
 
 .ivr-screen-card-top {
@@ -2522,7 +2533,7 @@ textarea {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 12px;
   line-height: 1.55;
-  color: #d7dbe2;
+  color: var(--code-text);
 }
 
 .ivr-text-editors {
@@ -2613,7 +2624,7 @@ textarea {
   grid-template-columns: 1fr;
   padding: 24px;
   background:
-    radial-gradient(720px 420px at 50% 0%, #2a2b2f 0%, transparent 55%),
+    radial-gradient(720px 420px at 50% 0%, var(--gradient-tint) 0%, transparent 55%),
     var(--bg);
 }
 
