@@ -3166,9 +3166,9 @@ export default function App() {
               </button>
             ))}
           </div>
-          <div className="settings-body wide-body">
+          <div className="settings-body settings-fill">
             {settingsTab === "account" && (
-              <>
+              <div className="settings-cards-grid">
                 <div className="settings-card">
                   <div className="settings-card-head">
                     <h3>Status</h3>
@@ -3420,7 +3420,7 @@ export default function App() {
                     </button>
                   </form>
                 </div>
-              </>
+              </div>
             )}
 
             {settingsTab === "backup" && (
