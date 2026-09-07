@@ -1844,9 +1844,9 @@ export default function App() {
       </aside>
 
       {panel === "threads" && (
-        <section className="thread-col">
-          <header className="col-head">Threads</header>
-          <div className="compose-strip">
+        <section className="thread-col p-4 gap-4">
+          <header className="col-head p-4">Threads</header>
+          <div className="compose-strip gap-3 p-3">
             <input
               placeholder="New message — +15551234567"
               value={newDmPhone}
@@ -1857,7 +1857,7 @@ export default function App() {
               Open
             </button>
           </div>
-          <div className="filter-strip">
+          <div className="filter-strip gap-3 p-3">
             <input
               placeholder="Filter threads…"
               value={threadFilter.q}
@@ -1897,7 +1897,7 @@ export default function App() {
               {filteredThreads.length}/{threads.length}
             </span>
           </div>
-          <div className="thread-list">
+          <div className="thread-list flex flex-col gap-3">
             {threads.length === 0 && (
               <p className="empty">No threads yet — open a chat above or wait for Signal traffic.</p>
             )}
@@ -1908,7 +1908,7 @@ export default function App() {
               <button
                 key={t.id}
                 type="button"
-                className={selectedId === t.id ? "thread-row active" : "thread-row"}
+                className={`${selectedId === t.id ? "thread-row active" : "thread-row"} p-3 gap-3`}
                 onClick={() => {
                   setSelectedId(t.id);
                   setPanel("threads");
@@ -3740,25 +3740,25 @@ export default function App() {
         panel === "orders" ||
         panel === "sales" ||
         panel === "outbox") ? null : (
-      <main className="convo">
+      <main className={panel === "threads" ? "convo p-4 gap-4" : "convo"}>
         {!selectedId ? (
-          <div className="convo-empty">
+          <div className={panel === "threads" ? "convo-empty p-6" : "convo-empty"}>
             <h1>SignalX</h1>
             <p>Select a thread, or jump to a quick action.</p>
-            <div className="quick-actions">
-              <button type="button" className="quick-action" onClick={() => setPanel("threads")}>
+            <div className={panel === "threads" ? "quick-actions gap-4" : "quick-actions"}>
+              <button type="button" className={panel === "threads" ? "quick-action p-3 gap-3" : "quick-action"} onClick={() => setPanel("threads")}>
                 <strong>Messages</strong>
                 <span>Open the thread list and reply over Signal.</span>
               </button>
-              <button type="button" className="quick-action" onClick={() => setPanel("products")}>
+              <button type="button" className={panel === "threads" ? "quick-action p-3 gap-3" : "quick-action"} onClick={() => setPanel("products")}>
                 <strong>Catalog</strong>
                 <span>Manage products, packs, and stock.</span>
               </button>
-              <button type="button" className="quick-action" onClick={() => setPanel("orders")}>
+              <button type="button" className={panel === "threads" ? "quick-action p-3 gap-3" : "quick-action"} onClick={() => setPanel("orders")}>
                 <strong>Orders</strong>
                 <span>Place orders and queue invoices via outbox.</span>
               </button>
-              <button type="button" className="quick-action" onClick={() => setPanel("customers")}>
+              <button type="button" className={panel === "threads" ? "quick-action p-3 gap-3" : "quick-action"} onClick={() => setPanel("customers")}>
                 <strong>Customers</strong>
                 <span>Linked chats and order history.</span>
               </button>
@@ -3766,7 +3766,7 @@ export default function App() {
           </div>
         ) : (
           <>
-            <header className="convo-head">
+            <header className={panel === "threads" ? "convo-head p-4 gap-4" : "convo-head"}>
               <div>
                 <h2>{title}</h2>
                 <div className="convo-sub">{selectedId}</div>
@@ -3835,7 +3835,7 @@ export default function App() {
               </div>
             )}
 
-            <div className="msg-scroll">
+            <div className={panel === "threads" ? "msg-scroll flex flex-col gap-3" : "msg-scroll"}>
               {messages.map((m) => (
                 <div
                   key={m.id}
@@ -3880,7 +3880,7 @@ export default function App() {
               </div>
             )}
 
-            <div className="composer">
+            <div className={panel === "threads" ? "composer p-4 gap-3" : "composer"}>
               {attachPreview && (
                 <div className="attach-chip">
                   <img src={attachPreview} alt="" />
