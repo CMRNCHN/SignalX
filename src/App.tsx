@@ -33,6 +33,7 @@ import {
 import { DeviceLinkQr } from "./DeviceLinkQr";
 import { IvrMenuComposer } from "./IvrMenuComposer";
 import { ProfileRail } from "./ProfileRail";
+import { SalesScreen } from "./components/Sales/SalesScreen";
 import { isTauriRuntime } from "./runtime";
 import {
   IconAudit,
@@ -48,7 +49,7 @@ import {
   IconSettings,
 } from "./navIcons";
 
-type Panel =
+export type Panel =
   | "threads"
   | "search"
   | "contacts"
@@ -155,16 +156,36 @@ function fmtTime(ts: number): string {
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-function threadTitle(id: string, contacts: ContactMeta[], groups: GroupMeta[]): string {
+function threadTitle(
+  id: string,
+  contacts: ContactMeta[],
+  groups: GroupMeta[],
+  customers: Customer[] = [],
+): string {
   if (id.startsWith("group:")) {
     const g = groups.find((x) => x.group_id === id || x.group_id === id.replace(/^group:/, ""));
     return g?.display_name || id.replace(/^group:/, "Group ");
   }
   const raw = id.replace(/^dm:/, "");
+  const cust = customers.find((c) => c.thread_id === id || c.thread_id === raw);
+  if (cust?.display_name?.trim()) return cust.display_name.trim();
   const c = contacts.find(
-    (x) => x.contact_id === id || x.contact_id === raw || x.contact_id === `dm:${raw}`,
+    (x) =>
+      x.contact_id === id ||
+      x.contact_id === raw ||
+      x.contact_id === `dm:${raw}` ||
+      x.contact_id.replace(/^dm:/, "") === raw,
   );
-  return c?.display_name || c?.alias || raw || id;
+  const named = (c?.display_name || c?.alias || "").trim();
+  if (named) return named;
+  return raw || id;
+}
+
+function isEnvelopeNoiseContent(content: string): boolean {
+  const t = content.trim();
+  if (!t.startsWith("{")) return false;
+  if (t.includes('"receiptMessage"') || t.includes('"typingMessage"')) return true;
+  return t.includes('"envelope"') && t.includes('"source"');
 }
 
 function isOutgoing(m: Message): boolean {
@@ -352,7 +373,6 @@ export default function App() {
   const [commerceAudit, setCommerceAudit] = useState<CommerceAuditEvent[]>([]);
   const [salesRange, setSalesRange] = useState<"7" | "30" | "all">("30");
   const [salesStatus, setSalesStatus] = useState("all");
-  const [salesBusy, setSalesBusy] = useState(false);
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkUri, setLinkUri] = useState<string | null>(null);
   const [linkStatus, setLinkStatus] = useState<DeviceLinkStatus | null>(null);
@@ -417,7 +437,11 @@ export default function App() {
       api.getThreadMessages(threadId),
       api.listOutbox(threadId),
     ]);
-    if (msgs.success) setMessages(msgs.data);
+    if (msgs.success) {
+      setMessages(msgs.data.filter((m) => !isEnvelopeNoiseContent(m.content)));
+      const c = await api.listContactMeta();
+      if (c.success) setContacts(c.data);
+    }
     if (box.success) setOutbox(box.data.filter((i) => i.state !== "sent"));
     await api.markThreadRead(threadId);
   };
@@ -772,7 +796,7 @@ export default function App() {
         return;
       }
       await saveIvrSettings({ allowlist: [...ivrSettings.allowlist, threadId] });
-      setStatus(`Buyer menu approved for ${threadTitle(threadId, contacts, groups)}`);
+      setStatus(`Buyer menu approved for ${threadTitle(threadId, contacts, groups, customers)}`);
       return;
     }
     if (!autoSettings) return;
@@ -781,7 +805,7 @@ export default function App() {
       return;
     }
     await saveAutoSettings({ allowlist: [...autoSettings.allowlist, threadId] });
-    setStatus(`Added to auto-reply allowlist: ${threadTitle(threadId, contacts, groups)}`);
+    setStatus(`Added to auto-reply allowlist: ${threadTitle(threadId, contacts, groups, customers)}`);
   };
 
   const removeFromAllowlist = async (kind: "ivr" | "auto", threadId: string) => {
@@ -835,7 +859,7 @@ export default function App() {
   const orderParty = (o: Order): string => {
     const cust = customers.find((c) => c.id === o.customer_id || c.thread_id === o.thread_id);
     if (cust?.display_name) return cust.display_name;
-    return threadTitle(o.thread_id, contacts, groups);
+    return threadTitle(o.thread_id, contacts, groups, customers);
   };
 
   const toggleThreadIvr = async (enabled: boolean) => {
@@ -1144,7 +1168,7 @@ export default function App() {
     }
     const res = await api.ensureCustomerForThread(
       selectedId,
-      threadTitle(selectedId, contacts, groups),
+      threadTitle(selectedId, contacts, groups, customers),
     );
     if (!res.success) {
       setStatus(res.error);
@@ -1380,26 +1404,6 @@ export default function App() {
     setIvrMenusError(null);
   };
 
-  const refreshSales = async () => {
-    setSalesBusy(true);
-    const now = Date.now();
-    let sinceMs: number | null = null;
-    if (salesRange === "7") sinceMs = now - 7 * 24 * 60 * 60 * 1000;
-    else if (salesRange === "30") sinceMs = now - 30 * 24 * 60 * 60 * 1000;
-    const [sum, auditRes] = await Promise.all([
-      api.salesSummary({
-        sinceMs,
-        untilMs: null,
-        status: salesStatus === "all" ? null : salesStatus,
-      }),
-      api.listCommerceAudit(80),
-    ]);
-    setSalesBusy(false);
-    if (sum.success) setSalesSummary(sum.data);
-    else setStatus(sum.error);
-    if (auditRes.success) setCommerceAudit(auditRes.data);
-  };
-
   const refreshGlobalOutbox = async () => {
     const [list, sum] = await Promise.all([api.listOutbox(), api.getOutboxSummary()]);
     if (list.success) {
@@ -1487,18 +1491,14 @@ export default function App() {
   }, [panel]);
 
   useEffect(() => {
-    if (panel === "sales") void refreshSales();
-  }, [panel, salesRange, salesStatus]);
-
-  useEffect(() => {
     if (panel === "settings" && settingsTab === "ivr" && !ivrMenusDraft) {
       void loadIvrMenusEditor();
     }
   }, [panel, settingsTab]);
 
   const tone = healthTone(health);
-  const title = selectedId ? threadTitle(selectedId, contacts, groups) : "SignalX";
-  const showProfileRail = panel === "threads" && !!selectedId;
+  const title = selectedId ? threadTitle(selectedId, contacts, groups, customers) : "SignalX";
+  const showProfileRail = panel === "threads";
   const profileContact = selectedId
     ? contacts.find((c) => {
         const raw = selectedId.replace(/^dm:/, "");
@@ -1520,7 +1520,7 @@ export default function App() {
       if (threadFilter.kind === "group" && !t.id.startsWith("group:")) return false;
       if (threadFilter.unread && t.unread_count <= 0) return false;
       if (threadFilter.pending && t.outbox_count <= 0) return false;
-      const label = threadTitle(t.id, contacts, groups);
+      const label = threadTitle(t.id, contacts, groups, customers);
       return includesQ(`${label} ${t.id}`, threadFilter.q);
     });
   }, [threads, threadFilter, contacts, groups]);
@@ -1578,7 +1578,7 @@ export default function App() {
       .filter((o) => {
         if (orderFilter.status !== "all" && o.status !== orderFilter.status) return false;
         if (orderFilter.thisThread && selectedId && o.thread_id !== selectedId) return false;
-        const party = threadTitle(o.thread_id, contacts, groups);
+        const party = threadTitle(o.thread_id, contacts, groups, customers);
         const lines = o.lines.map((l) => l.name).join(" ");
         return includesQ(`${party} ${o.id} ${o.status} ${lines} ${o.thread_id}`, orderFilter.q);
       });
@@ -1714,10 +1714,14 @@ export default function App() {
                 </button>
               ))}
             </div>
+            <label className="field-label" htmlFor="session-pin">
+              PIN
+            </label>
             <input
+              id="session-pin"
               type="password"
               autoComplete="off"
-              placeholder="PIN"
+              placeholder="4–8 digits"
               value={sessionPin}
               onChange={(e) => setSessionPin(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && void onUnlock()}
@@ -1751,19 +1755,34 @@ export default function App() {
             type="button"
             className="account-label account-label-btn"
             title={accountNumber ?? undefined}
+            aria-expanded={accountMenuOpen}
             onClick={() => setAccountMenuOpen((o) => !o)}
           >
-            {session?.locked
-              ? "Locked"
-              : accountNumber ?? "Not configured"}
+            <span className="account-label-text">
+              {session?.locked
+                ? "Locked"
+                : accountNumber ?? "Not configured"}
+            </span>
+            <span className="account-chevron" aria-hidden>
+              ▾
+            </span>
           </button>
           {accountMenuOpen && (
-            <div className="account-menu">
-              <button type="button" onClick={() => void onLock()}>
-                Lock
+            <div className="account-menu" role="menu">
+              <button
+                type="button"
+                className="danger"
+                role="menuitem"
+                onClick={() => {
+                  setAccountMenuOpen(false);
+                  void onLock();
+                }}
+              >
+                Lock session
               </button>
               <button
                 type="button"
+                role="menuitem"
                 onClick={() => {
                   setAccountMenuOpen(false);
                   void onLock();
@@ -1784,20 +1803,30 @@ export default function App() {
           </div>
         )}
 
-        <div className={`ai-pill ${ai?.configured && ai.ollama_reachable ? "ok" : "warn"}`}>
-          {ai?.configured
-            ? ai.ollama_reachable
-              ? `AI · ${ai.ollama_model || "ollama"}`
-              : "AI · unreachable"
-            : "AI · not configured"}
+        <div className="rail-status" aria-label="System status">
+          <span
+            className={`rail-chip ${ai?.configured && ai.ollama_reachable ? "ok" : "warn"}`}
+            title={
+              ai?.configured
+                ? ai.ollama_reachable
+                  ? ai.ollama_model || "ollama"
+                  : "unreachable"
+                : "not configured"
+            }
+          >
+            AI
+          </span>
+          {autoSettings?.enabled && (
+            <span className="rail-chip danger" title="Auto-reply on">
+              Auto
+            </span>
+          )}
+          {ivrSettings?.enabled && (
+            <span className="rail-chip ok" title="Buyer menu on">
+              IVR
+            </span>
+          )}
         </div>
-
-        {autoSettings?.enabled && (
-          <div className="auto-global-banner">Auto-reply ON</div>
-        )}
-        {ivrSettings?.enabled && (
-          <div className="auto-global-banner ivr">Buyer menu ON</div>
-        )}
 
         <nav className="nav">
           {NAV_ITEMS.map(({ id, label, ico }) => (
@@ -1853,7 +1882,7 @@ export default function App() {
               onChange={(e) => setNewDmPhone(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && void openNewDm()}
             />
-            <button type="button" className="send-btn" onClick={() => void openNewDm()}>
+            <button type="button" className="action-btn primary" onClick={() => void openNewDm()}>
               Open
             </button>
           </div>
@@ -1908,18 +1937,18 @@ export default function App() {
               <button
                 key={t.id}
                 type="button"
-                className={selectedId === t.id ? "thread-row active" : "thread-row"}
+                className={selectedId === t.id ? "thread-row active p-3 gap-3" : "thread-row p-3 gap-3"}
                 onClick={() => {
                   setSelectedId(t.id);
                   setPanel("threads");
                 }}
               >
                 <span className="avatar-dot" aria-hidden>
-                  {initials(threadTitle(t.id, contacts, groups))}
+                  {initials(threadTitle(t.id, contacts, groups, customers))}
                 </span>
                 <div className="thread-row-body">
                   <div className="thread-row-top">
-                    <span className="thread-name">{threadTitle(t.id, contacts, groups)}</span>
+                    <span className="thread-name">{threadTitle(t.id, contacts, groups, customers)}</span>
                     <span className="thread-time">{fmtTime(t.last_message_timestamp)}</span>
                   </div>
                   <div className="thread-row-meta">
@@ -1952,18 +1981,18 @@ export default function App() {
               <button
                 key={`${h.thread_id}-${h.message_id}`}
                 type="button"
-                className="thread-row"
+                className="thread-row p-3 gap-3"
                 onClick={() => {
                   setSelectedId(h.thread_id);
                   setPanel("threads");
                 }}
               >
                 <span className="avatar-dot" aria-hidden>
-                  {initials(threadTitle(h.thread_id, contacts, groups))}
+                  {initials(threadTitle(h.thread_id, contacts, groups, customers))}
                 </span>
                 <div className="thread-row-body">
                   <div className="thread-row-top">
-                    <span className="thread-name">{threadTitle(h.thread_id, contacts, groups)}</span>
+                    <span className="thread-name">{threadTitle(h.thread_id, contacts, groups, customers)}</span>
                     <span className="thread-time">{fmtTime(h.timestamp)}</span>
                   </div>
                   <div className="snippet">{h.snippet}</div>
@@ -1979,7 +2008,7 @@ export default function App() {
           <header className="col-head">Contacts</header>
           <div className="pane-section">
             <h3 className="pane-section-title">Create new contact</h3>
-            <div className="compose-strip stacked" style={{ border: 0, padding: 0 }}>
+            <div className="compose-strip stacked p-4 gap-4 border-0">
               <input
                 placeholder="+15551234567"
                 value={contactForm.phone}
@@ -1991,7 +2020,7 @@ export default function App() {
                 onChange={(e) => setContactForm((f) => ({ ...f, name: e.target.value }))}
                 onKeyDown={(e) => e.key === "Enter" && void addContact()}
               />
-              <button type="button" className="send-btn" onClick={() => void addContact()}>
+              <button type="button" className="action-btn primary" onClick={() => void addContact()}>
                 Add contact
               </button>
             </div>
@@ -1999,7 +2028,7 @@ export default function App() {
           {contacts.length > 0 && (
             <div className="pane-section">
               <h3 className="pane-section-title">Manage contacts</h3>
-              <div className="filter-strip" style={{ border: 0, padding: 0 }}>
+              <div className="filter-strip p-4 gap-4 border-0">
                 <input
                   placeholder="Filter contacts…"
                   value={contactFilter.q}
@@ -2091,7 +2120,7 @@ export default function App() {
               onChange={(e) => setGroupForm((f) => ({ ...f, members: e.target.value }))}
               onKeyDown={(e) => e.key === "Enter" && void createGroup()}
             />
-            <button type="button" className="send-btn" onClick={() => void createGroup()}>
+            <button type="button" className="action-btn primary" onClick={() => void createGroup()}>
               Create group
             </button>
           </div>
@@ -2478,7 +2507,7 @@ export default function App() {
               </div>
 
               <div className="product-form-actions">
-                <button type="button" className="send-btn" onClick={() => void saveProduct()}>
+                <button type="button" className="action-btn primary" onClick={() => void saveProduct()}>
                   {productForm.id ? "Save product" : "Add product"}
                 </button>
                 {productForm.id && (
@@ -2685,7 +2714,7 @@ export default function App() {
               <div className="order-target">
                 {selectedId && !selectedId.startsWith("group:") ? (
                   <>
-                    Ordering for <strong>{threadTitle(selectedId, contacts, groups)}</strong>
+                    Ordering for <strong>{threadTitle(selectedId, contacts, groups, customers)}</strong>
                     <span className="convo-sub inline">{selectedId}</span>
                   </>
                 ) : (
@@ -2732,7 +2761,7 @@ export default function App() {
               <div className="row-actions">
                 <button
                   type="button"
-                  className="send-btn"
+                  className="action-btn primary"
                   disabled={!selectedId || selectedId.startsWith("group:") || products.length === 0}
                   onClick={() => void placeOrder(false)}
                 >
@@ -2879,140 +2908,26 @@ export default function App() {
       )}
 
       {panel === "sales" && (
-        <section className="thread-col wide">
-          <header className="col-head">
-            Sales
-            <span className="col-meta">
-              {salesBusy ? "Loading…" : salesSummary ? `${salesSummary.order_count} orders` : ""}
-            </span>
-          </header>
-          <div className="settings-body wide-body">
-            <div className="filter-strip in-panel">
-              <select
-                aria-label="Date range"
-                value={salesRange}
-                onChange={(e) => setSalesRange(e.target.value as "7" | "30" | "all")}
-              >
-                <option value="7">Last 7 days</option>
-                <option value="30">Last 30 days</option>
-                <option value="all">All time</option>
-              </select>
-              <select
-                aria-label="Status filter"
-                value={salesStatus}
-                onChange={(e) => setSalesStatus(e.target.value)}
-              >
-                <option value="all">All statuses</option>
-                <option value="draft">draft</option>
-                <option value="confirmed">confirmed</option>
-                <option value="invoiced">invoiced</option>
-                <option value="paid">paid</option>
-                <option value="fulfilled">fulfilled</option>
-                <option value="cancelled">cancelled</option>
-              </select>
-              <button type="button" className="ghost-btn" onClick={() => void refreshSales()}>
-                Refresh
-              </button>
-            </div>
-
-            {salesSummary && (
-              <div className="sales-summary">
-                <div className="sales-totals">
-                  <div>
-                    <span className="field-label">Orders</span>
-                    <strong>{salesSummary.order_count}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Revenue</span>
-                    <strong>{money(salesSummary.revenue_cents)}</strong>
-                  </div>
-                </div>
-                {salesSummary.by_status.length > 0 && (
-                  <div className="sales-by-status">
-                    {salesSummary.by_status.map((row) => (
-                      <span key={row.status} className="badge muted">
-                        {row.status}: {row.count} · {money(row.total_cents)}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <h3 className="form-card-title">Top products</h3>
-                {salesSummary.top_products.length === 0 ? (
-                  <p className="hint tight">No product lines in this range.</p>
-                ) : (
-                  <ul className="sales-top-list">
-                    {salesSummary.top_products.map((p) => (
-                      <li key={p.product_id}>
-                        <span className="thread-name">{p.name}</span>
-                        <span className="convo-sub">
-                          qty {p.quantity} · {money(p.revenue_cents)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <h3 className="form-card-title">Orders in range</h3>
-                <div className="thread-list">
-                  {salesSummary.orders.length === 0 && (
-                    <p className="hint">No orders match these filters.</p>
-                  )}
-                  {[...salesSummary.orders]
-                    .sort((a, b) => b.created_at - a.created_at)
-                    .slice(0, 40)
-                    .map((o) => (
-                      <div key={o.id} className="thread-row product-row">
-                        <div className="thread-row-top">
-                          <span className="thread-name">
-                            {threadTitle(o.thread_id, contacts, groups)}
-                            <span className="order-id"> · {o.id.slice(0, 8)}</span>
-                          </span>
-                          <span className={`status-pill status-${orderStatusTone(o.status)}`}>
-                            {o.status}
-                          </span>
-                        </div>
-                        <div className="convo-sub">
-                          {money(o.total_cents)} · {fmtTime(o.created_at)}
-                        </div>
-                        <div className="row-actions">
-                          <button
-                            type="button"
-                            className="ghost-btn"
-                            onClick={() => void duplicateAsDraft(o.id)}
-                          >
-                            Reorder
-                          </button>
-                          <button
-                            type="button"
-                            className="ghost-btn"
-                            onClick={() => {
-                              setSelectedId(o.thread_id);
-                              setPanel("threads");
-                            }}
-                          >
-                            Open chat
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            )}
-
-            <h3 className="form-card-title">Commerce audit</h3>
-            <div className="thread-list">
-              {commerceAudit.length === 0 && <p className="hint">No commerce audit events yet.</p>}
-              {commerceAudit.map((e) => (
-                <div key={e.id} className="thread-row">
-                  <div className="thread-row-top">
-                    <span className="thread-name">{e.kind}</span>
-                    <span className="thread-time">{fmtTime(e.created_at)}</span>
-                  </div>
-                  <div className="convo-sub">{e.summary}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
+        <SalesScreen
+          salesSummary={salesSummary}
+          commerceAudit={commerceAudit}
+          salesRange={salesRange}
+          setSalesRange={setSalesRange}
+          salesStatus={salesStatus}
+          setSalesStatus={setSalesStatus}
+          setSalesSummary={setSalesSummary}
+          setCommerceAudit={setCommerceAudit}
+          contacts={contacts}
+          groups={groups}
+          customers={customers}
+          setStatus={setStatus}
+          setPanel={setPanel}
+          setSelectedId={setSelectedId}
+          threadTitle={threadTitle}
+          money={money}
+          fmtTime={fmtTime}
+          orderStatusTone={orderStatusTone}
+        />
       )}
 
       {panel === "outbox" && (
@@ -3038,7 +2953,7 @@ export default function App() {
             {globalOutbox.map((o) => (
               <div key={o.id} className="thread-row product-row">
                 <div className="thread-row-top">
-                  <span className="thread-name">{threadTitle(o.thread_id, contacts, groups)}</span>
+                  <span className="thread-name">{threadTitle(o.thread_id, contacts, groups, customers)}</span>
                   <span
                     className={`status-pill status-${
                       o.state === "failed" ? "danger" : o.state === "sending" ? "warn" : "muted"
@@ -3605,7 +3520,7 @@ export default function App() {
                         {autoSettings.allowlist.map((tid) => (
                           <li key={tid}>
                             <div>
-                              <div className="thread-name">{threadTitle(tid, contacts, groups)}</div>
+                              <div className="thread-name">{threadTitle(tid, contacts, groups, customers)}</div>
                               <div className="convo-sub">{tid}</div>
                             </div>
                             <button
@@ -3690,7 +3605,7 @@ export default function App() {
                           {ivrSettings.allowlist.map((tid) => (
                             <li key={tid}>
                               <div>
-                                <div className="thread-name">{threadTitle(tid, contacts, groups)}</div>
+                                <div className="thread-name">{threadTitle(tid, contacts, groups, customers)}</div>
                                 <div className="convo-sub">{tid}</div>
                               </div>
                               <button
@@ -3842,7 +3757,11 @@ export default function App() {
                   className={isOutgoing(m) ? "bubble out" : "bubble in"}
                 >
                   <div className="bubble-meta">
-                    <span>{isOutgoing(m) ? "You" : m.sender}</span>
+                    <span>
+                      {isOutgoing(m)
+                        ? "You"
+                        : threadTitle(selectedId || m.sender, contacts, groups, customers)}
+                    </span>
                     <span>{fmtTime(m.timestamp)}</span>
                   </div>
                   <div className="bubble-body">{m.content}</div>
@@ -3940,62 +3859,70 @@ export default function App() {
       </main>
       )}
 
-      {showProfileRail && selectedId && (
-        <ProfileRail
-          threadId={selectedId}
-          title={title}
-          initials={initials(title)}
-          contact={profileContact}
-          customer={profileCustomer}
-          orders={orders}
-          products={products}
-          ai={ai}
-          aiBusy={aiBusy}
-          onStatus={setStatus}
-          onSetComposer={setComposer}
-          onDraft={(intent) => void onDraft(intent)}
-          onSummarize={onSummarize}
-          onLinkCustomer={() => void linkCustomerFromThread()}
-          onOpenOrders={() => {
-            setOrderFilter((f) => ({ ...f, thisThread: true, q: "" }));
-            setPanel("orders");
-          }}
-          onSendInvoice={(id) => void sendInvoice(id)}
-          onSendQuote={(id) => void sendQuote(id)}
-          onMarkPaid={(id) => void setOrderLifecycle(id, "paid")}
-          onToggleFavorite={(next) => {
-            void (async () => {
-              const res = await api.setContactMeta(selectedId, { favorite: next });
-              if (!res.success) setStatus(res.error);
-              else await refreshMeta();
-            })();
-          }}
-          onToggleMute={(next) => {
-            void (async () => {
-              const res = await api.setContactMeta(selectedId, { muted: next });
-              if (!res.success) setStatus(res.error);
-              else await refreshMeta();
-            })();
-          }}
-          onSaveNotes={(notes) => {
-            void (async () => {
-              if (!profileCustomer) {
-                setStatus("Link as customer before saving notes");
-                return;
-              }
-              const res = await api.upsertCustomer({
-                ...profileCustomer,
-                notes,
-              });
-              if (!res.success) setStatus(res.error);
-              else {
-                setStatus("Notes saved");
-                await refreshMeta();
-              }
-            })();
-          }}
-        />
-      )}
+      {showProfileRail &&
+        (selectedId ? (
+          <ProfileRail
+            threadId={selectedId}
+            title={title}
+            initials={initials(title)}
+            contact={profileContact}
+            customer={profileCustomer}
+            orders={orders}
+            products={products}
+            ai={ai}
+            aiBusy={aiBusy}
+            onStatus={setStatus}
+            onSetComposer={setComposer}
+            onDraft={(intent) => void onDraft(intent)}
+            onSummarize={onSummarize}
+            onLinkCustomer={() => void linkCustomerFromThread()}
+            onOpenOrders={() => {
+              setOrderFilter((f) => ({ ...f, thisThread: true, q: "" }));
+              setPanel("orders");
+            }}
+            onSendInvoice={(id) => void sendInvoice(id)}
+            onSendQuote={(id) => void sendQuote(id)}
+            onMarkPaid={(id) => void setOrderLifecycle(id, "paid")}
+            onToggleFavorite={(next) => {
+              void (async () => {
+                const res = await api.setContactMeta(selectedId, { favorite: next });
+                if (!res.success) setStatus(res.error);
+                else await refreshMeta();
+              })();
+            }}
+            onToggleMute={(next) => {
+              void (async () => {
+                const res = await api.setContactMeta(selectedId, { muted: next });
+                if (!res.success) setStatus(res.error);
+                else await refreshMeta();
+              })();
+            }}
+            onSaveNotes={(notes) => {
+              void (async () => {
+                if (!profileCustomer) {
+                  setStatus("Link as customer before saving notes");
+                  return;
+                }
+                const res = await api.upsertCustomer({
+                  ...profileCustomer,
+                  notes,
+                });
+                if (!res.success) setStatus(res.error);
+                else {
+                  setStatus("Notes saved");
+                  await refreshMeta();
+                }
+              })();
+            }}
+          />
+        ) : (
+          <aside className="profile-rail profile-rail-empty">
+            <div className="profile-rail-empty-inner">
+              <p className="profile-section-title">Context</p>
+              <p className="hint tight">Select a conversation to see standing, notes, and actions.</p>
+            </div>
+          </aside>
+        ))}
 
       {status &&
         (panel === "audit" ||

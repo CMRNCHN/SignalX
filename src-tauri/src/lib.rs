@@ -946,11 +946,46 @@ impl ThreadState {
   }
 
   fn get_thread_messages(&self, thread_id: &str) -> Vec<Message> {
+    let mut d = self.data.lock().unwrap();
+    let Some(entry) = d.threads.get_mut(thread_id) else {
+      return Vec::new();
+    };
+    let before = entry.messages.len();
+    entry
+      .messages
+      .retain(|m| !is_envelope_noise_content(&m.content));
+    if entry.messages.len() != before {
+      if let Some(last) = entry.messages.last() {
+        entry.last_message_timestamp = last.timestamp;
+      }
+      drop(d);
+      self.save_atomic();
+      let d = self.data.lock().unwrap();
+      return d
+        .threads
+        .get(thread_id)
+        .map(|t| t.messages.clone())
+        .unwrap_or_default();
+    }
+    entry.messages.clone()
+  }
+
+  /// Scan recent message envelopes for Signal profile names (sourceName).
+  fn discover_peer_names(&self) -> Vec<(String, String)> {
     let d = self.data.lock().unwrap();
-    d.threads
-      .get(thread_id)
-      .map(|t| t.messages.clone())
-      .unwrap_or_else(Vec::new)
+    let mut out: Vec<(String, String)> = Vec::new();
+    for t in d.threads.values() {
+      if t.id.starts_with("group:") {
+        continue;
+      }
+      for msg in t.messages.iter().rev().take(30) {
+        if let Some(name) = msg.raw_json.as_ref().and_then(envelope_source_name) {
+          out.push((t.id.clone(), name));
+          break;
+        }
+      }
+    }
+    out
   }
 }
 
@@ -1612,6 +1647,44 @@ impl ContactStore {
     Ok(out)
   }
 
+  /// Fill display_name from Signal profile when the operator has not set one.
+  fn learn_display_name_if_empty(&self, account_id: &str, contact_id: &str, name: &str) {
+    let name = name.trim();
+    if name.is_empty() || contact_id.starts_with("group:") {
+      return;
+    }
+    self.ensure_loaded(account_id);
+    let cid = normalize_contact_id(contact_id);
+    {
+      let d = self.data.lock().unwrap();
+      if let Some(existing) = d.get(account_id).and_then(|m| m.contacts.get(&cid)) {
+        if existing
+          .display_name
+          .as_ref()
+          .map(|s| !s.trim().is_empty())
+          .unwrap_or(false)
+        {
+          return;
+        }
+      }
+    }
+    let _ = self.upsert_patch(
+      account_id,
+      &cid,
+      ContactMetaPatch {
+        display_name: Some(Some(name.to_string())),
+        alias: None,
+        categories: None,
+        favorite: None,
+        muted: None,
+        icon: None,
+        apple_contact_id: None,
+        custom_fields: None,
+        auto_reply_enabled: None,
+      },
+    );
+  }
+
   fn delete(&self, account_id: &str, contact_id: &str) -> Result<bool, String> {
     self.ensure_loaded(account_id);
     let cid = normalize_contact_id(contact_id);
@@ -2135,29 +2208,74 @@ impl AccountManager {
 // --------------------
 // Normalization
 // --------------------
+
+/// True when message body is dumped raw signal-cli JSON (receipts, typing, etc.).
+fn is_envelope_noise_content(content: &str) -> bool {
+  let t = content.trim();
+  if !t.starts_with('{') {
+    return false;
+  }
+  if t.contains("\"receiptMessage\"") || t.contains("\"typingMessage\"") {
+    return true;
+  }
+  t.contains("\"envelope\"") && t.contains("\"source\"")
+}
+
+fn envelope_source_name(v: &Value) -> Option<String> {
+  v.get("envelope")
+    .and_then(|e| e.get("sourceName"))
+    .and_then(|x| x.as_str())
+    .map(|s| s.trim().to_string())
+    .filter(|s| !s.is_empty())
+}
+
+/// Prefer E.164 sourceNumber over UUID `source` for stable thread ids.
+fn envelope_peer_id(env: &Value) -> String {
+  if let Some(num) = env
+    .get("sourceNumber")
+    .and_then(|x| x.as_str())
+    .map(|s| s.trim())
+    .filter(|s| s.starts_with('+') && s.len() > 3)
+  {
+    return num.to_string();
+  }
+  env
+    .get("source")
+    .or_else(|| env.get("sourceNumber"))
+    .and_then(|x| x.as_str())
+    .unwrap_or("unknown")
+    .to_string()
+}
+
 fn normalize_incoming_message(my_number: &str, v: &Value) -> Option<(Message, Vec<String>)> {
   let env = v.get("envelope")?;
   let ts = env.get("timestamp").and_then(|x| x.as_i64()).unwrap_or_else(now_ms);
-  let source = env.get("source").or_else(|| env.get("sourceNumber")).and_then(|x| x.as_str()).unwrap_or("unknown");
+  let source = envelope_peer_id(env);
   let source_device = env.get("sourceDevice").and_then(|x| x.as_i64()).unwrap_or(0);
 
-  let data_msg = env.get("dataMessage").unwrap_or(&Value::Null);
-  let content = data_msg
+  // Skip receipts, typing, sync-only envelopes — never dump raw JSON into the thread.
+  let data_msg = env.get("dataMessage").filter(|d| !d.is_null())?;
+  let text = data_msg
     .get("message")
     .and_then(|x| x.as_str())
-    .map(|s| s.to_string())
-    .unwrap_or_else(|| {
-      // fallback
-      v.to_string()
-    });
+    .map(|s| s.to_string());
+  let has_attachments = data_msg
+    .get("attachments")
+    .and_then(|a| a.as_array())
+    .map(|a| !a.is_empty())
+    .unwrap_or(false);
+  let content = match text {
+    Some(s) if !s.trim().is_empty() => s,
+    _ if has_attachments => "[attachment]".to_string(),
+    _ => return None,
+  };
 
   // group detection (best-effort)
-  let mut thread_id = source.to_string();
+  let mut thread_id = source.clone();
   if let Some(group) = data_msg.get("groupInfo") {
     if let Some(gid) = group.get("groupId").and_then(|x| x.as_str()) {
       thread_id = format!("group:{}", gid);
     } else if let Some(gid) = group.get("groupId").and_then(|x| x.as_array()) {
-      // sometimes bytes array; stringify
       thread_id = format!("group:{:?}", gid);
     }
   }
@@ -2168,17 +2286,15 @@ fn normalize_incoming_message(my_number: &str, v: &Value) -> Option<(Message, Ve
     id,
     thread_id: thread_id.clone(),
     timestamp: ts,
-    sender: source.to_string(),
+    sender: source.clone(),
     recipient: Some(my_number.to_string()),
     content,
     direction: Direction::Incoming,
     raw_json: Some(v.clone()),
   };
 
-  // participants best-effort
   let mut participants: Vec<String> = vec![];
   if thread_id.starts_with("group:") {
-    // if we can find members, include them; otherwise include sender + me
     if let Some(group) = data_msg.get("groupInfo") {
       if let Some(members) = group.get("members").and_then(|x| x.as_array()) {
         for m in members.iter().filter_map(|x| x.as_str()) {
@@ -2187,11 +2303,11 @@ fn normalize_incoming_message(my_number: &str, v: &Value) -> Option<(Message, Ve
       }
     }
     if participants.is_empty() {
-      participants.push(source.to_string());
+      participants.push(source);
       participants.push(my_number.to_string());
     }
   } else {
-    participants.push(source.to_string());
+    participants.push(source);
     participants.push(my_number.to_string());
   }
 
@@ -2726,6 +2842,11 @@ fn get_threads(state: &AppState) -> Value {
     Err(_) => return ok_t(Vec::<ThreadSummary>::new()),
   };
   let ts = state.account_manager.get_or_create(&account);
+  for (peer, name) in ts.discover_peer_names() {
+    state
+      .contact_store
+      .learn_display_name_if_empty(&account, &peer, &name);
+  }
   ok_t(ts.get_threads())
 }
 
@@ -2735,7 +2856,16 @@ fn get_thread_messages(state: &AppState, thread_id: String) -> Value {
     None => return ok_t(Vec::<Message>::new()),
   };
   let ts = state.account_manager.get_or_create(&account);
-  ok_t(ts.get_thread_messages(thread_id.trim()))
+  let msgs = ts.get_thread_messages(thread_id.trim());
+  for msg in msgs.iter().rev().take(30) {
+    if let Some(name) = msg.raw_json.as_ref().and_then(envelope_source_name) {
+      state
+        .contact_store
+        .learn_display_name_if_empty(&account, thread_id.trim(), &name);
+      break;
+    }
+  }
+  ok_t(msgs)
 }
 
 fn get_pending_replies(state: &AppState, thread_id: String) -> Value {
@@ -3086,6 +3216,12 @@ fn list_contact_meta(state: &AppState) -> Value {
     Ok(a) => a,
     Err(v) => return v,
   };
+  let ts = state.account_manager.get_or_create(&account_id);
+  for (peer, name) in ts.discover_peer_names() {
+    state
+      .contact_store
+      .learn_display_name_if_empty(&account_id, &peer, &name);
+  }
   ok_t(state.contact_store.list(&account_id))
 }
 
@@ -4364,6 +4500,22 @@ async fn receive_loop(state: AppState, agent_mode: Option<AgentModeConfig>) {
             if let Some((msg, participants)) = normalize_incoming_message(&my_number, v) {
               let thread_id = msg.thread_id.clone();
               let msg_id = msg.id.clone();
+              if let Some(name) = envelope_source_name(v) {
+                state
+                  .contact_store
+                  .learn_display_name_if_empty(&account, &thread_id, &name);
+                if let Some(src) = v
+                  .get("envelope")
+                  .and_then(|e| e.get("source"))
+                  .and_then(|x| x.as_str())
+                {
+                  if src != thread_id {
+                    state
+                      .contact_store
+                      .learn_display_name_if_empty(&account, src, &name);
+                  }
+                }
+              }
               ts.add_message(msg.clone(), participants);
               emit_message_new(&account, &msg);
               let ivr_handled = maybe_handle_ivr(&state, &thread_id, &msg.content);
@@ -6682,6 +6834,39 @@ mod foundation_tests {
       parse_created_group_id("noise\nYWJjZGVmZ2hpams=\n").as_deref(),
       Some("YWJjZGVmZ2hpams=")
     );
+  }
+
+  #[test]
+  fn skips_receipt_envelopes_prefers_phone_and_keeps_text() {
+    let receipt = json!({
+      "envelope": {
+        "source": "86c9feef-7daa-4a20-b8c8-0a9142b9b3e2",
+        "sourceNumber": "+17028575560",
+        "sourceName": "Keelan Miskel",
+        "timestamp": 1,
+        "receiptMessage": { "isDelivery": true, "timestamps": [1], "when": 1 }
+      }
+    });
+    assert!(normalize_incoming_message("+16172990756", &receipt).is_none());
+
+    let text = json!({
+      "envelope": {
+        "source": "86c9feef-7daa-4a20-b8c8-0a9142b9b3e2",
+        "sourceNumber": "+17028575560",
+        "sourceName": "Keelan Miskel",
+        "sourceDevice": 1,
+        "timestamp": 2,
+        "dataMessage": { "message": "hello from Keelan" }
+      }
+    });
+    let (msg, _) = normalize_incoming_message("+16172990756", &text).expect("text msg");
+    assert_eq!(msg.content, "hello from Keelan");
+    assert_eq!(msg.thread_id, "+17028575560");
+    assert_eq!(envelope_source_name(&text).as_deref(), Some("Keelan Miskel"));
+    assert!(is_envelope_noise_content(
+      r#"{"envelope":{"receiptMessage":{"isDelivery":true},"source":"+17028575560"}}"#
+    ));
+    assert!(!is_envelope_noise_content("if you can do tomorrow night"));
   }
 
   #[test]
