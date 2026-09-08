@@ -33,6 +33,7 @@ import {
 import { DeviceLinkQr } from "./DeviceLinkQr";
 import { IvrMenuComposer } from "./IvrMenuComposer";
 import { ProfileRail } from "./ProfileRail";
+import { SalesScreen } from "./components/Sales/SalesScreen";
 import { isTauriRuntime } from "./runtime";
 import {
   IconAudit,
@@ -48,7 +49,7 @@ import {
   IconSettings,
 } from "./navIcons";
 
-type Panel =
+export type Panel =
   | "threads"
   | "search"
   | "contacts"
@@ -372,7 +373,6 @@ export default function App() {
   const [commerceAudit, setCommerceAudit] = useState<CommerceAuditEvent[]>([]);
   const [salesRange, setSalesRange] = useState<"7" | "30" | "all">("30");
   const [salesStatus, setSalesStatus] = useState("all");
-  const [salesBusy, setSalesBusy] = useState(false);
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkUri, setLinkUri] = useState<string | null>(null);
   const [linkStatus, setLinkStatus] = useState<DeviceLinkStatus | null>(null);
@@ -1404,26 +1404,6 @@ export default function App() {
     setIvrMenusError(null);
   };
 
-  const refreshSales = async () => {
-    setSalesBusy(true);
-    const now = Date.now();
-    let sinceMs: number | null = null;
-    if (salesRange === "7") sinceMs = now - 7 * 24 * 60 * 60 * 1000;
-    else if (salesRange === "30") sinceMs = now - 30 * 24 * 60 * 60 * 1000;
-    const [sum, auditRes] = await Promise.all([
-      api.salesSummary({
-        sinceMs,
-        untilMs: null,
-        status: salesStatus === "all" ? null : salesStatus,
-      }),
-      api.listCommerceAudit(80),
-    ]);
-    setSalesBusy(false);
-    if (sum.success) setSalesSummary(sum.data);
-    else setStatus(sum.error);
-    if (auditRes.success) setCommerceAudit(auditRes.data);
-  };
-
   const refreshGlobalOutbox = async () => {
     const [list, sum] = await Promise.all([api.listOutbox(), api.getOutboxSummary()]);
     if (list.success) {
@@ -1509,10 +1489,6 @@ export default function App() {
   useEffect(() => {
     if (panel === "outbox") void refreshGlobalOutbox();
   }, [panel]);
-
-  useEffect(() => {
-    if (panel === "sales") void refreshSales();
-  }, [panel, salesRange, salesStatus]);
 
   useEffect(() => {
     if (panel === "settings" && settingsTab === "ivr" && !ivrMenusDraft) {
@@ -1961,7 +1937,7 @@ export default function App() {
               <button
                 key={t.id}
                 type="button"
-                className={selectedId === t.id ? "thread-row active" : "thread-row"}
+                className={selectedId === t.id ? "thread-row active p-3 gap-3" : "thread-row p-3 gap-3"}
                 onClick={() => {
                   setSelectedId(t.id);
                   setPanel("threads");
@@ -2005,7 +1981,7 @@ export default function App() {
               <button
                 key={`${h.thread_id}-${h.message_id}`}
                 type="button"
-                className="thread-row"
+                className="thread-row p-3 gap-3"
                 onClick={() => {
                   setSelectedId(h.thread_id);
                   setPanel("threads");
@@ -2032,7 +2008,7 @@ export default function App() {
           <header className="col-head">Contacts</header>
           <div className="pane-section">
             <h3 className="pane-section-title">Create new contact</h3>
-            <div className="compose-strip stacked" style={{ border: 0, padding: 0 }}>
+            <div className="compose-strip stacked p-4 gap-4 border-0">
               <input
                 placeholder="+15551234567"
                 value={contactForm.phone}
@@ -2052,7 +2028,7 @@ export default function App() {
           {contacts.length > 0 && (
             <div className="pane-section">
               <h3 className="pane-section-title">Manage contacts</h3>
-              <div className="filter-strip" style={{ border: 0, padding: 0 }}>
+              <div className="filter-strip p-4 gap-4 border-0">
                 <input
                   placeholder="Filter contacts…"
                   value={contactFilter.q}
@@ -2932,140 +2908,26 @@ export default function App() {
       )}
 
       {panel === "sales" && (
-        <section className="thread-col wide">
-          <header className="col-head">
-            Sales
-            <span className="col-meta">
-              {salesBusy ? "Loading…" : salesSummary ? `${salesSummary.order_count} orders` : ""}
-            </span>
-          </header>
-          <div className="settings-body wide-body">
-            <div className="filter-strip in-panel">
-              <select
-                aria-label="Date range"
-                value={salesRange}
-                onChange={(e) => setSalesRange(e.target.value as "7" | "30" | "all")}
-              >
-                <option value="7">Last 7 days</option>
-                <option value="30">Last 30 days</option>
-                <option value="all">All time</option>
-              </select>
-              <select
-                aria-label="Status filter"
-                value={salesStatus}
-                onChange={(e) => setSalesStatus(e.target.value)}
-              >
-                <option value="all">All statuses</option>
-                <option value="draft">draft</option>
-                <option value="confirmed">confirmed</option>
-                <option value="invoiced">invoiced</option>
-                <option value="paid">paid</option>
-                <option value="fulfilled">fulfilled</option>
-                <option value="cancelled">cancelled</option>
-              </select>
-              <button type="button" className="ghost-btn" onClick={() => void refreshSales()}>
-                Refresh
-              </button>
-            </div>
-
-            {salesSummary && (
-              <div className="sales-summary">
-                <div className="sales-totals">
-                  <div>
-                    <span className="field-label">Orders</span>
-                    <strong>{salesSummary.order_count}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Revenue</span>
-                    <strong>{money(salesSummary.revenue_cents)}</strong>
-                  </div>
-                </div>
-                {salesSummary.by_status.length > 0 && (
-                  <div className="sales-by-status">
-                    {salesSummary.by_status.map((row) => (
-                      <span key={row.status} className="badge muted">
-                        {row.status}: {row.count} · {money(row.total_cents)}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <h3 className="form-card-title">Top products</h3>
-                {salesSummary.top_products.length === 0 ? (
-                  <p className="hint tight">No product lines in this range.</p>
-                ) : (
-                  <ul className="sales-top-list">
-                    {salesSummary.top_products.map((p) => (
-                      <li key={p.product_id}>
-                        <span className="thread-name">{p.name}</span>
-                        <span className="convo-sub">
-                          qty {p.quantity} · {money(p.revenue_cents)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <h3 className="form-card-title">Orders in range</h3>
-                <div className="thread-list">
-                  {salesSummary.orders.length === 0 && (
-                    <p className="hint">No orders match these filters.</p>
-                  )}
-                  {[...salesSummary.orders]
-                    .sort((a, b) => b.created_at - a.created_at)
-                    .slice(0, 40)
-                    .map((o) => (
-                      <div key={o.id} className="thread-row product-row">
-                        <div className="thread-row-top">
-                          <span className="thread-name">
-                            {threadTitle(o.thread_id, contacts, groups, customers)}
-                            <span className="order-id"> · {o.id.slice(0, 8)}</span>
-                          </span>
-                          <span className={`status-pill status-${orderStatusTone(o.status)}`}>
-                            {o.status}
-                          </span>
-                        </div>
-                        <div className="convo-sub">
-                          {money(o.total_cents)} · {fmtTime(o.created_at)}
-                        </div>
-                        <div className="row-actions">
-                          <button
-                            type="button"
-                            className="ghost-btn"
-                            onClick={() => void duplicateAsDraft(o.id)}
-                          >
-                            Reorder
-                          </button>
-                          <button
-                            type="button"
-                            className="ghost-btn"
-                            onClick={() => {
-                              setSelectedId(o.thread_id);
-                              setPanel("threads");
-                            }}
-                          >
-                            Open chat
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            )}
-
-            <h3 className="form-card-title">Commerce audit</h3>
-            <div className="thread-list">
-              {commerceAudit.length === 0 && <p className="hint">No commerce audit events yet.</p>}
-              {commerceAudit.map((e) => (
-                <div key={e.id} className="thread-row">
-                  <div className="thread-row-top">
-                    <span className="thread-name">{e.kind}</span>
-                    <span className="thread-time">{fmtTime(e.created_at)}</span>
-                  </div>
-                  <div className="convo-sub">{e.summary}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
+        <SalesScreen
+          salesSummary={salesSummary}
+          commerceAudit={commerceAudit}
+          salesRange={salesRange}
+          setSalesRange={setSalesRange}
+          salesStatus={salesStatus}
+          setSalesStatus={setSalesStatus}
+          setSalesSummary={setSalesSummary}
+          setCommerceAudit={setCommerceAudit}
+          contacts={contacts}
+          groups={groups}
+          customers={customers}
+          setStatus={setStatus}
+          setPanel={setPanel}
+          setSelectedId={setSelectedId}
+          threadTitle={threadTitle}
+          money={money}
+          fmtTime={fmtTime}
+          orderStatusTone={orderStatusTone}
+        />
       )}
 
       {panel === "outbox" && (

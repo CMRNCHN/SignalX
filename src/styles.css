@@ -104,7 +104,7 @@ textarea {
 }
 
 .shell.shell-with-profile {
-  grid-template-columns: 220px 300px minmax(0, 1fr) 300px;
+  grid-template-columns: minmax(180px, 200px) minmax(280px, 320px) 1fr minmax(280px, 320px);
 }
 
 .rail,
