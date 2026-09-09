@@ -421,6 +421,7 @@ export default function App() {
   const [salesStatus, setSalesStatus] = useState("all");
   const [peopleTab, setPeopleTab] = useState<PeopleTab>("contacts");
   const [newDmOpen, setNewDmOpen] = useState(false);
+  const [productImages, setProductImages] = useState<Record<string, string>>({});
 
   // Dev-only design data. Real state always wins; fixtures fill in only while a
   // list is genuinely empty, and USE_FIXTURES is false in any release build.
@@ -1568,6 +1569,31 @@ export default function App() {
 
   const tone = healthTone(health);
   const title = selectedId ? threadTitle(selectedId, contacts, groups, customers) : "SignalX";
+  // Product thumbnails arrive as base64 over the API, one call each, so fetch
+  // them lazily for the catalog grid and keep what we've already resolved.
+  useEffect(() => {
+    if (panel !== "products") return;
+    const missing = products.filter((p) => p.image_path && !productImages[p.id]);
+    if (missing.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const resolved: Record<string, string> = {};
+      for (const p of missing) {
+        const img = await api.getProductImage(p.id);
+        if (img.success) {
+          resolved[p.id] = `data:${img.data.mime};base64,${img.data.bytes_base64}`;
+        }
+      }
+      if (!cancelled && Object.keys(resolved).length > 0) {
+        setProductImages((prev) => ({ ...prev, ...resolved }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panel, products]);
+
   const showProfileRail = panel === "threads";
   const profileContact = selectedId
     ? contacts.find((c) => {
@@ -2349,7 +2375,7 @@ export default function App() {
               {filteredProducts.length}/{products.length} products
             </span>
           </header>
-          <div className="settings-body">
+          <div className="catalog-body">
             <div className="filter-strip in-panel">
               <input
                 placeholder="Filter catalog…"
@@ -2407,6 +2433,8 @@ export default function App() {
                 />
               </label>
             </div>
+            <div className="catalog-layout">
+              <div className="catalog-form-pane">
             <div className="product-form">
               <div className="form-card">
                 <h3 className="form-card-title">
@@ -2672,70 +2700,86 @@ export default function App() {
                 )}
               </div>
             </div>
-            <div className="thread-list">
-              {products.length === 0 && <p className="hint">No products yet — add one above.</p>}
+              </div>
+              <div className="catalog-grid-pane">
+            <div className="product-grid">
+              {products.length === 0 && <p className="hint">No products yet — add one on the left.</p>}
               {products.length > 0 && filteredProducts.length === 0 && (
                 <p className="hint">No products match these filters.</p>
               )}
               {filteredProducts.map((p) => {
+                const img = productImages[p.id];
+                const out = p.quantity_in_stock <= 0 && (p.quantity_base_milli ?? 0) <= 0;
+                const low = isLowStock(p) && (p.quantity_base_milli ?? 0) > 0;
                 return (
-                  <div key={p.id} className="thread-row product-row">
-                    <div className="thread-row-top">
-                      <span className="thread-name">{p.name}</span>
-                      <span className="thread-time">
-                        {productPriceLabel(p)} · {productStockLabel(p)}
-                      </span>
+                  <article key={p.id} className="product-card">
+                    <div className="product-card-media">
+                      {img ? (
+                        <img src={img} alt="" />
+                      ) : (
+                        <span className="product-card-placeholder" aria-hidden>
+                          <IconCatalog />
+                        </span>
+                      )}
+                      {out && <span className="product-flag out">Out</span>}
+                      {low && <span className="product-flag low">Low</span>}
                     </div>
-                    <div className="convo-sub">
-                      {[
-                        p.sku || p.id.slice(0, 8),
-                        p.supplier ? `from ${p.supplier}` : null,
-                        p.cost_cents
-                          ? `cost ${money(p.cost_cents)}/${productBaseUnit(p)}`
-                          : null,
-                        productWeightLabel(p),
-                        p.description ? p.description.slice(0, 40) : null,
-                        (p.sell_options || []).length
-                          ? `${p.sell_options.length} pack${p.sell_options.length === 1 ? "" : "s"}`
-                          : null,
-                        p.image_path ? "has image" : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
+                    <div className="product-card-body">
+                      <div className="product-card-title">{p.name}</div>
+                      <div className="product-card-price">
+                        <strong>{productPriceLabel(p)}</strong>
+                        <span className="product-card-stock">{productStockLabel(p)}</span>
+                      </div>
+                      {p.description && (
+                        <p className="product-card-desc">{p.description}</p>
+                      )}
+                      <div className="product-card-meta">
+                        {[
+                          p.sku || p.id.slice(0, 8),
+                          p.supplier || null,
+                          productWeightLabel(p),
+                          (p.sell_options || []).length
+                            ? `${p.sell_options.length} pack${p.sell_options.length === 1 ? "" : "s"}`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </div>
                     </div>
-                    {p.quantity_in_stock <= 0 && (p.quantity_base_milli ?? 0) <= 0 && (
-                      <span className="badge danger">Out of stock</span>
-                    )}
-                    {isLowStock(p) && (p.quantity_base_milli ?? 0) > 0 && (
-                      <span className="badge warn low-stock-badge">Low stock</span>
-                    )}
-                    <div className="product-row-actions">
+                    <div className="product-card-actions">
                       <button type="button" className="ghost-btn" onClick={() => void editProduct(p)}>
                         Edit
                       </button>
+                      <div className="stock-stepper">
+                        <button
+                          type="button"
+                          title="Remove 1 stock unit"
+                          onClick={() => void adjustStock(p, -1)}
+                        >
+                          −
+                        </button>
+                        <span>stock</span>
+                        <button
+                          type="button"
+                          title="Add 1 stock unit"
+                          onClick={() => void adjustStock(p, 1)}
+                        >
+                          +
+                        </button>
+                      </div>
                       <button
                         type="button"
-                        className="ghost-btn"
-                        title="Add 1 stock unit"
-                        onClick={() => void adjustStock(p, 1)}
+                        className="ghost-btn danger-text"
+                        onClick={() => void removeProduct(p.id)}
                       >
-                        +1
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost-btn"
-                        title="Remove 1 stock unit"
-                        onClick={() => void adjustStock(p, -1)}
-                      >
-                        −1
-                      </button>
-                      <button type="button" className="ghost-btn" onClick={() => void removeProduct(p.id)}>
                         Delete
                       </button>
                     </div>
-                  </div>
+                  </article>
                 );
               })}
+            </div>
+              </div>
             </div>
           </div>
         </section>

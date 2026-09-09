@@ -3103,3 +3103,235 @@ input[type="radio"] {
 .filter-check:focus-within {
   box-shadow: 0 0 0 3px rgba(250, 250, 250, 0.07);
 }
+
+/* ==========================================================================
+   Catalog — form on the left, product grid filling the space on the right
+   ========================================================================== */
+
+.catalog-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  max-width: none;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.catalog-layout {
+  display: grid;
+  grid-template-columns: minmax(340px, 400px) minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+
+.catalog-form-pane {
+  min-width: 0;
+  overflow: auto;
+  background: var(--surface-list);
+  border-right: 1px solid var(--border);
+  box-shadow: 6px 0 22px rgba(0, 0, 0, 0.4);
+  z-index: 1;
+}
+
+.catalog-grid-pane {
+  min-width: 0;
+  overflow: auto;
+  padding: 14px;
+}
+
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(224px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+
+.product-grid > .hint {
+  grid-column: 1 / -1;
+}
+
+.product-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--edge-hi), var(--shadow-md);
+  overflow: hidden;
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.product-card:hover {
+  background: var(--card-hover);
+  border-color: var(--border-strong);
+  box-shadow: var(--edge-hi), var(--shadow-lg);
+}
+
+.product-card-media {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--input-bg);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--input-shadow);
+}
+
+.product-card-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.product-card-placeholder {
+  color: var(--text-dim);
+  opacity: 0.3;
+}
+
+.product-card-placeholder svg {
+  width: 34px;
+  height: 34px;
+}
+
+.product-flag {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-3);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+.product-flag.low {
+  left: auto;
+  right: 8px;
+  color: var(--text-dim);
+}
+
+.product-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.product-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.product-card-price {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.product-card-price strong {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.product-card-stock {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.product-card-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-dim);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.product-card-meta {
+  margin-top: auto;
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.product-card-actions .ghost-btn {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.stock-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  padding: 2px;
+}
+
+.stock-stepper span {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  padding: 0 2px;
+}
+
+.stock-stepper button {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.stock-stepper button:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+@media (max-width: 1100px) {
+  .catalog-layout {
+    grid-template-columns: 1fr;
+  }
+  .catalog-form-pane {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    box-shadow: none;
+  }
+}
