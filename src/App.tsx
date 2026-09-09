@@ -2103,6 +2103,7 @@ export default function App() {
             setSelectedId(threadId);
             setPanel("threads");
           }}
+          onNavigate={(target) => setPanel(target)}
           onRefresh={() => void refreshMeta()}
           setStatus={setStatus}
           money={money}

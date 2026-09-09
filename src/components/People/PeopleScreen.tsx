@@ -29,7 +29,7 @@ import {
   IconX,
 } from "../../navIcons";
 import { USE_FIXTURES, fxMessages, fxThreadPreviews } from "../../devFixtures";
-import { buildDirectory, insightsFor, type Person, type PersonStatus, type PersonType } from "./people";
+import { actionsFor, buildDirectory, insightsFor, type Person, type PersonStatus, type PersonType } from "./people";
 
 const TYPES: PersonType[] = ["Consumer", "Supplier", "Team"];
 const STATUSES: PersonStatus[] = [
@@ -74,6 +74,7 @@ type Props = {
   selectedKey: string | null;
   onSelectKey: (key: string | null) => void;
   onOpenChat: (threadId: string) => void;
+  onNavigate: (panel: "orders" | "outbox") => void;
   onRefresh: () => void;
   setStatus: (msg: string | null) => void;
   money: (cents: number) => string;
@@ -97,6 +98,7 @@ export function PeopleScreen({
   selectedKey,
   onSelectKey,
   onOpenChat,
+  onNavigate,
   onRefresh,
   setStatus,
   money,
@@ -709,7 +711,7 @@ export function PeopleScreen({
               </p>
             )}
 
-            <dl className="people-stats">
+<dl className="people-stats">
               <div>
                 <dt>Orders</dt>
                 <dd>{selected.orderCount}</dd>
@@ -727,6 +729,41 @@ export function PeopleScreen({
                 <dd>{selected.messageCount}</dd>
               </div>
             </dl>
+
+            <div className="people-detail-cols">
+              <div className="people-col-main">
+            <section className="people-block actions">
+              <h3>Action items</h3>
+              {(() => {
+                const rows = actionsFor(selected, money);
+                if (rows.length === 0) {
+                  return <p className="hint tight">Nothing outstanding — nobody is waiting on you.</p>;
+                }
+                return (
+                  <ul className="people-actions">
+                    {rows.map((a) => (
+                      <li key={a.id} className={a.urgent ? "urgent" : ""}>
+                        <div className="people-action-text">
+                          <strong>{a.label}</strong>
+                          {a.detail && <span>{a.detail}</span>}
+                        </div>
+                        <button
+                          type="button"
+                          className="action-btn"
+                          onClick={() =>
+                            a.target === "chat"
+                              ? onOpenChat(selected.threadId)
+                              : onNavigate(a.target)
+                          }
+                        >
+                          {a.cta}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })()}
+            </section>
 
             <section className="people-block">
               <h3>Preferences</h3>
@@ -795,6 +832,9 @@ export function PeopleScreen({
               </p>
             </section>
 
+              </div>
+
+              <div className="people-col-side">
             <section className="people-block">
               <h3>Recent messages</h3>
               {recent.length === 0 ? (
@@ -837,6 +877,8 @@ export function PeopleScreen({
                 </ul>
               )}
             </section>
+              </div>
+            </div>
           </div>
         )}
       </section>

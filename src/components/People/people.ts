@@ -209,3 +209,89 @@ export function insightsFor(p: Person, money: (c: number) => string): string[] {
 
   return out;
 }
+
+export type PersonAction = {
+  id: string;
+  label: string;
+  detail?: string;
+  cta: string;
+  target: "chat" | "orders" | "outbox";
+  urgent: boolean;
+};
+
+const UNPAID = new Set(["confirmed", "invoiced"]);
+
+/** What this person is waiting on, derived from their record. Every entry
+ *  maps to somewhere the operator can actually go and finish the job. */
+export function actionsFor(p: Person, money: (c: number) => string): PersonAction[] {
+  const out: PersonAction[] = [];
+
+  if (p.unreadCount > 0) {
+    out.push({
+      id: "unread",
+      label: `Reply to ${p.unreadCount} unread message${p.unreadCount === 1 ? "" : "s"}`,
+      detail: p.unreadCount >= 3 ? "Nothing has been sent back yet" : undefined,
+      cta: "Open chat",
+      target: "chat",
+      urgent: p.unreadCount >= 3,
+    });
+  }
+
+  const drafts = p.orders.filter((o) => o.status === "draft");
+  if (drafts.length > 0) {
+    out.push({
+      id: "drafts",
+      label: `Confirm ${drafts.length} draft order${drafts.length === 1 ? "" : "s"}`,
+      detail: drafts.map((o) => `${o.id.slice(0, 10)} · ${money(o.total_cents)}`).join(", "),
+      cta: "Open orders",
+      target: "orders",
+      urgent: false,
+    });
+  }
+
+  const unpaid = p.orders.filter((o) => UNPAID.has(o.status));
+  if (unpaid.length > 0) {
+    const total = unpaid.reduce((n, o) => n + o.total_cents, 0);
+    out.push({
+      id: "unpaid",
+      label: `Collect ${money(total)} across ${unpaid.length} order${unpaid.length === 1 ? "" : "s"}`,
+      detail: unpaid.some((o) => o.status === "confirmed")
+        ? "Some are confirmed but not invoiced"
+        : undefined,
+      cta: "Open orders",
+      target: "orders",
+      urgent: total > 10_000,
+    });
+  }
+
+  if (p.pendingCount > 0) {
+    out.push({
+      id: "queued",
+      label: `${p.pendingCount} message${p.pendingCount === 1 ? "" : "s"} queued to send`,
+      cta: "Open outbox",
+      target: "outbox",
+      urgent: false,
+    });
+  }
+
+  const settled = p.orders.filter((o) => o.status !== "cancelled");
+  if (settled.length >= 2) {
+    const times = settled.map((o) => o.created_at).sort((a, b) => a - b);
+    let gap = 0;
+    for (let i = 1; i < times.length; i += 1) gap += times[i] - times[i - 1];
+    const avgDays = gap / (times.length - 1) / 86_400_000;
+    const sinceDays = (Date.now() - times[times.length - 1]) / 86_400_000;
+    if (avgDays > 0 && sinceDays > avgDays * 2) {
+      out.push({
+        id: "lapsed",
+        label: "Check in — they're overdue to reorder",
+        detail: `Last ordered ${Math.round(sinceDays)} days ago, usually every ${Math.round(avgDays)}`,
+        cta: "Open chat",
+        target: "chat",
+        urgent: false,
+      });
+    }
+  }
+
+  return out;
+}
