@@ -10,6 +10,7 @@ import {
 } from "../../api";
 import {
   IconAlert,
+  IconArchive,
   IconBag,
   IconBot,
   IconCheckCheck,
@@ -23,6 +24,7 @@ import {
   IconPlus,
   IconSort,
   IconTag,
+  IconTrash,
   IconTruck,
   IconX,
 } from "../../navIcons";
@@ -118,6 +120,26 @@ export function PeopleScreen({
   const [previews, setPreviews] = useState<Record<string, string | null>>({});
   const [notesDraft, setNotesDraft] = useState<string | null>(null);
   const [recent, setRecent] = useState<Message[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  // The backend has no archive column, so this is a local hide-list. Swap it
+  // for a real field once one exists — nothing else depends on the shape.
+  const [archived, setArchived] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem("signalx.archived") ?? "[]") as string[]);
+    } catch {
+      return new Set();
+    }
+  });
+
+  const persistArchived = (next: Set<string>) => {
+    setArchived(next);
+    try {
+      localStorage.setItem("signalx.archived", JSON.stringify([...next]));
+    } catch {
+      /* private mode — archive stays in memory for this session */
+    }
+  };
 
   const directory = useMemo(
     () => buildDirectory(contacts, groups, customers, threads, orders),
@@ -133,6 +155,7 @@ export function PeopleScreen({
   const visible = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const rows = directory.filter((p) => {
+      if (archived.has(p.key) !== showArchived) return false;
       if (activeTypes.length && !activeTypes.includes(p.type)) return false;
       if (activeStatuses.length && !activeStatuses.some((s) => p.statuses.includes(s))) return false;
       if (activeTags.length && !activeTags.some((t) => p.tags.includes(t))) return false;
@@ -143,7 +166,7 @@ export function PeopleScreen({
     return rows.sort((a, b) =>
       sortAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name),
     );
-  }, [directory, q, activeTypes, activeStatuses, activeTags, sortAsc]);
+  }, [directory, q, activeTypes, activeStatuses, activeTags, sortAsc, archived, showArchived]);
 
   const selected = useMemo(
     () => directory.find((p) => p.key === selectedKey) ?? null,
@@ -194,7 +217,6 @@ export function PeopleScreen({
     };
   }, [selected]);
 
-  const activeFilterCount = activeTypes.length + activeTags.length;
 
   const toggle = <T,>(list: T[], set: (v: T[]) => void, item: T) =>
     set(list.includes(item) ? list.filter((x) => x !== item) : [...list, item]);
@@ -226,6 +248,36 @@ export function PeopleScreen({
     }
     setStatus(`Saved notes for ${p.name}`);
     setNotesDraft(null);
+    onRefresh();
+  };
+
+  const toggleArchive = (p: Person) => {
+    const next = new Set(archived);
+    if (next.has(p.key)) {
+      next.delete(p.key);
+      setStatus(`${p.name} restored to the directory`);
+    } else {
+      next.add(p.key);
+      setStatus(`${p.name} archived`);
+      onSelectKey(null);
+    }
+    persistArchived(next);
+  };
+
+  const deletePerson = async (p: Person) => {
+    if (p.kind !== "contact") return;
+    const res = await api.deleteContactMeta(p.key);
+    if (!res.success) {
+      setStatus(res.error);
+      return;
+    }
+    if (p.customerId) await api.deleteCustomer(p.customerId);
+    const next = new Set(archived);
+    next.delete(p.key);
+    persistArchived(next);
+    setConfirmDelete(null);
+    onSelectKey(null);
+    setStatus(`Deleted ${p.name}`);
     onRefresh();
   };
 
@@ -261,64 +313,55 @@ export function PeopleScreen({
 
       <section className="thread-col people-col">
         <header className="people-toolbar">
-          <div className="people-toolbar-row">
-            <div className="people-search">
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Search people…"
-                aria-label="Search people"
-              />
-              {q && (
-                <button type="button" className="icon-btn tiny" onClick={() => setQ("")} aria-label="Clear">
-                  <IconX />
-                </button>
-              )}
-            </div>
+          <div className="people-search">
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search people…"
+              aria-label="Search people"
+            />
+            {q && (
+              <button type="button" className="icon-btn tiny" onClick={() => setQ("")} aria-label="Clear search">
+                <IconX />
+              </button>
+            )}
+          </div>
+
+          <div className="people-tools">
             <div className="menu-anchor">
               <button
                 type="button"
-                className="action-btn primary people-add"
+                className="tool-btn add"
+                aria-label="Add"
+                title="Add a person or group"
                 onClick={() => setMenu(menu === "add" ? null : "add")}
               >
                 <IconPlus />
-                <IconChevronDown />
+                <IconChevronDown className="caret" />
               </button>
               {menu === "add" && (
-                <div className="menu-pop right">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setComposer("contact");
-                      setMenu(null);
-                    }}
-                  >
+                <div className="menu-pop">
+                  <button type="button" onClick={() => { setComposer("contact"); setMenu(null); }}>
                     Add a person
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setComposer("group");
-                      setMenu(null);
-                    }}
-                  >
+                  <button type="button" onClick={() => { setComposer("group"); setMenu(null); }}>
                     Create a group
                   </button>
                 </div>
               )}
             </div>
-          </div>
 
-          <div className="people-toolbar-row tools">
-            <div className="menu-anchor grow">
+            <div className="menu-anchor">
               <button
                 type="button"
-                className={activeFilterCount ? "chip tool active" : "chip tool"}
+                className={activeTypes.length ? "tool-btn active" : "tool-btn"}
+                aria-label="Filter by type"
+                title="Type"
                 onClick={() => setMenu(menu === "filter" ? null : "filter")}
               >
                 <IconFilter />
-                Type
-                {activeFilterCount > 0 && <span className="chip-badge">{activeFilterCount}</span>}
+                <IconChevronDown className="caret" />
+                {activeTypes.length > 0 && <span className="tool-dot" />}
               </button>
               {menu === "filter" && (
                 <div className="menu-pop">
@@ -329,22 +372,8 @@ export function PeopleScreen({
                       {t}
                     </button>
                   ))}
-                  {allTags.length > 0 && <span className="menu-label">Tags</span>}
-                  {allTags.map((t) => (
-                    <button key={t} type="button" onClick={() => toggle(activeTags, setActiveTags, t)}>
-                      <span className={activeTags.includes(t) ? "tick on" : "tick"} />
-                      {t}
-                    </button>
-                  ))}
-                  {activeFilterCount > 0 && (
-                    <button
-                      type="button"
-                      className="menu-reset"
-                      onClick={() => {
-                        setActiveTypes([]);
-                        setActiveTags([]);
-                      }}
-                    >
+                  {activeTypes.length > 0 && (
+                    <button type="button" className="menu-reset" onClick={() => setActiveTypes([])}>
                       Reset
                     </button>
                   )}
@@ -352,29 +381,25 @@ export function PeopleScreen({
               )}
             </div>
 
-            <div className="menu-anchor grow">
+            <div className="menu-anchor">
               <button
                 type="button"
-                className={activeStatuses.length ? "chip tool active" : "chip tool"}
+                className={activeStatuses.length ? "tool-btn active" : "tool-btn"}
+                aria-label="Filter by status"
+                title="Status"
                 onClick={() => setMenu(menu === "status" ? null : "status")}
               >
-                <IconTag />
-                Status
-                {activeStatuses.length > 0 && (
-                  <span className="chip-badge">{activeStatuses.length}</span>
-                )}
+                <IconCheckCheck />
+                <IconChevronDown className="caret" />
+                {activeStatuses.length > 0 && <span className="tool-dot" />}
               </button>
               {menu === "status" && (
                 <div className="menu-pop">
-                  <span className="menu-label">Filter status</span>
-                  {STATUSES.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => toggle(activeStatuses, setActiveStatuses, s)}
-                    >
-                      <span className={activeStatuses.includes(s) ? "tick on" : "tick"} />
-                      {s}
+                  <span className="menu-label">Status</span>
+                  {STATUSES.map((st) => (
+                    <button key={st} type="button" onClick={() => toggle(activeStatuses, setActiveStatuses, st)}>
+                      <span className={activeStatuses.includes(st) ? "tick on" : "tick"} />
+                      {st}
                     </button>
                   ))}
                   {activeStatuses.length > 0 && (
@@ -386,37 +411,68 @@ export function PeopleScreen({
               )}
             </div>
 
+            <div className="menu-anchor">
+              <button
+                type="button"
+                className={activeTags.length ? "tool-btn active" : "tool-btn"}
+                aria-label="Filter by tag"
+                title="Tags"
+                onClick={() => setMenu(menu === "tags" ? null : "tags")}
+              >
+                <IconTag />
+                <IconChevronDown className="caret" />
+                {activeTags.length > 0 && <span className="tool-dot" />}
+              </button>
+              {menu === "tags" && (
+                <div className="menu-pop">
+                  <span className="menu-label">Tags</span>
+                  {allTags.length === 0 && <span className="menu-label">None yet</span>}
+                  {allTags.map((t) => (
+                    <button key={t} type="button" onClick={() => toggle(activeTags, setActiveTags, t)}>
+                      <span className={activeTags.includes(t) ? "tick on" : "tick"} />
+                      {t}
+                    </button>
+                  ))}
+                  {activeTags.length > 0 && (
+                    <button type="button" className="menu-reset" onClick={() => setActiveTags([])}>
+                      Reset
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
             <button
               type="button"
-              className={sortAsc ? "chip tool" : "chip tool active"}
-              onClick={() => setSortAsc((v) => !v)}
+              className={sortAsc ? "tool-btn" : "tool-btn active"}
+              aria-label={sortAsc ? "Sorted A to Z" : "Sorted Z to A"}
               title={sortAsc ? "Sorted A–Z" : "Sorted Z–A"}
+              onClick={() => setSortAsc((v) => !v)}
             >
               <IconSort />
-              {sortAsc ? "A–Z" : "Z–A"}
             </button>
 
             <div className="menu-anchor">
               <button
                 type="button"
-                className="chip tool icon-only"
-                onClick={() => setMenu(menu === "more" ? null : "more")}
+                className="tool-btn"
                 aria-label="More actions"
+                title="More"
+                onClick={() => setMenu(menu === "more" ? null : "more")}
               >
                 <IconMore />
               </button>
               {menu === "more" && (
                 <div className="menu-pop right">
+                  <button type="button" onClick={() => { setShowArchived((v) => !v); setMenu(null); }}>
+                    {showArchived ? "Hide archived" : `Show archived (${archived.size})`}
+                  </button>
                   <button type="button" onClick={exportCsv}>
                     Export directory CSV
                   </button>
                 </div>
               )}
             </div>
-          </div>
-
-          <div className="people-count">
-            {visible.length} of {directory.length}
           </div>
         </header>
 
@@ -591,15 +647,67 @@ export function PeopleScreen({
                 </div>
                 <div className="person-sub">{selected.subtitle}</div>
               </div>
-              <button
-                type="button"
-                className="act-btn"
-                onClick={() => onOpenChat(selected.threadId)}
-              >
-                <IconMessages />
-                <span>Open chat</span>
-              </button>
+              <div className="people-detail-actions">
+                <button
+                  type="button"
+                  className="act-btn"
+                  onClick={() => onOpenChat(selected.threadId)}
+                >
+                  <IconMessages />
+                  <span>Open chat</span>
+                </button>
+                <button
+                  type="button"
+                  className={archived.has(selected.key) ? "act-btn active" : "act-btn"}
+                  onClick={() => toggleArchive(selected)}
+                  title={
+                    archived.has(selected.key)
+                      ? "Return to the directory"
+                      : "Hide from the directory without deleting"
+                  }
+                >
+                  <IconArchive />
+                  <span>{archived.has(selected.key) ? "Unarchive" : "Archive"}</span>
+                </button>
+                {confirmDelete === selected.key ? (
+                  <>
+                    <button
+                      type="button"
+                      className="act-btn danger"
+                      onClick={() => void deletePerson(selected)}
+                    >
+                      <IconTrash />
+                      <span>Confirm delete</span>
+                    </button>
+                    <button type="button" className="act-btn" onClick={() => setConfirmDelete(null)}>
+                      <span>Cancel</span>
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="act-btn"
+                    disabled={selected.kind !== "contact"}
+                    onClick={() => setConfirmDelete(selected.key)}
+                    title={
+                      selected.kind === "contact"
+                        ? "Delete this person and their linked customer record"
+                        : "Groups can't be deleted from here — leave the group in Signal instead"
+                    }
+                  >
+                    <IconTrash />
+                    <span>Delete</span>
+                  </button>
+                )}
+              </div>
             </header>
+
+            {archived.has(selected.key) && (
+              <p className="people-archived-note">
+                Archived — hidden from the directory. Stored on this device only;
+                Signal and the daemon are untouched.
+              </p>
+            )}
 
             <dl className="people-stats">
               <div>

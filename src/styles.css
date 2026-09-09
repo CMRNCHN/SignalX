@@ -4043,3 +4043,122 @@ input[type="radio"] {
   line-height: 1.4;
   color: var(--text);
 }
+
+/* --- People toolbar: full-width search, one row of icon buttons ----------- */
+.people-search input {
+  padding-right: 30px;
+}
+
+.people-tools {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.tool-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  height: 32px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.tool-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.tool-btn svg.caret {
+  width: 11px;
+  height: 11px;
+  opacity: 0.55;
+}
+
+.tool-btn:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.tool-btn.active {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  color: var(--text);
+  box-shadow: var(--edge-hi), var(--shadow-xs);
+}
+
+.tool-btn.add {
+  background: var(--accent-cta);
+  border-color: transparent;
+  color: var(--cta-fg);
+}
+
+.tool-btn.add:hover {
+  background: var(--accent-cta-hover);
+  color: var(--cta-fg);
+}
+
+.tool-btn.add svg.caret {
+  opacity: 0.6;
+}
+
+/* A dot rather than a count — the menu already lists what is selected. */
+.tool-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* --- Profile actions ------------------------------------------------------ */
+.people-detail-actions {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.people-detail-actions .act-btn {
+  border-color: var(--border);
+}
+
+.act-btn.danger {
+  color: hsl(8 55% 76%);
+  border-color: hsl(8 30% 38%);
+  background: hsl(8 22% 16%);
+}
+
+.act-btn.danger:hover:not(:disabled) {
+  background: hsl(8 26% 21%);
+  border-color: hsl(8 38% 46%);
+  color: hsl(8 60% 82%);
+}
+
+.people-archived-note {
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-1);
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* Grid cells are equal, but an inline-flex child shrinks to its content —
+   so the six tool buttons came out different widths. */
+.people-tools .tool-btn {
+  width: 100%;
+}
