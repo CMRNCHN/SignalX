@@ -48,6 +48,7 @@ import {
 import { DeviceLinkQr } from "./DeviceLinkQr";
 import { IvrMenuComposer } from "./IvrMenuComposer";
 import { ProfileRail } from "./ProfileRail";
+import { PeopleScreen } from "./components/People/PeopleScreen";
 import { SalesScreen } from "./components/Sales/SalesScreen";
 import { formatPhone } from "./format";
 import { isTauriRuntime } from "./runtime";
@@ -122,13 +123,6 @@ const NAV_GROUPS: NavItem[][] = [
   [{ id: "settings", label: "Settings", ico: <IconSettings /> }],
 ];
 
-type PeopleTab = "contacts" | "groups" | "customers";
-
-const PEOPLE_TABS: { id: PeopleTab; label: string }[] = [
-  { id: "contacts", label: "Contacts" },
-  { id: "groups", label: "Groups" },
-  { id: "customers", label: "Customers" },
-];
 
 function initials(label: string): string {
   const parts = label.replace(/^\+/, "").trim().split(/\s+/).filter(Boolean);
@@ -419,7 +413,7 @@ export default function App() {
   const [commerceAuditReal, setCommerceAudit] = useState<CommerceAuditEvent[]>([]);
   const [salesRange, setSalesRange] = useState<"7" | "30" | "all">("30");
   const [salesStatus, setSalesStatus] = useState("all");
-  const [peopleTab, setPeopleTab] = useState<PeopleTab>("contacts");
+  const [peopleKey, setPeopleKey] = useState<string | null>(null);
   const [newDmOpen, setNewDmOpen] = useState(false);
   const [productImages, setProductImages] = useState<Record<string, string>>({});
 
@@ -458,27 +452,11 @@ export default function App() {
     unread: false,
     pending: false,
   });
-  const [contactFilter, setContactFilter] = useState({
-    q: "",
-    favorites: false,
-    hideMuted: false,
-    autoOnly: false,
-  });
-  const [groupFilter, setGroupFilter] = useState({
-    q: "",
-    favorites: false,
-    hideMuted: false,
-    autoOnly: false,
-  });
   const [productFilter, setProductFilter] = useState({
     q: "",
     stock: "all" as "all" | "in" | "out" | "low",
     unit: "all",
     hasImage: false,
-  });
-  const [customerFilter, setCustomerFilter] = useState({
-    q: "",
-    hasOrders: false,
   });
   const [orderFilter, setOrderFilter] = useState({
     q: "",
@@ -1249,10 +1227,6 @@ export default function App() {
     await refreshMeta();
   };
 
-  const removeCustomer = async (id: string) => {
-    await api.deleteCustomer(id);
-    await refreshMeta();
-  };
 
   const placeOrder = async (asDraft = false) => {
     if (!selectedId || selectedId.startsWith("group:")) {
@@ -1621,26 +1595,7 @@ export default function App() {
     });
   }, [threads, threadFilter, contacts, groups]);
 
-  const filteredContacts = useMemo(() => {
-    return contacts.filter((c) => {
-      if (contactFilter.favorites && !c.favorite) return false;
-      if (contactFilter.hideMuted && c.muted) return false;
-      if (contactFilter.autoOnly && !c.auto_reply_enabled) return false;
-      return includesQ(
-        `${c.display_name || ""} ${c.alias || ""} ${c.contact_id}`,
-        contactFilter.q,
-      );
-    });
-  }, [contacts, contactFilter]);
 
-  const filteredGroups = useMemo(() => {
-    return groups.filter((g) => {
-      if (groupFilter.favorites && !g.favorite) return false;
-      if (groupFilter.hideMuted && g.muted) return false;
-      if (groupFilter.autoOnly && !g.auto_reply_enabled) return false;
-      return includesQ(`${g.display_name || ""} ${g.group_id}`, groupFilter.q);
-    });
-  }, [groups, groupFilter]);
 
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
@@ -1658,15 +1613,6 @@ export default function App() {
     });
   }, [products, productFilter]);
 
-  const filteredCustomers = useMemo(() => {
-    return customers.filter((c) => {
-      const orderCount = orders.filter(
-        (o) => o.customer_id === c.id || o.thread_id === c.thread_id,
-      ).length;
-      if (customerFilter.hasOrders && orderCount === 0) return false;
-      return includesQ(`${c.display_name} ${c.thread_id} ${c.notes}`, customerFilter.q);
-    });
-  }, [customers, customerFilter, orders]);
 
   const filteredOrders = useMemo(() => {
     return [...orders]
@@ -1779,7 +1725,15 @@ export default function App() {
   }
 
   return (
-    <div className={showProfileRail ? "shell shell-with-profile" : "shell"}>
+    <div
+      className={[
+        "shell",
+        showProfileRail ? "shell-with-profile" : "",
+        panel === "people" ? "shell-people" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       {restartRequired && (
         <div className="restart-banner" role="alert">
           <span>Imported data is on disk — quit and reopen SignalX to load it.</span>
@@ -2136,235 +2090,32 @@ export default function App() {
         </section>
       )}
 
-      {panel === "people" && peopleTab === "contacts" && (
-        <section className="thread-col">
-          <header className="col-head col-head-tabs">
-            <div className="people-tabs" role="tablist" aria-label="People">
-              {PEOPLE_TABS.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={peopleTab === t.id}
-                  className={peopleTab === t.id ? "people-tab active" : "people-tab"}
-                  onClick={() => setPeopleTab(t.id)}
-                >
-                  {t.label}
-                  <span className="people-tab-count">
-                    {t.id === "contacts"
-                      ? contacts.length
-                      : t.id === "groups"
-                        ? groups.length
-                        : customers.length}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </header>
-          <div className="pane-section">
-            <h3 className="pane-section-title">Create new contact</h3>
-            <div className="compose-strip stacked p-4 gap-4 border-0">
-              <input
-                placeholder="+15551234567"
-                value={contactForm.phone}
-                onChange={(e) => setContactForm((f) => ({ ...f, phone: e.target.value }))}
-              />
-              <input
-                placeholder="Display name (optional)"
-                value={contactForm.name}
-                onChange={(e) => setContactForm((f) => ({ ...f, name: e.target.value }))}
-                onKeyDown={(e) => e.key === "Enter" && void addContact()}
-              />
-              <button type="button" className="action-btn primary" onClick={() => void addContact()}>
-                Add contact
-              </button>
-            </div>
-          </div>
-          {contacts.length > 0 && (
-            <div className="pane-section">
-              <h3 className="pane-section-title">Manage contacts</h3>
-              <div className="filter-strip p-4 gap-4 border-0">
-                <input
-                  placeholder="Filter contacts…"
-                  value={contactFilter.q}
-                  onChange={(e) => setContactFilter((f) => ({ ...f, q: e.target.value }))}
-                />
-                <label className="filter-check">
-                  <input
-                    type="checkbox"
-                    checked={contactFilter.favorites}
-                    onChange={(e) => setContactFilter((f) => ({ ...f, favorites: e.target.checked }))}
-                  />
-                  Favorites
-                </label>
-                <label className="filter-check">
-                  <input
-                    type="checkbox"
-                    checked={contactFilter.hideMuted}
-                    onChange={(e) => setContactFilter((f) => ({ ...f, hideMuted: e.target.checked }))}
-                  />
-                  Hide muted
-                </label>
-                <label className="filter-check">
-                  <input
-                    type="checkbox"
-                    checked={contactFilter.autoOnly}
-                    onChange={(e) => setContactFilter((f) => ({ ...f, autoOnly: e.target.checked }))}
-                  />
-                  Auto-reply
-                </label>
-                <span className="col-meta">
-                  {filteredContacts.length}/{contacts.length}
-                </span>
-              </div>
-            </div>
-          )}
-          <div className="thread-list">
-            {contacts.length === 0 && (
-              <p className="empty">No contacts yet — add one above.</p>
-            )}
-            {contacts.length > 0 && filteredContacts.length === 0 && (
-              <p className="empty">No contacts match these filters.</p>
-            )}
-            {filteredContacts.map((c) => (
-              <button
-                key={c.contact_id}
-                type="button"
-                className="thread-row"
-                onClick={() => {
-                  const tid = c.contact_id.startsWith("dm:")
-                    ? c.contact_id
-                    : `dm:${c.contact_id}`;
-                  setSelectedId(tid);
-                  setPanel("threads");
-                }}
-              >
-                <span className="avatar-dot" style={avatarTint(c.contact_id)} aria-hidden>
-                  {initials(c.display_name || c.alias || formatPhone(c.contact_id))}
-                </span>
-                <div className="thread-row-body">
-                  <div className="thread-row-top">
-                    <span className="thread-name">
-                      {c.display_name || c.alias || formatPhone(c.contact_id)}
-                    </span>
-                    {c.auto_reply_enabled && <span className="badge danger">Auto</span>}
-                  </div>
-                  <div className="convo-sub">{formatPhone(c.contact_id)}</div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {panel === "people" && peopleTab === "groups" && (
-        <section className="thread-col">
-          <header className="col-head col-head-tabs">
-            <div className="people-tabs" role="tablist" aria-label="People">
-              {PEOPLE_TABS.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={peopleTab === t.id}
-                  className={peopleTab === t.id ? "people-tab active" : "people-tab"}
-                  onClick={() => setPeopleTab(t.id)}
-                >
-                  {t.label}
-                  <span className="people-tab-count">
-                    {t.id === "contacts"
-                      ? contacts.length
-                      : t.id === "groups"
-                        ? groups.length
-                        : customers.length}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </header>
-          <div className="compose-strip stacked">
-            <p className="hint tight">
-              Creates a real Signal group via signal-cli. Members must be +E164 numbers.
-            </p>
-            <input
-              placeholder="Group name"
-              value={groupForm.name}
-              onChange={(e) => setGroupForm((f) => ({ ...f, name: e.target.value }))}
-            />
-            <input
-              placeholder="Members +1555…, +1444…"
-              value={groupForm.members}
-              onChange={(e) => setGroupForm((f) => ({ ...f, members: e.target.value }))}
-              onKeyDown={(e) => e.key === "Enter" && void createGroup()}
-            />
-            <button type="button" className="action-btn primary" onClick={() => void createGroup()}>
-              Create group
-            </button>
-          </div>
-          <div className="filter-strip">
-            <input
-              placeholder="Filter groups…"
-              value={groupFilter.q}
-              onChange={(e) => setGroupFilter((f) => ({ ...f, q: e.target.value }))}
-            />
-            <label className="filter-check">
-              <input
-                type="checkbox"
-                checked={groupFilter.favorites}
-                onChange={(e) => setGroupFilter((f) => ({ ...f, favorites: e.target.checked }))}
-              />
-              Favorites
-            </label>
-            <label className="filter-check">
-              <input
-                type="checkbox"
-                checked={groupFilter.hideMuted}
-                onChange={(e) => setGroupFilter((f) => ({ ...f, hideMuted: e.target.checked }))}
-              />
-              Hide muted
-            </label>
-            <label className="filter-check">
-              <input
-                type="checkbox"
-                checked={groupFilter.autoOnly}
-                onChange={(e) => setGroupFilter((f) => ({ ...f, autoOnly: e.target.checked }))}
-              />
-              Auto-reply
-            </label>
-            <span className="col-meta">
-              {filteredGroups.length}/{groups.length}
-            </span>
-          </div>
-          <div className="thread-list">
-            {groups.length === 0 && (
-              <p className="empty">No groups yet — create one above.</p>
-            )}
-            {groups.length > 0 && filteredGroups.length === 0 && (
-              <p className="empty">No groups match these filters.</p>
-            )}
-            {filteredGroups.map((g) => (
-              <button
-                key={g.group_id}
-                type="button"
-                className="thread-row"
-                onClick={() => {
-                  setSelectedId(g.group_id.startsWith("group:") ? g.group_id : `group:${g.group_id}`);
-                  setPanel("threads");
-                }}
-              >
-                <span className="avatar-dot" style={avatarTint(g.group_id)} aria-hidden>
-                  {initials(g.display_name || g.group_id)}
-                </span>
-                <div className="thread-row-body">
-                  <div className="thread-row-top">
-                    <span className="thread-name">{g.display_name || g.group_id}</span>
-                    {g.auto_reply_enabled && <span className="badge danger">Auto</span>}
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </section>
+      {panel === "people" && (
+        <PeopleScreen
+          contacts={contacts}
+          groups={groups}
+          customers={customers}
+          threads={threads}
+          orders={orders}
+          selectedKey={peopleKey}
+          onSelectKey={setPeopleKey}
+          onOpenChat={(threadId) => {
+            setSelectedId(threadId);
+            setPanel("threads");
+          }}
+          onRefresh={() => void refreshMeta()}
+          setStatus={setStatus}
+          money={money}
+          fmtTime={fmtTime}
+          initials={initials}
+          avatarTint={avatarTint}
+          contactForm={contactForm}
+          setContactForm={setContactForm}
+          addContact={addContact}
+          groupForm={groupForm}
+          setGroupForm={setGroupForm}
+          createGroup={createGroup}
+        />
       )}
 
       {panel === "products" && (
@@ -2781,107 +2532,6 @@ export default function App() {
             </div>
               </div>
             </div>
-          </div>
-        </section>
-      )}
-
-      {panel === "people" && peopleTab === "customers" && (
-        <section className="thread-col">
-          <header className="col-head col-head-tabs">
-            <div className="people-tabs" role="tablist" aria-label="People">
-              {PEOPLE_TABS.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={peopleTab === t.id}
-                  className={peopleTab === t.id ? "people-tab active" : "people-tab"}
-                  onClick={() => setPeopleTab(t.id)}
-                >
-                  {t.label}
-                  <span className="people-tab-count">
-                    {t.id === "contacts"
-                      ? contacts.length
-                      : t.id === "groups"
-                        ? groups.length
-                        : customers.length}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </header>
-          <div className="filter-strip">
-            <button type="button" className="ghost-btn" onClick={() => void linkCustomerFromThread()}>
-              Link current chat
-            </button>
-            <input
-              placeholder="Filter customers…"
-              value={customerFilter.q}
-              onChange={(e) => setCustomerFilter((f) => ({ ...f, q: e.target.value }))}
-            />
-            <label className="filter-check">
-              <input
-                type="checkbox"
-                checked={customerFilter.hasOrders}
-                onChange={(e) => setCustomerFilter((f) => ({ ...f, hasOrders: e.target.checked }))}
-              />
-              Has orders
-            </label>
-            <span className="col-meta">
-              {filteredCustomers.length}/{customers.length}
-            </span>
-          </div>
-          <div className="thread-list">
-            {customers.length === 0 && (
-              <p className="hint">Open a DM and use “Link current chat”.</p>
-            )}
-            {customers.length > 0 && filteredCustomers.length === 0 && (
-              <p className="empty">No customers match these filters.</p>
-            )}
-            {filteredCustomers.map((c) => {
-              const orderCount = orders.filter(
-                (o) => o.customer_id === c.id || o.thread_id === c.thread_id,
-              ).length;
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  className={selectedId === c.thread_id ? "thread-row active" : "thread-row"}
-                  onClick={() => {
-                    setSelectedId(c.thread_id);
-                    setPanel("threads");
-                  }}
-                >
-                  <span className="avatar-dot" style={avatarTint(c.thread_id)} aria-hidden>
-                    {initials(c.display_name || c.thread_id)}
-                  </span>
-                  <div className="thread-row-body">
-                    <div className="thread-row-top">
-                      <span className="thread-name">{c.display_name || formatPhone(c.thread_id)}</span>
-                      <button
-                        type="button"
-                        className="ghost-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void removeCustomer(c.id);
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                    <div className="convo-sub">{formatPhone(c.thread_id)}</div>
-                    <div className="thread-row-meta">
-                      {orderCount > 0 && (
-                        <span className="badge muted">{orderCount} order{orderCount === 1 ? "" : "s"}</span>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-            {customers.length === 0 && (
-              <p className="hint">Open a DM and use “Link current chat”.</p>
-            )}
           </div>
         </section>
       )}
@@ -3865,6 +3515,7 @@ export default function App() {
       )}
 
       {(panel === "audit" ||
+        panel === "people" ||
         panel === "settings" ||
         panel === "products" ||
         panel === "orders" ||
@@ -4166,6 +3817,7 @@ export default function App() {
 
       {status &&
         (panel === "audit" ||
+          panel === "people" ||
           panel === "settings" ||
           panel === "products" ||
           panel === "orders" ||

@@ -182,3 +182,138 @@ export function IconMenuList(p: SvgProps) {
     </IconShell>
   );
 }
+
+export function IconTruck(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <path d="M3 16V6a1 1 0 0 1 1-1h10v11" />
+      <path d="M14 9h4l3 3v4h-7" />
+      <circle cx="7.5" cy="17.5" r="2" />
+      <circle cx="17.5" cy="17.5" r="2" />
+    </IconShell>
+  );
+}
+
+export function IconBag(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <path d="M6 2L4 6v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6l-2-4z" />
+      <path d="M4 6h16" />
+      <path d="M16 10a4 4 0 0 1-8 0" />
+    </IconShell>
+  );
+}
+
+export function IconMail(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <path d="M22 7l-10 6L2 7" />
+    </IconShell>
+  );
+}
+
+export function IconAlert(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+      <path d="M12 9v4M12 17h.01" />
+    </IconShell>
+  );
+}
+
+export function IconClock(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </IconShell>
+  );
+}
+
+export function IconBot(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <rect x="4" y="8" width="16" height="12" rx="2" />
+      <path d="M12 8V4M9 4h6" />
+      <path d="M9 13h.01M15 13h.01" />
+    </IconShell>
+  );
+}
+
+export function IconCheckCheck(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <path d="M2 13l4 4L14 7" />
+      <path d="M10 15l2 2L22 7" />
+    </IconShell>
+  );
+}
+
+export function IconTag(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <path d="M20.6 13.4L12 22l-9-9V4a1 1 0 0 1 1-1h9z" />
+      <path d="M7.5 7.5h.01" />
+    </IconShell>
+  );
+}
+
+export function IconFilter(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <path d="M3 5h18l-7 8v6l-4 2v-8z" />
+    </IconShell>
+  );
+}
+
+export function IconSort(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <path d="M7 3v18M7 21l-3-3M7 21l3-3" />
+      <path d="M17 21V3M17 3l-3 3M17 3l3 3" />
+    </IconShell>
+  );
+}
+
+export function IconMore(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <circle cx="5" cy="12" r="1.4" />
+      <circle cx="12" cy="12" r="1.4" />
+      <circle cx="19" cy="12" r="1.4" />
+    </IconShell>
+  );
+}
+
+export function IconPlus(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <path d="M12 5v14M5 12h14" />
+    </IconShell>
+  );
+}
+
+export function IconChevronDown(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <path d="M6 9l6 6 6-6" />
+    </IconShell>
+  );
+}
+
+export function IconX(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <path d="M18 6L6 18M6 6l12 12" />
+    </IconShell>
+  );
+}
+
+export function IconStar(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <path d="M12 3l2.9 5.9 6.1.9-4.5 4.3 1.1 6.4-5.6-3-5.6 3 1.1-6.4L3 9.8l6.1-.9z" />
+    </IconShell>
+  );
+}

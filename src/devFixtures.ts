@@ -744,3 +744,16 @@ export const fxSalesSummary: SalesSummary = {
   ],
   orders: fxOrders,
 };
+
+/** Last-message text per thread. ThreadSummary carries no snippet, so the
+ *  People directory would otherwise show nothing while running on fixtures. */
+export const fxThreadPreviews: Record<string, string> = {
+  "+15555550142": "also — do you ship to PO boxes?",
+  "+15555550188": "Invoice for order 4c81de09 — $16.50. Payable on pickup Saturday.",
+  "group.aGFydmVzdA": "Pickup is 8am Saturday at the north gate.",
+  "+15555550196": "Your 4kg House Blend shipped this morning — tracking to follow.",
+  "+15555550173": "Contract renewal terms agreed. All documents signed.",
+  "group.d2hvbGVzYWxl": "October price sheet attached. Order cutoff is Thursday 5pm.",
+  "+15555550205": "Thanks for sending over the invoice details!",
+  "group.bWFya2V0": "Booth setup starts at 6:00 AM sharp on Saturday.",
+};
