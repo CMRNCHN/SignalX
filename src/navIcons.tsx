@@ -128,3 +128,57 @@ export function IconImage(p: SvgProps) {
     </IconShell>
   );
 }
+
+export function IconCompose(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <path d="M12 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-6" />
+      <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z" />
+    </IconShell>
+  );
+}
+
+export function IconSparkle(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" />
+      <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" />
+    </IconShell>
+  );
+}
+
+export function IconReply(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <path d="M9 17l-5-5 5-5" />
+      <path d="M4 12h11a5 5 0 0 1 5 5v2" />
+    </IconShell>
+  );
+}
+
+export function IconExport(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="M7 10l5-5 5 5" />
+      <path d="M12 5v13" />
+    </IconShell>
+  );
+}
+
+export function IconBolt(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <path d="M13 2L4 14h7l-1 8 9-12h-7z" />
+    </IconShell>
+  );
+}
+
+export function IconMenuList(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <path d="M8 6h13M8 12h13M8 18h13" />
+      <path d="M3 6h.01M3 12h.01M3 18h.01" />
+    </IconShell>
+  );
+}

@@ -1,18 +1,30 @@
 :root {
-  /* shadcn zinc (dark) */
-  --bg: #09090b;
-  --bg-lift: #0c0c0e;
+  /* shadcn zinc (dark) — elevation-based, each surface a distinct step */
+  --canvas: #030304;
+  --bg: #0b0b0e;
+  --bg-lift: #131317;
   --bg-2: #18181b;
   --bg-3: #27272a;
-  --surface-0: #09090b;
-  --surface-1: #18181b;
-  --surface-2: #27272a;
-  --surface-3: #3f3f46;
+
+  /* Elevation ladder: higher = closer to the viewer = lighter */
+  --surface-0: #0b0b0e;
+  --surface-1: #17171c;
+  --surface-2: #212127;
+  --surface-3: #2e2e36;
+  --surface-4: #3b3b45;
+
+  /* Per-column surfaces so the four panels read as separate planes */
+  --surface-rail: #0a0a0d;
+  --surface-list: #141419;
+  --surface-main: #1c1c22;
+  --surface-aside: #141419;
+
   --panel: var(--surface-1);
   --panel-2: var(--surface-2);
 
-  --border: hsl(240 3.7% 15.9%);
-  --border-strong: hsl(240 5% 26%);
+  --border: hsl(240 5% 19%);
+  --border-strong: hsl(240 5% 34%);
+  --hairline: rgba(255, 255, 255, 0.055);
   --text: #fafafa;
   --text-dim: #a1a1aa;
   --muted: var(--text-dim);
@@ -35,8 +47,24 @@
 
   --glass: var(--surface-1);
   --glass-border: var(--border);
-  --shadow: none;
-  --shadow-float: 0 10px 30px rgba(0, 0, 0, 0.45);
+
+  /* Depth scale. Dark UI needs deep, soft ambient shadow plus a top edge
+     highlight — the highlight is what reads as "lifted" rather than "outlined". */
+  --edge-hi: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.55);
+  --shadow-sm: 0 2px 5px rgba(0, 0, 0, 0.6), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.6), 0 2px 5px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 18px 40px rgba(0, 0, 0, 0.65), 0 6px 14px rgba(0, 0, 0, 0.45);
+  --shadow: var(--shadow-sm);
+  --shadow-float: 0 20px 50px rgba(0, 0, 0, 0.6), 0 6px 16px rgba(0, 0, 0, 0.4);
+
+  /* Cards sit above whichever panel they're on */
+  --card: var(--surface-2);
+  --card-hover: var(--surface-3);
+
+  /* Inputs read as cut into the card, the inverse of an elevated surface */
+  --input-bg: #08080a;
+  --input-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.55);
 
   --space-1: 4px;
   --space-2: 8px;
@@ -99,7 +127,7 @@ input[type="radio"] {
   height: 100vh;
   overflow: hidden;
   padding: 0;
-  background: var(--bg);
+  background: var(--canvas);
 }
 
 .shell.shell-with-profile {
@@ -110,17 +138,20 @@ input[type="radio"] {
 .thread-col,
 .convo,
 .profile-rail {
-  background: var(--bg);
   border: 0;
   border-radius: 0;
-  box-shadow: none;
   min-width: 0;
   min-height: 0;
+  position: relative;
 }
 
+/* Each column is its own plane: distinct surface + a shadow cast onto
+   the column to its right, so the seams read as depth, not as hairlines. */
 .rail {
-  background: var(--bg);
+  background: var(--surface-rail);
   border-right: 1px solid var(--border);
+  box-shadow: 6px 0 24px rgba(0, 0, 0, 0.6);
+  z-index: 3;
   padding: 16px 12px;
   display: flex;
   flex-direction: column;
@@ -128,11 +159,26 @@ input[type="radio"] {
 }
 
 .thread-col {
+  background: var(--surface-list);
   border-right: 1px solid var(--border);
+  box-shadow: 6px 0 22px rgba(0, 0, 0, 0.5);
+  z-index: 2;
+}
+
+.convo {
+  background: var(--surface-main);
+  z-index: 1;
+}
+
+.profile-rail {
+  background: var(--surface-aside);
+  border-left: 1px solid var(--border);
+  box-shadow: -6px 0 22px rgba(0, 0, 0, 0.5);
+  z-index: 2;
 }
 
 .shell.shell-with-profile .convo {
-  border-right: 1px solid var(--border);
+  border-right: 0;
 }
 
 .brand {
@@ -173,10 +219,11 @@ input[type="radio"] {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 12px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
-  background: var(--surface-1);
+  background: var(--card);
+  box-shadow: var(--edge-hi), var(--shadow-md);
 }
 
 .setup-banner p {
@@ -443,11 +490,11 @@ input[type="radio"] {
 }
 
 .nav-btn.active {
-  background: var(--surface-1);
+  background: var(--surface-3);
   color: var(--text);
-  border-color: transparent;
+  border-color: var(--border-strong);
   font-weight: 500;
-  box-shadow: none;
+  box-shadow: var(--edge-hi), var(--shadow-sm);
 }
 
 .nav-count {
@@ -487,7 +534,6 @@ input[type="radio"] {
 .thread-col {
   display: flex;
   flex-direction: column;
-  background: var(--bg);
   overflow: hidden;
 }
 
@@ -504,7 +550,11 @@ input[type="radio"] {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  background: var(--bg);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: var(--edge-hi), 0 1px 8px rgba(0, 0, 0, 0.28);
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
   letter-spacing: -0.01em;
 }
 
@@ -554,6 +604,15 @@ input[type="radio"] {
   flex: 1;
 }
 
+/* Cards need room to read as separate objects */
+.thread-list,
+.audit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
 .thread-row {
   width: 100%;
   display: grid;
@@ -561,23 +620,28 @@ input[type="radio"] {
   gap: 10px;
   align-items: start;
   text-align: left;
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--border);
-  padding: 10px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--edge-hi), var(--shadow-xs);
+  padding: 10px 12px;
   min-height: 56px;
   cursor: pointer;
   color: inherit;
-  transition: background 120ms ease;
+  transition: background 120ms ease, border-color 120ms ease,
+    box-shadow 120ms ease, transform 120ms ease;
 }
 
 .thread-row:hover {
-  background: var(--accent-soft);
+  background: var(--card-hover);
+  border-color: var(--border-strong);
+  box-shadow: var(--edge-hi), var(--shadow-md);
 }
 
 .thread-row.active {
-  background: var(--surface-1);
-  box-shadow: none;
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  box-shadow: var(--edge-hi), var(--shadow-md), inset 2px 0 0 var(--accent);
 }
 
 .avatar-dot {
@@ -681,7 +745,6 @@ input[type="radio"] {
 .convo {
   display: flex;
   flex-direction: column;
-  background: var(--bg);
   overflow: hidden;
 }
 
@@ -747,7 +810,10 @@ input[type="radio"] {
   align-items: flex-start;
   padding: 14px 16px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: var(--edge-hi), 0 1px 8px rgba(0, 0, 0, 0.28);
+  position: relative;
+  z-index: 2;
 }
 
 .convo-head h2 {
@@ -919,10 +985,11 @@ input[type="radio"] {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px;
+  padding: 14px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
-  background: var(--surface-1);
+  background: var(--card);
+  box-shadow: var(--edge-hi), var(--shadow-md);
 }
 
 .form-card-title {
@@ -1248,8 +1315,9 @@ input[type="radio"] {
   margin: 0 16px;
   padding: 8px 12px;
   border-radius: var(--radius);
-  background: var(--surface-1);
+  background: var(--card);
   border: 1px solid var(--border);
+  box-shadow: var(--edge-hi), var(--shadow-sm);
   color: var(--text-dim);
   font-size: 12px;
   display: flex;
@@ -1267,8 +1335,8 @@ input[type="radio"] {
   max-width: min(560px, calc(100vw - 32px));
   padding: 10px 14px;
   border-radius: var(--radius);
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
   color: var(--text);
   font-size: 13px;
   display: flex;
@@ -1286,8 +1354,8 @@ input[type="radio"] {
   padding: 8px 10px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
-  background: var(--bg);
-  box-shadow: none;
+  background: var(--card);
+  box-shadow: var(--edge-hi), var(--shadow-lg);
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -1381,7 +1449,10 @@ input[type="radio"] {
 
 .audit-row {
   padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--edge-hi), var(--shadow-xs);
 }
 
 .audit-top {
@@ -1432,10 +1503,11 @@ input[type="radio"] {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 14px;
+  padding: 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface-1);
+  background: var(--card);
+  box-shadow: var(--edge-hi), var(--shadow-md);
 }
 
 .settings-card-head {
@@ -1652,7 +1724,10 @@ input[type="radio"] {
   gap: 10px;
   padding: 14px 16px 12px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: var(--edge-hi), 0 1px 8px rgba(0, 0, 0, 0.28);
+  position: relative;
+  z-index: 2;
 }
 
 .profile-avatar {
@@ -2546,4 +2621,485 @@ input[type="radio"] {
   color: var(--text);
   font-family: var(--font-mono);
   font-size: 14px;
+}
+
+/* ==========================================================================
+   Depth layer
+   Consolidated last so it overrides the older flat rules scattered above.
+   Rule of thumb: panels < cards < floating; inputs are cut *into* cards.
+   ========================================================================== */
+
+/* --- Recessed controls ---------------------------------------------------- */
+.account-select,
+.search-box input,
+.filter-strip input,
+.filter-strip select,
+.compose-strip input,
+.product-form input,
+.product-form select,
+.product-form textarea,
+.product-desc,
+.settings-body input:not([type="checkbox"]):not([type="radio"]),
+.settings-body select,
+.settings-grid input,
+.ivr-prompt,
+.ivr-menus-json,
+.ivr-choice-row input,
+.ivr-choice-row select,
+.ivr-inspector input:not([type="checkbox"]),
+.ivr-inspector select,
+.lock-card input {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  box-shadow: var(--input-shadow);
+  color: var(--text);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.account-select:focus,
+.search-box input:focus,
+.filter-strip input:focus,
+.filter-strip select:focus,
+.compose-strip input:focus,
+.product-form input:focus,
+.product-form select:focus,
+.product-desc:focus,
+.settings-body input:not([type="checkbox"]):focus,
+.settings-grid input:focus,
+.ivr-prompt:focus,
+.lock-card input:focus {
+  border-color: var(--border-strong);
+  box-shadow: var(--input-shadow), 0 0 0 3px rgba(250, 250, 250, 0.07);
+  outline: none;
+}
+
+/* Rows without an avatar must not reserve the 36px avatar column, or their
+   first child lands in it and collides with the next one. */
+.thread-row:not(:has(> .avatar-dot)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* --- Raised cards --------------------------------------------------------- */
+.pane-section,
+.summary-box,
+.roster-row,
+.lock-account,
+.restart-banner,
+.restart-gate,
+.allowlist-list,
+.ivr-screen-card,
+.ivr-inspector,
+.ivr-inspector-panel,
+.ivr-phone,
+.ivr-text-script,
+.ivr-text-block,
+.quick-action {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--edge-hi), var(--shadow-md);
+}
+
+.pane-section {
+  margin: 10px;
+  padding: 14px;
+}
+
+.ivr-screen-card:hover,
+.quick-action:hover {
+  background: var(--card-hover);
+  border-color: var(--border-strong);
+  box-shadow: var(--edge-hi), var(--shadow-lg);
+}
+
+.ivr-screen-card.active,
+.ivr-screen-card.start {
+  border-color: var(--border-strong);
+  box-shadow: var(--edge-hi), var(--shadow-lg);
+}
+
+/* --- Floating surfaces ---------------------------------------------------- */
+.account-menu,
+.lock-card,
+.shell-status {
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--edge-hi), var(--shadow-float);
+}
+
+/* --- Message bubbles ------------------------------------------------------ */
+.bubble.in {
+  background: var(--surface-3);
+  box-shadow: var(--edge-hi), var(--shadow-sm);
+}
+
+.bubble.out {
+  box-shadow: var(--shadow-md);
+}
+
+/* --- Dropzone reads as a recess, not a card ------------------------------- */
+.dropzone {
+  background: var(--input-bg);
+  border: 1.5px dashed var(--border-strong);
+  box-shadow: var(--input-shadow);
+}
+
+.dropzone:hover,
+.dropzone.dragover {
+  background: var(--surface-1);
+  border-color: var(--accent-cta);
+  box-shadow: var(--input-shadow), 0 0 0 3px rgba(250, 250, 250, 0.06);
+}
+
+/* --- Scrollbars: visible enough to locate, quiet enough to ignore --------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-4) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--surface-4);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+  background-clip: content-box;
+}
+
+/* ==========================================================================
+   Navigation rail — search, grouped nav, status chips
+   ========================================================================== */
+
+.rail-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 4px 0 2px;
+}
+
+.rail-search-ico {
+  position: absolute;
+  left: 9px;
+  width: 15px;
+  height: 15px;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.rail-search input {
+  width: 100%;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--input-shadow);
+  color: var(--text);
+  padding: 7px 10px 7px 30px;
+  font-size: 13px;
+  outline: none;
+}
+
+.rail-search input::placeholder {
+  color: var(--text-dim);
+}
+
+.rail-search input:focus {
+  border-color: var(--border-strong);
+  box-shadow: var(--input-shadow), 0 0 0 3px rgba(250, 250, 250, 0.07);
+}
+
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.nav-group:last-child {
+  border-bottom: 0;
+}
+
+.rail-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px 2px 6px;
+}
+
+.rail-chip {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  box-shadow: var(--edge-hi);
+}
+
+.rail-chip.ok {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.rail-chip.danger {
+  color: var(--text);
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+
+/* --- Icon-only button ----------------------------------------------------- */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.icon-btn:hover {
+  background: var(--surface-3);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.icon-btn.active {
+  background: var(--surface-3);
+  color: var(--text);
+  border-color: var(--border-strong);
+  box-shadow: var(--edge-hi), var(--shadow-xs);
+}
+
+/* --- People sub-tabs ------------------------------------------------------ */
+.col-head-tabs {
+  padding: 8px 10px;
+}
+
+.people-tabs {
+  display: flex;
+  gap: 2px;
+  width: 100%;
+  padding: 3px;
+  border-radius: var(--radius);
+  background: var(--input-bg);
+  box-shadow: var(--input-shadow);
+}
+
+.people-tab {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.people-tab:hover {
+  color: var(--text);
+}
+
+.people-tab.active {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  color: var(--text);
+  box-shadow: var(--edge-hi), var(--shadow-xs);
+}
+
+.people-tab-count {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-dim);
+}
+
+.people-tab.active .people-tab-count {
+  color: var(--text);
+}
+
+/* --- Filter chips --------------------------------------------------------- */
+.filter-strip.stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.filter-search {
+  max-width: none !important;
+  width: 100%;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.chip:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.chip.active {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  color: var(--text);
+  box-shadow: var(--edge-hi), var(--shadow-xs);
+}
+
+.chip-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 3px;
+  background: var(--border);
+}
+
+.chip-count {
+  margin-left: auto;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+
+/* --- Conversation action bar --------------------------------------------- */
+.act-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.act-btn svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.act-btn:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.act-btn.active {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  color: var(--text);
+  box-shadow: var(--edge-hi), var(--shadow-xs);
+}
+
+.act-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.act-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 2px;
+  background: var(--border);
+}
+
+/* In a column-direction strip, the inherited `flex: 1 1 120px` from
+   `.filter-strip input` grows the field vertically. Pin it back. */
+.filter-strip.stacked input,
+.filter-strip.stacked select {
+  flex: 0 0 auto;
+  max-width: none;
+}
+
+.chip {
+  padding: 4px 9px;
+  font-size: 11.5px;
+}
+
+/* Checkbox filters read as chips. The native input stays in the DOM (it keeps
+   the label association and keyboard behaviour) but is visually replaced. */
+.filter-check {
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  gap: 5px;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.filter-check input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  margin: 0;
+}
+
+.filter-check:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.filter-check:has(input:checked) {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  color: var(--text);
+  box-shadow: var(--edge-hi), var(--shadow-xs);
+}
+
+.filter-check:focus-within {
+  box-shadow: 0 0 0 3px rgba(250, 250, 250, 0.07);
 }

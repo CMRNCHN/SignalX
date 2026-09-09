@@ -1,4 +1,5 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { formatPhone } from "./format";
 import { useEffect, useMemo, useState } from "react";
 import {
   api,
@@ -299,7 +300,7 @@ export function ProfileRail(props: Props) {
         </span>
         <div className="profile-rail-title">
           <strong>{title}</strong>
-          <div className="convo-sub">{threadId}</div>
+          <div className="convo-sub">{formatPhone(threadId)}</div>
         </div>
       </header>
 

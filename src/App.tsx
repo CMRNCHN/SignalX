@@ -30,28 +30,49 @@ import {
   type ThreadIvrStatus,
   type ThreadSummary,
 } from "./api";
+import {
+  USE_FIXTURES,
+  fxAudit,
+  fxCommerceAudit,
+  fxContacts,
+  fxCustomers,
+  fxGroups,
+  fxMessages,
+  fxOrders,
+  fxOutbox,
+  fxProducts,
+  fxSalesSummary,
+  fxSearchHits,
+  fxThreads,
+} from "./devFixtures";
 import { DeviceLinkQr } from "./DeviceLinkQr";
 import { IvrMenuComposer } from "./IvrMenuComposer";
 import { ProfileRail } from "./ProfileRail";
 import { SalesScreen } from "./components/Sales/SalesScreen";
+import { formatPhone } from "./format";
 import { isTauriRuntime } from "./runtime";
 import {
   IconAudit,
+  IconBolt,
   IconCatalog,
+  IconCompose,
   IconContacts,
-  IconCustomers,
-  IconGroups,
   IconImage,
   IconMessages,
   IconOrders,
   IconOutbox,
   IconSearch,
+  IconExport,
+  IconMenuList,
+  IconReply,
   IconSettings,
+  IconSparkle,
 } from "./navIcons";
 
 export type Panel =
   | "threads"
   | "search"
+  | "people"
   | "contacts"
   | "groups"
   | "products"
@@ -83,18 +104,30 @@ function newPackRow(): SellPackRow {
   };
 }
 
-const NAV_ITEMS: { id: Panel; label: string; ico: ReactNode }[] = [
-  { id: "threads", label: "Messages", ico: <IconMessages /> },
-  { id: "search", label: "Search", ico: <IconSearch /> },
-  { id: "contacts", label: "Contacts", ico: <IconContacts /> },
-  { id: "groups", label: "Groups", ico: <IconGroups /> },
-  { id: "products", label: "Catalog", ico: <IconCatalog /> },
-  { id: "customers", label: "Customers", ico: <IconCustomers /> },
-  { id: "orders", label: "Orders", ico: <IconOrders /> },
-  { id: "sales", label: "Sales", ico: <IconAudit /> },
-  { id: "outbox", label: "Outbox", ico: <IconOutbox /> },
-  { id: "audit", label: "Auto-reply log", ico: <IconAudit /> },
-  { id: "settings", label: "Settings", ico: <IconSettings /> },
+type NavItem = { id: Panel; label: string; ico: ReactNode };
+
+/** Grouped so related destinations read as a set rather than a flat list. */
+const NAV_GROUPS: NavItem[][] = [
+  [{ id: "threads", label: "Messages", ico: <IconMessages /> }],
+  [{ id: "people", label: "People", ico: <IconContacts /> }],
+  [
+    { id: "products", label: "Catalog", ico: <IconCatalog /> },
+    { id: "orders", label: "Orders", ico: <IconOrders /> },
+    { id: "sales", label: "Sales", ico: <IconAudit /> },
+  ],
+  [
+    { id: "outbox", label: "Outbox", ico: <IconOutbox /> },
+    { id: "audit", label: "Auto-reply log", ico: <IconAudit /> },
+  ],
+  [{ id: "settings", label: "Settings", ico: <IconSettings /> }],
+];
+
+type PeopleTab = "contacts" | "groups" | "customers";
+
+const PEOPLE_TABS: { id: PeopleTab; label: string }[] = [
+  { id: "contacts", label: "Contacts" },
+  { id: "groups", label: "Groups" },
+  { id: "customers", label: "Customers" },
 ];
 
 function initials(label: string): string {
@@ -102,6 +135,19 @@ function initials(label: string): string {
   if (parts.length === 0) return "?";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+/** Stable per-identity avatar tint. Low saturation so it reads as a tinted
+ *  grey rather than a colour accent, but distinct enough to tell rows apart. */
+function avatarTint(seed: string) {
+  let h = 0;
+  for (let i = 0; i < seed.length; i += 1) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  const hue = h % 360;
+  return {
+    background: `hsl(${hue} 16% 30%)`,
+    color: `hsl(${hue} 38% 84%)`,
+    boxShadow: `inset 0 0 0 1px hsl(${hue} 20% 42%)`,
+  };
 }
 
 function needsDeviceSetup(
@@ -178,7 +224,7 @@ function threadTitle(
   );
   const named = (c?.display_name || c?.alias || "").trim();
   if (named) return named;
-  return raw || id;
+  return formatPhone(raw || id);
 }
 
 function isEnvelopeNoiseContent(content: string): boolean {
@@ -312,11 +358,11 @@ export default function App() {
   const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
   const [health, setHealth] = useState<ReceiveLoopState | null>(null);
   const [ai, setAi] = useState<AiStatus | null>(null);
-  const [threads, setThreads] = useState<ThreadSummary[]>([]);
+  const [threadsReal, setThreads] = useState<ThreadSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messagesReal, setMessages] = useState<Message[]>([]);
   const [outbox, setOutbox] = useState<OutboxItem[]>([]);
-  const [globalOutbox, setGlobalOutbox] = useState<OutboxItem[]>([]);
+  const [globalOutboxReal, setGlobalOutbox] = useState<OutboxItem[]>([]);
   const [outboxSummary, setOutboxSummary] = useState<OutboxSummary | null>(null);
   const [composer, setComposer] = useState("");
   const [attachFile, setAttachFile] = useState<File | null>(null);
@@ -324,9 +370,9 @@ export default function App() {
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [searchQ, setSearchQ] = useState("");
-  const [searchHits, setSearchHits] = useState<SearchResult[]>([]);
-  const [contacts, setContacts] = useState<ContactMeta[]>([]);
-  const [groups, setGroups] = useState<GroupMeta[]>([]);
+  const [searchHitsReal, setSearchHits] = useState<SearchResult[]>([]);
+  const [contactsReal, setContacts] = useState<ContactMeta[]>([]);
+  const [groupsReal, setGroups] = useState<GroupMeta[]>([]);
   const [summaryText, setSummaryText] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [autoSettings, setAutoSettings] = useState<AutoReplySettings | null>(null);
@@ -337,8 +383,8 @@ export default function App() {
   const [ivrMenusBusy, setIvrMenusBusy] = useState(false);
   const [threadAuto, setThreadAuto] = useState<ThreadAutoReplyStatus | null>(null);
   const [threadIvr, setThreadIvr] = useState<ThreadIvrStatus | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [productsReal, setProducts] = useState<Product[]>([]);
+  const [customersReal, setCustomers] = useState<Customer[]>([]);
   const [productForm, setProductForm] = useState({
     id: "",
     name: "",
@@ -365,14 +411,38 @@ export default function App() {
   const [newDmPhone, setNewDmPhone] = useState("");
   const [contactForm, setContactForm] = useState({ phone: "", name: "" });
   const [groupForm, setGroupForm] = useState({ name: "", members: "" });
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [ordersReal, setOrders] = useState<Order[]>([]);
   const [orderProductId, setOrderProductId] = useState("");
   const [orderQty, setOrderQty] = useState("1");
-  const [audit, setAudit] = useState<AutoReplyAuditEntry[]>([]);
-  const [salesSummary, setSalesSummary] = useState<SalesSummary | null>(null);
-  const [commerceAudit, setCommerceAudit] = useState<CommerceAuditEvent[]>([]);
+  const [auditReal, setAudit] = useState<AutoReplyAuditEntry[]>([]);
+  const [salesSummaryReal, setSalesSummary] = useState<SalesSummary | null>(null);
+  const [commerceAuditReal, setCommerceAudit] = useState<CommerceAuditEvent[]>([]);
   const [salesRange, setSalesRange] = useState<"7" | "30" | "all">("30");
   const [salesStatus, setSalesStatus] = useState("all");
+  const [peopleTab, setPeopleTab] = useState<PeopleTab>("contacts");
+  const [newDmOpen, setNewDmOpen] = useState(false);
+
+  // Dev-only design data. Real state always wins; fixtures fill in only while a
+  // list is genuinely empty, and USE_FIXTURES is false in any release build.
+  const threads = USE_FIXTURES && !threadsReal.length ? fxThreads : threadsReal;
+  const messages = USE_FIXTURES && !messagesReal.length ? fxMessages : messagesReal;
+  const globalOutbox =
+    USE_FIXTURES && !globalOutboxReal.length ? fxOutbox : globalOutboxReal;
+  const searchHits =
+    USE_FIXTURES && !searchHitsReal.length ? fxSearchHits : searchHitsReal;
+  const contacts = USE_FIXTURES && !contactsReal.length ? fxContacts : contactsReal;
+  const groups = USE_FIXTURES && !groupsReal.length ? fxGroups : groupsReal;
+  const products = USE_FIXTURES && !productsReal.length ? fxProducts : productsReal;
+  const customers = USE_FIXTURES && !customersReal.length ? fxCustomers : customersReal;
+  const orders = USE_FIXTURES && !ordersReal.length ? fxOrders : ordersReal;
+  const audit = USE_FIXTURES && !auditReal.length ? fxAudit : auditReal;
+  const commerceAudit =
+    USE_FIXTURES && !commerceAuditReal.length ? fxCommerceAudit : commerceAuditReal;
+  // The sales API answers with a valid but zeroed summary when no account is
+  // configured, so treat "no orders" as empty rather than only null.
+  const salesSummary =
+    USE_FIXTURES && !salesSummaryReal?.order_count ? fxSalesSummary : salesSummaryReal;
+
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkUri, setLinkUri] = useState<string | null>(null);
   const [linkStatus, setLinkStatus] = useState<DeviceLinkStatus | null>(null);
@@ -1828,36 +1898,58 @@ export default function App() {
           )}
         </div>
 
+        <form
+          className="rail-search"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!searchQ.trim()) return;
+            setPanel("search");
+            void onSearch();
+          }}
+        >
+          <IconSearch className="rail-search-ico" />
+          <input
+            value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)}
+            placeholder="Search messages"
+            aria-label="Search messages"
+          />
+        </form>
+
         <nav className="nav">
-          {NAV_ITEMS.map(({ id, label, ico }) => (
-            <button
-              key={id}
-              type="button"
-              className={panel === id ? "nav-btn active" : "nav-btn"}
-              onClick={() => {
-                setPanel(id);
-                if (id === "settings" && setupNeeded) setSettingsTab("account");
-              }}
-            >
-              <span className="nav-btn-label">
-                <span className="nav-ico" aria-hidden>
-                  {ico}
-                </span>
-                <span>{label}</span>
-              </span>
-              {id === "orders" && orders.length > 0 && (
-                <span className="nav-count">{orders.length}</span>
-              )}
-              {id === "outbox" &&
-                outboxSummary &&
-                outboxSummary.queued + outboxSummary.sending + outboxSummary.failed > 0 && (
-                  <span className="nav-count">
-                    {outboxSummary.failed > 0
-                      ? outboxSummary.failed
-                      : outboxSummary.queued + outboxSummary.sending}
+          {NAV_GROUPS.map((group, gi) => (
+            <div className="nav-group" key={gi}>
+              {group.map(({ id, label, ico }) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={panel === id ? "nav-btn active" : "nav-btn"}
+                  onClick={() => {
+                    setPanel(id);
+                    if (id === "settings" && setupNeeded) setSettingsTab("account");
+                  }}
+                >
+                  <span className="nav-btn-label">
+                    <span className="nav-ico" aria-hidden>
+                      {ico}
+                    </span>
+                    <span>{label}</span>
                   </span>
-                )}
-            </button>
+                  {id === "orders" && orders.length > 0 && (
+                    <span className="nav-count">{orders.length}</span>
+                  )}
+                  {id === "outbox" &&
+                    outboxSummary &&
+                    outboxSummary.queued + outboxSummary.sending + outboxSummary.failed > 0 && (
+                      <span className="nav-count">
+                        {outboxSummary.failed > 0
+                          ? outboxSummary.failed
+                          : outboxSummary.queued + outboxSummary.sending}
+                      </span>
+                    )}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
 
@@ -1874,57 +1966,72 @@ export default function App() {
 
       {panel === "threads" && (
         <section className="thread-col">
-          <header className="col-head">Threads</header>
-          <div className="compose-strip">
-            <input
-              placeholder="New message — +15551234567"
-              value={newDmPhone}
-              onChange={(e) => setNewDmPhone(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && void openNewDm()}
-            />
-            <button type="button" className="action-btn primary" onClick={() => void openNewDm()}>
-              Open
+          <header className="col-head">
+            Messages
+            <button
+              type="button"
+              className={newDmOpen ? "icon-btn active" : "icon-btn"}
+              aria-label="New message"
+              aria-pressed={newDmOpen}
+              title="New message"
+              onClick={() => setNewDmOpen((v) => !v)}
+            >
+              <IconCompose />
             </button>
-          </div>
-          <div className="filter-strip">
+          </header>
+          {newDmOpen && (
+            <div className="compose-strip">
+              <input
+                autoFocus
+                placeholder="Phone number"
+                value={newDmPhone}
+                onChange={(e) => setNewDmPhone(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && void openNewDm()}
+              />
+              <button type="button" className="action-btn primary" onClick={() => void openNewDm()}>
+                Start
+              </button>
+            </div>
+          )}
+          <div className="filter-strip stacked">
             <input
+              className="filter-search"
               placeholder="Filter threads…"
               value={threadFilter.q}
               onChange={(e) => setThreadFilter((f) => ({ ...f, q: e.target.value }))}
             />
-            <select
-              aria-label="Thread type"
-              value={threadFilter.kind}
-              onChange={(e) =>
-                setThreadFilter((f) => ({
-                  ...f,
-                  kind: e.target.value as "all" | "dm" | "group",
-                }))
-              }
-            >
-              <option value="all">All types</option>
-              <option value="dm">DMs</option>
-              <option value="group">Groups</option>
-            </select>
-            <label className="filter-check">
-              <input
-                type="checkbox"
-                checked={threadFilter.unread}
-                onChange={(e) => setThreadFilter((f) => ({ ...f, unread: e.target.checked }))}
-              />
-              Unread
-            </label>
-            <label className="filter-check">
-              <input
-                type="checkbox"
-                checked={threadFilter.pending}
-                onChange={(e) => setThreadFilter((f) => ({ ...f, pending: e.target.checked }))}
-              />
-              Pending
-            </label>
-            <span className="col-meta">
-              {filteredThreads.length}/{threads.length}
-            </span>
+            <div className="chip-row">
+              {(["all", "dm", "group"] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className={threadFilter.kind === k ? "chip active" : "chip"}
+                  onClick={() => setThreadFilter((f) => ({ ...f, kind: k }))}
+                >
+                  {k === "all" ? "All" : k === "dm" ? "Direct" : "Groups"}
+                </button>
+              ))}
+              <span className="chip-sep" aria-hidden />
+              <button
+                type="button"
+                className={threadFilter.unread ? "chip active" : "chip"}
+                aria-pressed={threadFilter.unread}
+                onClick={() => setThreadFilter((f) => ({ ...f, unread: !f.unread }))}
+              >
+                Unread
+              </button>
+              <button
+                type="button"
+                className={threadFilter.pending ? "chip active" : "chip"}
+                aria-pressed={threadFilter.pending}
+                onClick={() => setThreadFilter((f) => ({ ...f, pending: !f.pending }))}
+              >
+                Pending
+              </button>
+              <span className="chip-count">
+                {filteredThreads.length}/{threads.length}
+              </span>
+            </div>
           </div>
           <div className="thread-list">
             {threads.length === 0 && (
@@ -1943,7 +2050,7 @@ export default function App() {
                   setPanel("threads");
                 }}
               >
-                <span className="avatar-dot" aria-hidden>
+                <span className="avatar-dot" style={avatarTint(t.id)} aria-hidden>
                   {initials(threadTitle(t.id, contacts, groups, customers))}
                 </span>
                 <div className="thread-row-body">
@@ -1987,7 +2094,7 @@ export default function App() {
                   setPanel("threads");
                 }}
               >
-                <span className="avatar-dot" aria-hidden>
+                <span className="avatar-dot" style={avatarTint(h.thread_id)} aria-hidden>
                   {initials(threadTitle(h.thread_id, contacts, groups, customers))}
                 </span>
                 <div className="thread-row-body">
@@ -2003,9 +2110,31 @@ export default function App() {
         </section>
       )}
 
-      {panel === "contacts" && (
+      {panel === "people" && peopleTab === "contacts" && (
         <section className="thread-col">
-          <header className="col-head">Contacts</header>
+          <header className="col-head col-head-tabs">
+            <div className="people-tabs" role="tablist" aria-label="People">
+              {PEOPLE_TABS.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={peopleTab === t.id}
+                  className={peopleTab === t.id ? "people-tab active" : "people-tab"}
+                  onClick={() => setPeopleTab(t.id)}
+                >
+                  {t.label}
+                  <span className="people-tab-count">
+                    {t.id === "contacts"
+                      ? contacts.length
+                      : t.id === "groups"
+                        ? groups.length
+                        : customers.length}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </header>
           <div className="pane-section">
             <h3 className="pane-section-title">Create new contact</h3>
             <div className="compose-strip stacked p-4 gap-4 border-0">
@@ -2084,17 +2213,17 @@ export default function App() {
                   setPanel("threads");
                 }}
               >
-                <span className="avatar-dot" aria-hidden>
-                  {initials(c.display_name || c.alias || c.contact_id)}
+                <span className="avatar-dot" style={avatarTint(c.contact_id)} aria-hidden>
+                  {initials(c.display_name || c.alias || formatPhone(c.contact_id))}
                 </span>
                 <div className="thread-row-body">
                   <div className="thread-row-top">
                     <span className="thread-name">
-                      {c.display_name || c.alias || c.contact_id}
+                      {c.display_name || c.alias || formatPhone(c.contact_id)}
                     </span>
                     {c.auto_reply_enabled && <span className="badge danger">Auto</span>}
                   </div>
-                  <div className="convo-sub">{c.contact_id}</div>
+                  <div className="convo-sub">{formatPhone(c.contact_id)}</div>
                 </div>
               </button>
             ))}
@@ -2102,9 +2231,31 @@ export default function App() {
         </section>
       )}
 
-      {panel === "groups" && (
+      {panel === "people" && peopleTab === "groups" && (
         <section className="thread-col">
-          <header className="col-head">Groups</header>
+          <header className="col-head col-head-tabs">
+            <div className="people-tabs" role="tablist" aria-label="People">
+              {PEOPLE_TABS.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={peopleTab === t.id}
+                  className={peopleTab === t.id ? "people-tab active" : "people-tab"}
+                  onClick={() => setPeopleTab(t.id)}
+                >
+                  {t.label}
+                  <span className="people-tab-count">
+                    {t.id === "contacts"
+                      ? contacts.length
+                      : t.id === "groups"
+                        ? groups.length
+                        : customers.length}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </header>
           <div className="compose-strip stacked">
             <p className="hint tight">
               Creates a real Signal group via signal-cli. Members must be +E164 numbers.
@@ -2175,7 +2326,7 @@ export default function App() {
                   setPanel("threads");
                 }}
               >
-                <span className="avatar-dot" aria-hidden>
+                <span className="avatar-dot" style={avatarTint(g.group_id)} aria-hidden>
                   {initials(g.display_name || g.group_id)}
                 </span>
                 <div className="thread-row-body">
@@ -2590,15 +2741,35 @@ export default function App() {
         </section>
       )}
 
-      {panel === "customers" && (
+      {panel === "people" && peopleTab === "customers" && (
         <section className="thread-col">
-          <header className="col-head">
-            Customers
+          <header className="col-head col-head-tabs">
+            <div className="people-tabs" role="tablist" aria-label="People">
+              {PEOPLE_TABS.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={peopleTab === t.id}
+                  className={peopleTab === t.id ? "people-tab active" : "people-tab"}
+                  onClick={() => setPeopleTab(t.id)}
+                >
+                  {t.label}
+                  <span className="people-tab-count">
+                    {t.id === "contacts"
+                      ? contacts.length
+                      : t.id === "groups"
+                        ? groups.length
+                        : customers.length}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </header>
+          <div className="filter-strip">
             <button type="button" className="ghost-btn" onClick={() => void linkCustomerFromThread()}>
               Link current chat
             </button>
-          </header>
-          <div className="filter-strip">
             <input
               placeholder="Filter customers…"
               value={customerFilter.q}
@@ -2637,12 +2808,12 @@ export default function App() {
                     setPanel("threads");
                   }}
                 >
-                  <span className="avatar-dot" aria-hidden>
+                  <span className="avatar-dot" style={avatarTint(c.thread_id)} aria-hidden>
                     {initials(c.display_name || c.thread_id)}
                   </span>
                   <div className="thread-row-body">
                     <div className="thread-row-top">
-                      <span className="thread-name">{c.display_name || c.thread_id}</span>
+                      <span className="thread-name">{c.display_name || formatPhone(c.thread_id)}</span>
                       <button
                         type="button"
                         className="ghost-btn"
@@ -2654,7 +2825,7 @@ export default function App() {
                         Delete
                       </button>
                     </div>
-                    <div className="convo-sub">{c.thread_id}</div>
+                    <div className="convo-sub">{formatPhone(c.thread_id)}</div>
                     <div className="thread-row-meta">
                       {orderCount > 0 && (
                         <span className="badge muted">{orderCount} order{orderCount === 1 ? "" : "s"}</span>
@@ -2715,7 +2886,7 @@ export default function App() {
                 {selectedId && !selectedId.startsWith("group:") ? (
                   <>
                     Ordering for <strong>{threadTitle(selectedId, contacts, groups, customers)}</strong>
-                    <span className="convo-sub inline">{selectedId}</span>
+                    <span className="convo-sub inline">{formatPhone(selectedId)}</span>
                   </>
                 ) : (
                   <span className="warn-text">Select a DM thread first to place an order.</span>
@@ -3038,7 +3209,7 @@ export default function App() {
                   <span className={`outcome outcome-${e.outcome}`}>{e.outcome}</span>
                   <span className="thread-time">{fmtTime(e.created_at)}</span>
                 </div>
-                <div className="audit-thread">{e.thread_id}</div>
+                <div className="audit-thread">{formatPhone(e.thread_id)}</div>
                 <div className="snippet">{e.draft}</div>
                 {e.reason && <div className="reason">{e.reason}</div>}
               </div>
@@ -3684,7 +3855,7 @@ export default function App() {
             <header className="convo-head">
               <div>
                 <h2>{title}</h2>
-                <div className="convo-sub">{selectedId}</div>
+                <div className="convo-sub">{formatPhone(selectedId)}</div>
               </div>
               <div className="convo-actions">
                 {threadAuto?.effective && (
@@ -3701,15 +3872,17 @@ export default function App() {
                     {ivrHint}
                   </span>
                 )}
-                <label className="toggle compact">
-                  <input
-                    type="checkbox"
-                    checked={!!threadIvr?.enabled}
-                    disabled={!!selectedId?.startsWith("group:")}
-                    onChange={(e) => void toggleThreadIvr(e.target.checked)}
-                  />
-                  Buyer menu
-                </label>
+                <button
+                  type="button"
+                  className={threadIvr?.enabled ? "act-btn active" : "act-btn"}
+                  aria-pressed={!!threadIvr?.enabled}
+                  disabled={!!selectedId?.startsWith("group:")}
+                  title="Buyer menu"
+                  onClick={() => void toggleThreadIvr(!threadIvr?.enabled)}
+                >
+                  <IconMenuList />
+                  <span>Buyer menu</span>
+                </button>
                 {threadIvr?.handed_off && (
                   <button type="button" className="ghost-btn" onClick={() => void resumeIvrBot()}>
                     Resume menu
@@ -3718,22 +3891,45 @@ export default function App() {
                 {!threadIvr?.enabled && ivrSettings?.enabled && !selectedId?.startsWith("group:") && (
                   <span className="convo-sub inline-hint">Turn on to let this chat use the menu</span>
                 )}
-                <label className="toggle compact">
-                  <input
-                    type="checkbox"
-                    checked={!!threadAuto?.opted_in}
-                    onChange={(e) => void toggleThreadAuto(e.target.checked)}
-                  />
-                  Opt-in auto
-                </label>
-                <button type="button" className="ghost-btn" disabled={aiBusy || !ai?.configured} onClick={() => void onSummarize()}>
-                  Summarize
+                <button
+                  type="button"
+                  className={threadAuto?.opted_in ? "act-btn active" : "act-btn"}
+                  aria-pressed={!!threadAuto?.opted_in}
+                  title="Opt this chat in to auto-reply"
+                  onClick={() => void toggleThreadAuto(!threadAuto?.opted_in)}
+                >
+                  <IconBolt />
+                  <span>Auto-reply</span>
                 </button>
-                <button type="button" className="ghost-btn" disabled={aiBusy || !ai?.configured} onClick={() => void onDraft()}>
-                  Draft reply
+                <span className="act-sep" aria-hidden />
+                <button
+                  type="button"
+                  className="act-btn"
+                  disabled={aiBusy || !ai?.configured}
+                  title="Summarize this conversation"
+                  onClick={() => void onSummarize()}
+                >
+                  <IconSparkle />
+                  <span>Summarize</span>
                 </button>
-                <button type="button" className="ghost-btn" onClick={() => void onExportThread()}>
-                  Export
+                <button
+                  type="button"
+                  className="act-btn"
+                  disabled={aiBusy || !ai?.configured}
+                  title="Draft a reply"
+                  onClick={() => void onDraft()}
+                >
+                  <IconReply />
+                  <span>Draft</span>
+                </button>
+                <button
+                  type="button"
+                  className="act-btn"
+                  title="Export this thread"
+                  onClick={() => void onExportThread()}
+                >
+                  <IconExport />
+                  <span>Export</span>
                 </button>
               </div>
             </header>
