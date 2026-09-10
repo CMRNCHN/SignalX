@@ -549,6 +549,11 @@ input[type="radio"] {
 
 .thread-col.wide {
   grid-column: 2 / 4;
+  /* A container, so the layouts inside can respond to how much room this
+     column actually has. A viewport media query cannot see a dragged rail:
+     at 1400px with the rail out to 400 this column is ~750px, and a rule
+     keyed to the window still believes it has the full 1400. */
+  container: panel / inline-size;
 }
 
 .col-head {
@@ -4589,6 +4594,7 @@ body.is-resizing * {
   overflow: auto;
   display: flex;
   flex-direction: column;
+  container: orderdetail / inline-size;
 }
 
 .order-detail,
@@ -4910,9 +4916,9 @@ body.is-resizing * {
   font-size: 14px;
 }
 
-@media (max-width: 1280px) {
+@container panel (max-width: 1000px) {
   .orders-layout {
-    grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
+    grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
   }
   .orders-rollup {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5024,9 +5030,11 @@ body.is-resizing * {
   justify-content: center;
 }
 
-/* Below this the context column would squeeze the line-item table, so it
-   drops under the order rather than beside it. */
-@media (max-width: 1380px) {
+/* Below this the context column would squeeze the line-item table, so it drops
+   under the order rather than beside it. Keyed to the pane: a 300px sidebar
+   beside a 339px table is the failure, and only the pane's own width predicts
+   it — 380 for the table, 240 for the side, plus gap and padding. */
+@container orderdetail (max-width: 700px) {
   .order-detail-cols {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -5438,7 +5446,7 @@ body.is-resizing * {
   font-size: 11px;
 }
 
-@media (max-width: 1280px) {
+@container panel (max-width: 1060px) {
   .sales-layout {
     grid-template-columns: minmax(0, 1fr);
   }

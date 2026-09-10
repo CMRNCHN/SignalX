@@ -84,9 +84,14 @@ function write(widths: Widths): Widths {
 
 const widthOf = (column: PanelColumn, widths: Widths) => widths[column] ?? DEFAULTS[column];
 
+/* Every column whose track consumes width right now — which is not the same as
+ * every column with a drag handle. The shell template always carries a list
+ * track; a wide panel simply spans it rather than rendering into it, so it
+ * still has to be counted against the budget. Leaving it out let the rail be
+ * dragged to 400px on a 1024px window and squeeze the pane beside it to 303px. */
 const activeColumns = (layout: PanelLayout): PanelColumn[] => [
   "rail",
-  ...(layout.listKey ? [layout.listKey] : []),
+  layout.listKey ?? "list",
   ...(layout.aside ? (["aside"] as const) : []),
 ];
 
@@ -133,10 +138,14 @@ export function usePanelWidths(layout: PanelLayout) {
 
   const styleVars: CSSProperties = {};
   for (const key of Object.keys(CSS_VAR) as PanelColumn[]) {
-    // Only emit a variable the operator actually set, so an untouched column
-    // keeps taking its default from the stylesheet.
-    if (widths[key] == null) continue;
-    (styleVars as Record<string, string>)[CSS_VAR[key]] = `${effective[key]}px`;
+    const fitted = effective[key];
+    // Emit whenever the value on screen differs from the stylesheet's own
+    // fallback — not only when the operator dragged this column. An untouched
+    // column still has to give up width when a dragged neighbour overruns the
+    // budget, and without this the fit computed that reduction and threw it
+    // away, leaving the flexible column below its floor.
+    if (fitted == null || (widths[key] == null && fitted === DEFAULTS[key])) continue;
+    (styleVars as Record<string, string>)[CSS_VAR[key]] = `${fitted}px`;
   }
 
   const beginDrag = useCallback(
