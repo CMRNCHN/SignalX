@@ -50,6 +50,7 @@ import { DeviceLinkQr } from "./DeviceLinkQr";
 import { IvrMenuComposer } from "./IvrMenuComposer";
 import { ProfileRail } from "./ProfileRail";
 import { PeopleScreen } from "./components/People/PeopleScreen";
+import { OrdersScreen } from "./components/Orders/OrdersScreen";
 import { SalesScreen } from "./components/Sales/SalesScreen";
 import { PanelResizer } from "./components/PanelResizer";
 import { formatPhone } from "./format";
@@ -2588,239 +2589,43 @@ export default function App() {
       )}
 
       {panel === "orders" && (
-        <section className="thread-col wide">
-          <header className="col-head">
-            Orders
-            <span className="col-meta">
-              {filteredOrders.length}/{orders.length} total
-            </span>
-          </header>
-          <div className="settings-body wide-body">
-            <div className="filter-strip in-panel">
-              <input
-                placeholder="Filter orders…"
-                value={orderFilter.q}
-                onChange={(e) => setOrderFilter((f) => ({ ...f, q: e.target.value }))}
-              />
-              <select
-                aria-label="Order status"
-                value={orderFilter.status}
-                onChange={(e) => setOrderFilter((f) => ({ ...f, status: e.target.value }))}
-              >
-                {orderStatuses.map((s) => (
-                  <option key={s} value={s}>
-                    {s === "all" ? "All statuses" : s}
-                  </option>
-                ))}
-              </select>
-              <label className="filter-check">
-                <input
-                  type="checkbox"
-                  checked={orderFilter.thisThread}
-                  onChange={(e) => setOrderFilter((f) => ({ ...f, thisThread: e.target.checked }))}
-                />
-                This chat only
-              </label>
-            </div>
-            <div className="product-form">
-              <p className="hint tight">
-                Place order decrements stock. Create quote saves a draft (no stock change) you can
-                send, edit, or confirm later.
-              </p>
-              <div className="order-target">
-                {selectedId && !selectedId.startsWith("group:") ? (
-                  <>
-                    Ordering for <strong>{threadTitle(selectedId, contacts, groups, customers)}</strong>
-                    <span className="convo-sub inline">{formatPhone(selectedId)}</span>
-                  </>
-                ) : (
-                  <span className="warn-text">Select a DM thread first to place an order.</span>
-                )}
-              </div>
-              <select
-                value={orderProductId}
-                onChange={(e) => {
-                  setOrderProductId(e.target.value);
-                  setOrderSellOptionId("");
-                }}
-                disabled={products.length === 0}
-              >
-                {products.length === 0 && <option value="">No products — add in Catalog</option>}
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({productPriceLabel(p)}, {productStockLabel(p)})
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Sell pack"
-                value={orderSellOptionId}
-                onChange={(e) => setOrderSellOptionId(e.target.value)}
-                disabled={
-                  !(products.find((p) => p.id === orderProductId)?.sell_options?.length)
-                }
-              >
-                <option value="">Custom qty (sales UOM)</option>
-                {(products.find((p) => p.id === orderProductId)?.sell_options || []).map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label} — {o.amount} {o.unit}
-                    {o.price_cents != null ? ` @ ${money(o.price_cents)}` : ""}
-                  </option>
-                ))}
-              </select>
-              <input
-                placeholder="Qty (sales UOM)"
-                value={orderQty}
-                onChange={(e) => setOrderQty(e.target.value)}
-                disabled={!!orderSellOptionId}
-              />
-              <div className="row-actions">
-                <button
-                  type="button"
-                  className="action-btn primary"
-                  disabled={!selectedId || selectedId.startsWith("group:") || products.length === 0}
-                  onClick={() => void placeOrder(false)}
-                >
-                  Place order
-                </button>
-                <button
-                  type="button"
-                  className="action-btn"
-                  disabled={!selectedId || selectedId.startsWith("group:") || products.length === 0}
-                  onClick={() => void placeOrder(true)}
-                >
-                  Create quote
-                </button>
-              </div>
-            </div>
-            <div className="thread-list">
-              {orders.length === 0 && <p className="hint">No orders yet.</p>}
-              {orders.length > 0 && filteredOrders.length === 0 && (
-                <p className="hint">No orders match these filters.</p>
-              )}
-              {filteredOrders.map((o) => (
-                  <div key={o.id} className="thread-row product-row">
-                    <div className="thread-row-top">
-                      <span className="thread-name">
-                        {orderParty(o)}
-                        <span className="order-id"> · {o.id.slice(0, 8)}</span>
-                      </span>
-                      <span className={`status-pill status-${orderStatusTone(o.status)}`}>
-                        {o.status}
-                      </span>
-                    </div>
-                    <div className="convo-sub">
-                      {money(o.total_cents)} ·{" "}
-                      {o.lines
-                        .map((l) => {
-                          const u = (l.unit || "ea").toLowerCase();
-                          const q =
-                            Math.abs(l.quantity - Math.round(l.quantity)) < 0.001
-                              ? String(Math.round(l.quantity))
-                              : l.quantity.toFixed(3);
-                          const qty = u === "ea" ? q : `${q} ${u}`;
-                          const pack = l.sell_option_label ? ` (${l.sell_option_label})` : "";
-                          return `${l.name}${pack}×${qty}`;
-                        })
-                        .join(", ")}
-                      {" · "}
-                      {fmtTime(o.created_at)}
-                    </div>
-                    <div className="row-actions">
-                      {o.status === "draft" ? (
-                        <>
-                          <button
-                            type="button"
-                            className="action-btn primary"
-                            onClick={() => void sendQuote(o.id)}
-                            title="Queue quote text via outbox"
-                          >
-                            Send quote
-                          </button>
-                          <button
-                            type="button"
-                            className="ghost-btn"
-                            onClick={() => void confirmDraftOrder(o.id)}
-                          >
-                            Confirm
-                          </button>
-                          <button
-                            type="button"
-                            className="ghost-btn"
-                            onClick={() => void editDraftFirstLineQty(o)}
-                          >
-                            Edit lines
-                          </button>
-                          <button
-                            type="button"
-                            className="ghost-btn"
-                            onClick={() => void setOrderLifecycle(o.id, "cancelled")}
-                          >
-                            Cancel
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            className="action-btn primary"
-                            onClick={() => void sendInvoice(o.id)}
-                            title="Queue invoice text to this chat via outbox"
-                          >
-                            Send invoice
-                          </button>
-                          {o.status !== "cancelled" && o.status !== "paid" && (
-                            <button
-                              type="button"
-                              className="ghost-btn"
-                              onClick={() => void setOrderLifecycle(o.id, "paid")}
-                            >
-                              Mark paid
-                            </button>
-                          )}
-                          {o.status !== "cancelled" && o.status !== "fulfilled" && (
-                            <button
-                              type="button"
-                              className="ghost-btn"
-                              onClick={() => void setOrderLifecycle(o.id, "fulfilled")}
-                            >
-                              Mark fulfilled
-                            </button>
-                          )}
-                          {o.status !== "cancelled" && (
-                            <button
-                              type="button"
-                              className="ghost-btn"
-                              onClick={() => void setOrderLifecycle(o.id, "cancelled")}
-                            >
-                              Cancel
-                            </button>
-                          )}
-                        </>
-                      )}
-                      <button
-                        type="button"
-                        className="ghost-btn"
-                        onClick={() => void duplicateAsDraft(o.id)}
-                      >
-                        Duplicate as draft
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost-btn"
-                        onClick={() => {
-                          setSelectedId(o.thread_id);
-                          setPanel("threads");
-                        }}
-                      >
-                        Open chat
-                      </button>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </div>
-        </section>
+        <OrdersScreen
+          orders={orders}
+          filteredOrders={filteredOrders}
+          orderFilter={orderFilter}
+          setOrderFilter={setOrderFilter}
+          orderStatuses={orderStatuses}
+          products={products}
+          selectedId={selectedId}
+          setSelectedId={setSelectedId}
+          setPanel={setPanel}
+          orderProductId={orderProductId}
+          setOrderProductId={setOrderProductId}
+          orderSellOptionId={orderSellOptionId}
+          setOrderSellOptionId={setOrderSellOptionId}
+          orderQty={orderQty}
+          setOrderQty={setOrderQty}
+          placeOrder={placeOrder}
+          sendQuote={sendQuote}
+          sendInvoice={sendInvoice}
+          confirmDraftOrder={confirmDraftOrder}
+          editDraftFirstLineQty={editDraftFirstLineQty}
+          setOrderLifecycle={setOrderLifecycle}
+          duplicateAsDraft={duplicateAsDraft}
+          orderParty={orderParty}
+          threadTitle={threadTitle}
+          contacts={contacts}
+          groups={groups}
+          customers={customers}
+          money={money}
+          fmtTime={fmtTime}
+          orderStatusTone={orderStatusTone}
+          productPriceLabel={productPriceLabel}
+          productStockLabel={productStockLabel}
+          formatPhone={formatPhone}
+          initials={initials}
+          avatarTint={avatarTint}
+        />
       )}
 
       {panel === "sales" && (

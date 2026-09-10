@@ -717,7 +717,9 @@ export const fxCommerceAudit: CommerceAuditEvent[] = [
 
 export const fxSalesSummary: SalesSummary = {
   order_count: 6,
-  revenue_cents: 38450,
+  // Must equal the sum of `by_status` (and of `fxOrders`), or the dashboard
+  // shows a revenue headline its own breakdown contradicts.
+  revenue_cents: 38800,
   by_status: [
     { status: "draft", count: 1, total_cents: 1550 },
     { status: "confirmed", count: 1, total_cents: 7500 },

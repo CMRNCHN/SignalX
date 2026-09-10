@@ -4426,3 +4426,1024 @@ body.is-resizing * {
     display: none;
   }
 }
+
+/* --- Orders: a list and a detail, not one long column --------------------
+   Same shape as `.catalog-layout`: the panes live inside the wide column
+   rather than as shell tracks, because a wide panel already spans both.
+------------------------------------------------------------------------- */
+.orders-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+
+.orders-list-pane {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface-list);
+  border-right: 1px solid var(--border);
+  box-shadow: 6px 0 22px rgba(0, 0, 0, 0.4);
+  z-index: 1;
+}
+
+.orders-list-pane .filter-strip.in-panel {
+  margin: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.orders-new-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 10px 12px 4px;
+  padding: 8px;
+  border-radius: var(--radius);
+  border: 1px dashed var(--border-strong);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.orders-new-btn:hover {
+  background: var(--surface-2);
+  border-style: solid;
+  color: var(--text);
+}
+
+.orders-new-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.orders-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.order-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.order-row:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+.order-row.active {
+  background: var(--card-hover);
+  border-color: var(--border-strong);
+  box-shadow: var(--edge-hi), var(--shadow-md);
+}
+
+.order-row .avatar-dot {
+  width: 30px;
+  height: 30px;
+  font-size: 10px;
+}
+
+.order-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.order-row-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.order-row-top .thread-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.order-row-total {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.order-row-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.order-row-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.order-row-foot .order-id {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.order-row-foot .thread-time {
+  margin-left: auto;
+}
+
+/* --- Orders: detail ------------------------------------------------------ */
+.orders-detail-pane {
+  min-width: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.order-detail,
+.order-compose {
+  padding: 20px 24px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  /* Wide enough for the line-item table plus a context column, capped so the
+     table does not stretch into an unreadable ribbon on a large display. */
+  max-width: 1280px;
+  width: 100%;
+}
+
+.order-compose {
+  max-width: 720px;
+}
+
+.order-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.order-detail-head .avatar-dot.lg {
+  width: 40px;
+  height: 40px;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.order-detail-id {
+  min-width: 0;
+  flex: 1;
+}
+
+.order-detail-id h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.order-detail-id .convo-sub {
+  margin-top: 2px;
+}
+
+/* The lifecycle as a track, so "invoiced" reads as a position rather than a
+   word — you can see what has happened and what is still ahead. */
+.order-track {
+  list-style: none;
+  margin: 0;
+  padding: 12px 16px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--edge-hi), var(--shadow-sm);
+}
+
+.order-track li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  text-transform: capitalize;
+  color: var(--text-dim);
+}
+
+/* The connector is drawn from each step back to the previous one, so it
+   inherits that step's own state and cannot fall out of sync. */
+.order-track li::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  right: 50%;
+  left: -50%;
+  height: 1px;
+  background: var(--border-strong);
+}
+
+.order-track li:first-child::before {
+  display: none;
+}
+
+.order-track-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--surface-0);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  position: relative;
+  z-index: 1;
+}
+
+.order-track li.done .order-track-dot {
+  background: var(--text-dim);
+  box-shadow: inset 0 0 0 1px var(--text-dim);
+}
+
+.order-track li.done {
+  color: var(--text-dim);
+}
+
+.order-track li.now {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.order-track li.now .order-track-dot {
+  background: #fafafa;
+  box-shadow:
+    inset 0 0 0 1px #fafafa,
+    0 0 0 3px rgba(250, 250, 250, 0.12);
+}
+
+.order-track li.todo .order-track-dot {
+  background: var(--surface-0);
+}
+
+.order-track.cancelled {
+  display: block;
+  padding: 12px 16px;
+  font-size: 12px;
+  color: var(--text-dim);
+  border-color: var(--danger-border, var(--border));
+}
+
+.order-lines h3 {
+  margin: 0 0 8px;
+}
+
+.order-line-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--edge-hi), var(--shadow-sm);
+}
+
+.order-line-table th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  padding: 9px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--border);
+}
+
+.order-line-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.order-line-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.order-line-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.order-line-table .strong {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.order-line-pack {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.order-line-table tfoot td {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border-strong);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.order-line-table tfoot .num.strong {
+  font-size: 14px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+}
+
+.order-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 4px;
+  align-items: center;
+}
+
+/* Cancelling is not a peer of the other actions — push it away from them. */
+.order-actions .order-cancel {
+  margin-left: auto;
+}
+
+/* --- Orders: empty state ------------------------------------------------- */
+.orders-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 20px 24px 32px;
+}
+
+.orders-rollup {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.orders-rollup > div {
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--edge-hi), var(--shadow-sm);
+}
+
+.orders-rollup dt {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.orders-rollup dd {
+  margin: 5px 0 0;
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.orders-empty-inner {
+  margin: auto;
+  padding: 32px;
+  max-width: 400px;
+  text-align: center;
+  color: var(--text-dim);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.orders-empty-ico {
+  color: var(--text-dim);
+  opacity: 0.35;
+}
+
+.orders-empty-ico svg {
+  width: 32px;
+  height: 32px;
+}
+
+.orders-empty-inner h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.orders-empty-inner p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.orders-empty-inner .action-btn {
+  margin-top: 6px;
+}
+
+/* --- Orders: composer ---------------------------------------------------- */
+.order-compose-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.order-preview {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.order-preview strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+}
+
+@media (max-width: 1280px) {
+  .orders-layout {
+    grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
+  }
+  .orders-rollup {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* --- Orders: the detail's context column ---------------------------------
+   A single order says little on its own. The side column answers "who is this
+   and is this normal for them", which is what the extra width is for.
+------------------------------------------------------------------------- */
+.order-detail-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
+  gap: 18px;
+  align-items: start;
+}
+
+.order-detail-main,
+.order-detail-side {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.order-side-block {
+  padding: 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--edge-hi), var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.order-side-block h3 {
+  margin: 0;
+}
+
+.order-side-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0;
+}
+
+.order-side-stats dt {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.order-side-stats dd {
+  margin: 3px 0 0;
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.order-side-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.order-side-list button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.order-side-list button:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+.order-side-total {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.order-side-list .thread-time {
+  margin-left: auto;
+  font-size: 10px;
+}
+
+.ghost-btn.full {
+  width: 100%;
+  justify-content: center;
+}
+
+/* Below this the context column would squeeze the line-item table, so it
+   drops under the order rather than beside it. */
+@media (max-width: 1380px) {
+  .order-detail-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .order-detail-side {
+    flex-direction: row;
+  }
+  .order-detail-side > * {
+    flex: 1;
+  }
+}
+
+/* --- Sales: a dashboard rather than one long column ----------------------
+   Charts here are all single-series, so nothing carries identity by colour:
+   height and length encode magnitude, and the only palette in play is the
+   reserved status one, reused from the pills so a status means one thing
+   everywhere in the app.
+------------------------------------------------------------------------- */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.sales-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.filter-strip.in-panel.sales-filters {
+  margin: 0;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--surface-main);
+}
+
+.sales-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 330px);
+  gap: 16px;
+  padding: 16px 20px 28px;
+  align-items: start;
+}
+
+.sales-main,
+.sales-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.sales-card {
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--edge-hi), var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.sales-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sales-card-head h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.sales-card-meta {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+/* --- Sales: headline figures -------------------------------------------
+   Four single numbers, so these are stat tiles and not a chart. */
+.sales-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.sales-metrics > div {
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--edge-hi), var(--shadow-sm);
+  min-width: 0;
+}
+
+.sales-metrics dt {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.sales-metrics dd {
+  margin: 6px 0 0;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.sales-metric-foot {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Sales: revenue over time ------------------------------------------- */
+.sales-chart {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sales-chart-grid {
+  position: absolute;
+  inset: 0 0 26px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+/* Recessive: the grid orients, it does not compete with the bars. */
+.sales-chart-grid span {
+  height: 1px;
+  background: var(--hairline);
+}
+
+.sales-bars {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 148px;
+}
+
+.sales-bar {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  cursor: default;
+}
+
+.sales-bar-fill {
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+  background: var(--surface-4);
+  transition: background 120ms ease;
+}
+
+.sales-bar:hover .sales-bar-fill {
+  background: var(--text-dim);
+}
+
+/* One direct label's worth of emphasis: the peak reads without a tooltip. */
+.sales-bar.peak .sales-bar-fill {
+  background: var(--text);
+}
+
+.sales-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Sales: ranked bars (top products, by status) ------------------------ */
+.sales-ranked {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sales-ranked li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(60px, 2fr) auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+/* Status pills vary in width, so a fixed label column keeps every track the
+   same length — otherwise the bars are not comparable to each other. Wide
+   enough for "cancelled": a truncated status is worse than a ragged track. */
+.sales-ranked.compact li {
+  grid-template-columns: 84px minmax(40px, 1fr) auto;
+  font-size: 11px;
+  gap: 8px;
+}
+
+.sales-ranked.compact .sales-ranked-label {
+  display: flex;
+}
+
+.sales-ranked.compact .sales-ranked-label .status-pill {
+  width: 100%;
+  text-align: center;
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+  padding: 3px 4px;
+}
+
+/* And a fixed value column, so a three-figure total does not shorten its own
+   track relative to the rows above it. */
+.sales-ranked.compact .sales-ranked-value {
+  min-width: 58px;
+}
+
+.sales-ranked-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.sales-ranked-track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--input-bg);
+  box-shadow: var(--input-shadow);
+  overflow: hidden;
+}
+
+.sales-ranked-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--surface-4);
+}
+
+/* Status keeps the pill's own tone so one status never means two things. */
+.sales-ranked-fill.tone-ok {
+  background: var(--ok);
+}
+.sales-ranked-fill.tone-warn {
+  background: var(--warn);
+}
+.sales-ranked-fill.tone-danger {
+  background: var(--danger);
+}
+.sales-ranked-fill.tone-muted {
+  background: var(--surface-4);
+}
+
+.sales-ranked-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.sales-ranked-value em {
+  display: block;
+  font-style: normal;
+  font-weight: 400;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+/* --- Sales: orders table ------------------------------------------------- */
+.sales-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.sales-table th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  padding: 0 10px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sales-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--hairline);
+  vertical-align: middle;
+}
+
+.sales-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.sales-table tbody tr:hover {
+  background: var(--surface-2);
+}
+
+.sales-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sales-table .dim {
+  color: var(--text-dim);
+}
+
+.sales-table .strong {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sales-table .order-id {
+  display: block;
+  font-size: 10px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.sales-table-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+/* Row actions stay quiet until the row is under the pointer. */
+.sales-table-actions .ghost-btn {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.sales-table tr:hover .sales-table-actions .ghost-btn,
+.sales-table-actions .ghost-btn:focus-visible {
+  opacity: 1;
+}
+
+/* --- Sales: audit -------------------------------------------------------- */
+.sales-audit {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.sales-audit li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.sales-audit li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.sales-audit-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sales-audit .thread-name {
+  font-size: 11px;
+}
+
+@media (max-width: 1280px) {
+  .sales-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sales-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sales-side {
+    flex-direction: row;
+  }
+  .sales-side > * {
+    flex: 1;
+  }
+}
