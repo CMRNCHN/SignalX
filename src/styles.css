@@ -121,17 +121,27 @@ input[type="radio"] {
 }
 
 .shell {
+  /* Two layers on purpose. `--u-*` is the operator's dragged width, written
+     inline by usePanelWidths; `--w-*` is what the grid actually reads. The
+     responsive rules below redefine `--w-*`, which an inline `--u-*` cannot
+     override — so a dragged rail still collapses to the icon rail on a narrow
+     window instead of silently winning. */
+  --w-rail: var(--u-rail, 220px);
+  --w-list: var(--u-list, 300px);
+  --w-aside: var(--u-aside, 300px);
+
   display: grid;
-  grid-template-columns: 220px 300px 1fr;
+  grid-template-columns: var(--w-rail) var(--w-list) 1fr;
   gap: 0;
   height: 100vh;
   overflow: hidden;
   padding: 0;
   background: var(--canvas);
+  position: relative;
 }
 
 .shell.shell-with-profile {
-  grid-template-columns: 220px 300px 1fr 300px;
+  grid-template-columns: var(--w-rail) var(--w-list) 1fr var(--w-aside);
 }
 
 .rail,
@@ -1920,22 +1930,28 @@ input[type="radio"] {
 }
 
 @media (max-width: 1100px) {
+  /* No room for a fourth column: drop the profile rail and its track, and pull
+     the list back to a fixed width so the conversation keeps its room. */
   .shell.shell-with-profile {
-    grid-template-columns: 220px 280px 1fr;
+    grid-template-columns: var(--w-rail) var(--w-list) 1fr;
+    --w-list: 280px;
   }
-  .shell.shell-with-profile .profile-rail {
+  .shell.shell-with-profile .profile-rail,
+  .shell.shell-with-profile .shell-resizer.at-aside,
+  .shell.shell-with-profile .shell-resizer.at-list {
     display: none;
   }
 }
 
 @media (max-width: 900px) {
-  .shell {
-    grid-template-columns: 72px 1fr;
+  .shell,
+  .shell.shell-with-profile {
+    grid-template-columns: var(--w-rail) 1fr;
+    /* Straight onto `--w-rail`, so a dragged `--u-rail` cannot keep the wide
+       rail alive at a width that no longer fits. */
+    --w-rail: 72px;
     gap: 0;
     padding: 0;
-  }
-  .shell.shell-with-profile {
-    grid-template-columns: 72px 1fr;
   }
   .thread-col,
   .profile-rail {
@@ -3999,7 +4015,7 @@ input[type="radio"] {
 /* People needs a wider list column than the thread list — its cards carry a
    preview, badge cluster and tag row rather than one line of text. */
 .shell.shell-people {
-  grid-template-columns: 220px 400px 1fr;
+  --w-list: var(--u-list-people, 400px);
 }
 
 .people-messages {
@@ -4327,4 +4343,86 @@ input[type="radio"] {
 .people-insights .whytip-btn {
   margin-top: 1px;
   flex-shrink: 0;
+}
+
+/* --- Draggable column seams ---------------------------------------------
+   The handle is a child of `.shell`, positioned from the same `--w-*` values
+   the grid template reads, so it always sits exactly on the seam it controls.
+   Invisible at rest: a 9px hit target with a 1px accent that only appears on
+   hover, focus or during a drag.
+------------------------------------------------------------------------- */
+.shell-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 9px;
+  z-index: 20;
+  cursor: col-resize;
+  touch-action: none;
+  display: flex;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.shell-resizer.at-rail {
+  left: calc(var(--w-rail) - 4px);
+}
+
+.shell-resizer.at-list {
+  left: calc(var(--w-rail) + var(--w-list) - 4px);
+}
+
+.shell-resizer.at-aside {
+  right: calc(var(--w-aside) - 4px);
+}
+
+/* A wide panel spans both the list and conversation tracks, so its inner edge
+   is not a real seam — there is nothing on the other side to resize. React
+   already withholds the handle there; this is the belt to that brace. */
+.shell:has(.thread-col.wide) .shell-resizer.at-list {
+  display: none;
+}
+
+.shell-resizer-grip {
+  width: 1px;
+  align-self: stretch;
+  background: transparent;
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+
+.shell-resizer:hover .shell-resizer-grip,
+.shell-resizer:focus-visible .shell-resizer-grip,
+body.is-resizing .shell-resizer:active .shell-resizer-grip {
+  background: var(--border-strong);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.shell-resizer:focus-visible {
+  outline: none;
+}
+
+.shell-resizer:focus-visible .shell-resizer-grip {
+  background: var(--text-dim);
+}
+
+/* Drag state belongs on the body: the pointer leaves the handle constantly
+   while dragging, and text selection across the whole app has to stop. */
+body.is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+body.is-resizing * {
+  cursor: col-resize !important;
+}
+
+/* Below the icon-rail breakpoint there is nothing left to negotiate: one rail
+   and one column. This lives at the end of the file because `.shell-resizer`
+   above it would otherwise win the cascade on equal specificity. */
+@media (max-width: 900px) {
+  .shell-resizer {
+    display: none;
+  }
 }

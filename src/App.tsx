@@ -40,6 +40,7 @@ import {
   fxMessages,
   fxOrders,
   fxOutbox,
+  fxProductImages,
   fxProducts,
   fxSalesSummary,
   fxSearchHits,
@@ -50,8 +51,10 @@ import { IvrMenuComposer } from "./IvrMenuComposer";
 import { ProfileRail } from "./ProfileRail";
 import { PeopleScreen } from "./components/People/PeopleScreen";
 import { SalesScreen } from "./components/Sales/SalesScreen";
+import { PanelResizer } from "./components/PanelResizer";
 import { formatPhone } from "./format";
 import { isTauriRuntime } from "./runtime";
+import { usePanelWidths, type PanelLayout } from "./usePanelWidths";
 import {
   IconAudit,
   IconBolt,
@@ -415,7 +418,7 @@ export default function App() {
   const [salesStatus, setSalesStatus] = useState("all");
   const [peopleKey, setPeopleKey] = useState<string | null>(null);
   const [newDmOpen, setNewDmOpen] = useState(false);
-  const [productImages, setProductImages] = useState<Record<string, string>>({});
+  const [productImagesReal, setProductImages] = useState<Record<string, string>>({});
 
   // Dev-only design data. Real state always wins; fixtures fill in only while a
   // list is genuinely empty, and USE_FIXTURES is false in any release build.
@@ -437,6 +440,11 @@ export default function App() {
   // configured, so treat "no orders" as empty rather than only null.
   const salesSummary =
     USE_FIXTURES && !salesSummaryReal?.order_count ? fxSalesSummary : salesSummaryReal;
+  // Fixture products have no `image_path`, so the loader below never fetches
+  // for them. Merge rather than replace: a real uploaded photo always wins.
+  const productImages = USE_FIXTURES
+    ? { ...fxProductImages, ...productImagesReal }
+    : productImagesReal;
 
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkUri, setLinkUri] = useState<string | null>(null);
@@ -1547,7 +1555,7 @@ export default function App() {
   // them lazily for the catalog grid and keep what we've already resolved.
   useEffect(() => {
     if (panel !== "products") return;
-    const missing = products.filter((p) => p.image_path && !productImages[p.id]);
+    const missing = products.filter((p) => p.image_path && !productImagesReal[p.id]);
     if (missing.length === 0) return;
     let cancelled = false;
     void (async () => {
@@ -1569,6 +1577,18 @@ export default function App() {
   }, [panel, products]);
 
   const showProfileRail = panel === "threads";
+  // Only panels that render their own list column have a list seam; the wide
+  // panels span both tracks and so expose just the rail edge.
+  const panelLayout: PanelLayout = {
+    listKey:
+      panel === "people"
+        ? "listPeople"
+        : panel === "threads" || panel === "search"
+          ? "list"
+          : null,
+    aside: showProfileRail,
+  };
+  const { shellRef, styleVars, beginDrag, resetColumn, nudge } = usePanelWidths(panelLayout);
   const profileContact = selectedId
     ? contacts.find((c) => {
         const raw = selectedId.replace(/^dm:/, "");
@@ -1726,6 +1746,8 @@ export default function App() {
 
   return (
     <div
+      ref={shellRef}
+      style={styleVars}
       className={[
         "shell",
         showProfileRail ? "shell-with-profile" : "",
@@ -1734,6 +1756,34 @@ export default function App() {
         .filter(Boolean)
         .join(" ")}
     >
+      <PanelResizer
+        column="rail"
+        seam="rail"
+        label="Resize sidebar"
+        onBegin={beginDrag}
+        onReset={resetColumn}
+        onNudge={nudge}
+      />
+      {panelLayout.listKey && (
+        <PanelResizer
+          column={panelLayout.listKey}
+          seam="list"
+          label="Resize list column"
+          onBegin={beginDrag}
+          onReset={resetColumn}
+          onNudge={nudge}
+        />
+      )}
+      {panelLayout.aside && (
+        <PanelResizer
+          column="aside"
+          seam="aside"
+          label="Resize detail column"
+          onBegin={beginDrag}
+          onReset={resetColumn}
+          onNudge={nudge}
+        />
+      )}
       {restartRequired && (
         <div className="restart-banner" role="alert">
           <span>Imported data is on disk — quit and reopen SignalX to load it.</span>

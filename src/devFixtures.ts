@@ -757,3 +757,96 @@ export const fxThreadPreviews: Record<string, string> = {
   "+15555550205": "Thanks for sending over the invoice details!",
   "group.bWFya2V0": "Booth setup starts at 6:00 AM sharp on Saturday.",
 };
+
+/* --- Product photography stand-in ----------------------------------------
+   Fixture products carry no `image_path`, so the catalog grid rendered five
+   identical placeholder glyphs and every card looked the same. These are
+   drawn, not photographed: a bag silhouette tinted per product so cards are
+   distinguishable at a glance while still reading as sample data.
+
+   They are inert. Nothing here goes through `api.setProductImage`, and the
+   loader effect still skips these products because `image_path` stays empty
+   — the map is merged in at the render layer only.
+-------------------------------------------------------------------------- */
+
+const svgUri = (svg: string) =>
+  `data:image/svg+xml;utf8,${encodeURIComponent(svg.replace(/\s+/g, " ").trim())}`;
+
+/** A 16:10 backdrop matching `.product-card-media`, with a soft floor shadow. */
+const stage = (body: string, tint: string) => `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#26262e"/><stop offset="1" stop-color="#0d0d11"/>
+    </linearGradient>
+    <radialGradient id="spot" cx="0.5" cy="0.18" r="0.75">
+      <stop offset="0" stop-color="${tint}" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="${tint}" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="320" height="200" fill="url(#bg)"/>
+  <rect width="320" height="200" fill="url(#spot)"/>
+  <ellipse cx="160" cy="180" rx="82" ry="9" fill="#000" opacity="0.5"/>
+  ${body}
+</svg>`;
+
+/** Coffee bag: crimped top fold, tinted label band, one-way valve. */
+const bagSvg = (dark: string, mid: string, label: string, mark: string) =>
+  svgUri(
+    stage(
+      `
+  <g>
+    <path d="M112 56 h96 a6 6 0 0 1 6 6 v108 a6 6 0 0 1 -6 6 h-96 a6 6 0 0 1 -6 -6 v-108 a6 6 0 0 1 6 -6 z"
+          fill="${dark}"/>
+    <path d="M112 56 h48 v120 h-48 a6 6 0 0 1 -6 -6 v-108 a6 6 0 0 1 6 -6 z" fill="${mid}" opacity="0.55"/>
+    <rect x="104" y="40" width="112" height="18" rx="4" fill="${dark}"/>
+    <rect x="104" y="40" width="112" height="18" rx="4" fill="#000" opacity="0.35"/>
+    <g fill="#000" opacity="0.25">
+      <rect x="110" y="43" width="3" height="12"/><rect x="120" y="43" width="3" height="12"/>
+      <rect x="130" y="43" width="3" height="12"/><rect x="140" y="43" width="3" height="12"/>
+      <rect x="150" y="43" width="3" height="12"/><rect x="160" y="43" width="3" height="12"/>
+      <rect x="170" y="43" width="3" height="12"/><rect x="180" y="43" width="3" height="12"/>
+      <rect x="190" y="43" width="3" height="12"/><rect x="200" y="43" width="3" height="12"/>
+    </g>
+    <rect x="106" y="92" width="108" height="42" fill="${label}"/>
+    <rect x="106" y="92" width="108" height="42" fill="#fff" opacity="0.06"/>
+    <rect x="118" y="104" width="52" height="5" rx="2.5" fill="${mark}" opacity="0.85"/>
+    <rect x="118" y="116" width="32" height="4" rx="2" fill="${mark}" opacity="0.5"/>
+    <circle cx="192" cy="150" r="7" fill="#000" opacity="0.45"/>
+    <circle cx="192" cy="150" r="3" fill="${mark}" opacity="0.4"/>
+  </g>`,
+      label,
+    ),
+  );
+
+export const fxProductImages: Record<string, string> = {
+  // Berry-forward natural — magenta label.
+  p_eth_nat: bagSvg("#2a2028", "#3a2c37", "#8d5b7a", "#1a1016"),
+  // Everyday espresso — warm brown.
+  p_house: bagSvg("#282018", "#372c20", "#8a6a45", "#1c130a"),
+  // Red apple, caramel — clay red.
+  p_colombia: bagSvg("#2b1e1b", "#3b2a25", "#9a5b4c", "#1c100d"),
+  // Decaf reads cool so it is never confused with the others on the shelf.
+  p_decaf: bagSvg("#1b2429", "#253238", "#4e7183", "#0d161a"),
+  // Not coffee: a stack of paper cones in a carton.
+  p_filters: svgUri(
+    stage(
+      `
+  <g>
+    <path d="M96 118 h128 l-14 56 h-100 z" fill="#2d2a24"/>
+    <path d="M96 118 h64 v56 h-50 z" fill="#3a362e" opacity="0.6"/>
+    <path d="M92 108 h136 v14 h-136 z" fill="#443f35"/>
+    <g>
+      <path d="M120 46 l34 66 h-68 z" fill="#a89a80"/>
+      <path d="M120 46 l34 66 h-34 z" fill="#8d8069"/>
+      <path d="M160 38 l36 74 h-72 z" fill="#c0b295"/>
+      <path d="M160 38 l36 74 h-36 z" fill="#a3977c"/>
+      <path d="M200 46 l34 66 h-68 z" fill="#a89a80"/>
+      <path d="M200 46 l34 66 h-34 z" fill="#8d8069"/>
+      <rect x="150" y="36" width="20" height="5" rx="2.5" fill="#6f6650"/>
+    </g>
+  </g>`,
+      "#a89a80",
+    ),
+  ),
+};
