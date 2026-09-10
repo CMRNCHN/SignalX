@@ -29,6 +29,7 @@ import {
   IconX,
 } from "../../navIcons";
 import { USE_FIXTURES, fxMessages, fxThreadPreviews } from "../../devFixtures";
+import { WhyTip } from "../WhyTip";
 import { actionsFor, buildDirectory, insightsFor, type Person, type PersonStatus, type PersonType } from "./people";
 
 const TYPES: PersonType[] = ["Consumer", "Supplier", "Team"];
@@ -744,7 +745,10 @@ export function PeopleScreen({
                     {rows.map((a) => (
                       <li key={a.id} className={a.urgent ? "urgent" : ""}>
                         <div className="people-action-text">
-                          <strong>{a.label}</strong>
+                          <strong>
+                            {a.label}
+                            <WhyTip why={a.why} label={`Why: ${a.label}`} />
+                          </strong>
                           {a.detail && <span>{a.detail}</span>}
                         </div>
                         <button
@@ -822,7 +826,10 @@ export function PeopleScreen({
                 return (
                   <ul className="people-insights">
                     {rows.map((r) => (
-                      <li key={r}>{r}</li>
+                      <li key={r.text}>
+                        <span>{r.text}</span>
+                        <WhyTip why={r.why} label={`Why: ${r.text}`} />
+                      </li>
                     ))}
                   </ul>
                 );

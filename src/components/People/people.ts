@@ -167,19 +167,28 @@ export function buildDirectory(
 
 /** Observations computed from the record itself. This is the slot an LLM
  *  summary drops into once one is configured; until then it stays factual. */
-export function insightsFor(p: Person, money: (c: number) => string): string[] {
-  const out: string[] = [];
+export type Insight = { text: string; why: string };
+
+export function insightsFor(p: Person, money: (c: number) => string): Insight[] {
+  const out: Insight[] = [];
 
   if (p.unreadCount > 0) {
-    out.push(
-      `${p.unreadCount} unread message${p.unreadCount === 1 ? "" : "s"} waiting on a reply.`,
-    );
+    out.push({
+      text: `${p.unreadCount} unread message${p.unreadCount === 1 ? "" : "s"} waiting on a reply.`,
+      why: "The unread count reported by the Signal thread. It clears when the thread is opened.",
+    });
   }
   if (p.pendingCount > 0) {
-    out.push(`${p.pendingCount} message${p.pendingCount === 1 ? "" : "s"} queued to send.`);
+    out.push({
+      text: `${p.pendingCount} message${p.pendingCount === 1 ? "" : "s"} queued to send.`,
+      why: "Messages sitting in the outbox for this chat that have not been delivered yet.",
+    });
   }
   if (p.openCents > 0) {
-    out.push(`${money(p.openCents)} outstanding across unpaid orders.`);
+    out.push({
+      text: `${money(p.openCents)} outstanding across unpaid orders.`,
+      why: "Sums orders in draft, confirmed or invoiced status. Paid, fulfilled and cancelled are excluded.",
+    });
   }
 
   const settled = p.orders.filter((o) => o.status !== "cancelled");
@@ -188,12 +197,20 @@ export function insightsFor(p: Person, money: (c: number) => string): string[] {
     let gap = 0;
     for (let i = 1; i < times.length; i += 1) gap += times[i] - times[i - 1];
     const avgDays = Math.round(gap / (times.length - 1) / 86_400_000);
-    if (avgDays > 0) out.push(`Orders roughly every ${avgDays} day${avgDays === 1 ? "" : "s"}.`);
+    if (avgDays > 0) {
+      out.push({
+        text: `Orders roughly every ${avgDays} day${avgDays === 1 ? "" : "s"}.`,
+        why: `Mean gap between their ${settled.length} non-cancelled orders. Needs at least two to compute.`,
+      });
+    }
 
     const last = times[times.length - 1];
     const since = Math.round((Date.now() - last) / 86_400_000);
     if (avgDays > 0 && since > avgDays * 2) {
-      out.push(`Last ordered ${since} days ago — overdue against their usual pace.`);
+      out.push({
+        text: `Last ordered ${since} days ago — overdue against their usual pace.`,
+        why: `Flagged once the gap passes twice their average — ${since} days against a ${avgDays}-day norm.`,
+      });
     }
   }
 
@@ -202,10 +219,25 @@ export function insightsFor(p: Person, money: (c: number) => string): string[] {
     for (const l of o.lines) counts.set(l.name, (counts.get(l.name) ?? 0) + l.quantity);
   }
   const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
-  if (top) out.push(`Buys ${top[0]} most often.`);
+  if (top) {
+    out.push({
+      text: `Buys ${top[0]} most often.`,
+      why: `Highest total quantity across their order lines — ${top[1]} units. Cancelled orders are ignored.`,
+    });
+  }
 
-  if (p.autoReply) out.push("Auto-reply is armed for this chat.");
-  if (p.muted) out.push("Muted — notifications are suppressed.");
+  if (p.autoReply) {
+    out.push({
+      text: "Auto-reply is armed for this chat.",
+      why: "Auto-reply is enabled on this contact, so drafts can send without you when the account allows it.",
+    });
+  }
+  if (p.muted) {
+    out.push({
+      text: "Muted — notifications are suppressed.",
+      why: "Set on the contact record. Muting hides alerts but does not stop messages arriving.",
+    });
+  }
 
   return out;
 }
@@ -217,6 +249,7 @@ export type PersonAction = {
   cta: string;
   target: "chat" | "orders" | "outbox";
   urgent: boolean;
+  why: string;
 };
 
 const UNPAID = new Set(["confirmed", "invoiced"]);
@@ -234,6 +267,7 @@ export function actionsFor(p: Person, money: (c: number) => string): PersonActio
       cta: "Open chat",
       target: "chat",
       urgent: p.unreadCount >= 3,
+      why: `${p.unreadCount} unread with ${p.pendingCount === 0 ? "nothing" : `${p.pendingCount} message(s)`} queued back. Marked urgent at three or more unread and nothing queued.`,
     });
   }
 
@@ -246,6 +280,7 @@ export function actionsFor(p: Person, money: (c: number) => string): PersonActio
       cta: "Open orders",
       target: "orders",
       urgent: false,
+      why: "Draft orders hold no stock and never reach an invoice until they are confirmed.",
     });
   }
 
@@ -261,6 +296,7 @@ export function actionsFor(p: Person, money: (c: number) => string): PersonActio
       cta: "Open orders",
       target: "orders",
       urgent: total > 10_000,
+      why: `Orders in confirmed or invoiced status. Marked urgent above ${money(10_000)}.`,
     });
   }
 
@@ -271,6 +307,7 @@ export function actionsFor(p: Person, money: (c: number) => string): PersonActio
       cta: "Open outbox",
       target: "outbox",
       urgent: false,
+      why: "Queued or failed sends for this chat, taken from the thread's outbox count.",
     });
   }
 
@@ -289,6 +326,7 @@ export function actionsFor(p: Person, money: (c: number) => string): PersonActio
         cta: "Open chat",
         target: "chat",
         urgent: false,
+        why: `Their average gap is ${Math.round(avgDays)} days and it has been ${Math.round(sinceDays)}. Flagged past twice the average.`,
       });
     }
   }
