@@ -1497,10 +1497,15 @@ input[type="radio"] {
   flex-direction: column;
   gap: 12px;
   max-width: 640px;
+  /* Settings keeps its cap — a form stretched across 1700px is harder to read,
+     not easier — but centres in the column rather than hugging the left edge
+     with the rest of the window empty beside it. */
+  margin-inline: auto;
+  width: 100%;
 }
 
 .settings-body.wide-body {
-  max-width: 760px;
+  max-width: 880px;
 }
 
 .settings-body h3 {

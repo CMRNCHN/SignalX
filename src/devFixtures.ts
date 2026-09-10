@@ -375,7 +375,8 @@ export const fxCustomers: Customer[] = [
     id: "c_marta",
     thread_id: "+15555550142",
     display_name: "Marta Vieira — Cafe Lumen",
-    notes: "Wholesale, net-14. Prefers Tuesday delivery. Always takes the Guji.",
+    notes:
+      "Wholesale, net-14. Prefers Tuesday delivery. Always takes the Guji.",
     updated_at: mins(4),
   },
   {
@@ -729,7 +730,12 @@ export const fxSalesSummary: SalesSummary = {
     { status: "cancelled", count: 1, total_cents: 1800 },
   ],
   top_products: [
-    { product_id: "p_house", name: "House Blend", quantity: 5, revenue_cents: 19000 },
+    {
+      product_id: "p_house",
+      name: "House Blend",
+      quantity: 5,
+      revenue_cents: 19000,
+    },
     {
       product_id: "p_eth_nat",
       name: "Ethiopia Natural — Guji",
@@ -742,7 +748,12 @@ export const fxSalesSummary: SalesSummary = {
       quantity: 1,
       revenue_cents: 1650,
     },
-    { product_id: "p_decaf", name: "Decaf Swiss Water", quantity: 1, revenue_cents: 1550 },
+    {
+      product_id: "p_decaf",
+      name: "Decaf Swiss Water",
+      quantity: 1,
+      revenue_cents: 1550,
+    },
   ],
   orders: fxOrders,
 };
@@ -751,11 +762,14 @@ export const fxSalesSummary: SalesSummary = {
  *  People directory would otherwise show nothing while running on fixtures. */
 export const fxThreadPreviews: Record<string, string> = {
   "+15555550142": "also — do you ship to PO boxes?",
-  "+15555550188": "Invoice for order 4c81de09 — $16.50. Payable on pickup Saturday.",
+  "+15555550188":
+    "Invoice for order 4c81de09 — $16.50. Payable on pickup Saturday.",
   "group.aGFydmVzdA": "Pickup is 8am Saturday at the north gate.",
-  "+15555550196": "Your 4kg House Blend shipped this morning — tracking to follow.",
+  "+15555550196":
+    "Your 4kg House Blend shipped this morning — tracking to follow.",
   "+15555550173": "Contract renewal terms agreed. All documents signed.",
-  "group.d2hvbGVzYWxl": "October price sheet attached. Order cutoff is Thursday 5pm.",
+  "group.d2hvbGVzYWxl":
+    "October price sheet attached. Order cutoff is Thursday 5pm.",
   "+15555550205": "Thanks for sending over the invoice details!",
   "group.bWFya2V0": "Booth setup starts at 6:00 AM sharp on Saturday.",
 };
@@ -821,19 +835,26 @@ const bagSvg = (dark: string, mid: string, label: string, mark: string) =>
     ),
   );
 
-export const fxProductImages: Record<string, string> = {
-  // Berry-forward natural — magenta label.
-  p_eth_nat: bagSvg("#2a2028", "#3a2c37", "#8d5b7a", "#1a1016"),
-  // Everyday espresso — warm brown.
-  p_house: bagSvg("#282018", "#372c20", "#8a6a45", "#1c130a"),
-  // Red apple, caramel — clay red.
-  p_colombia: bagSvg("#2b1e1b", "#3b2a25", "#9a5b4c", "#1c100d"),
-  // Decaf reads cool so it is never confused with the others on the shelf.
-  p_decaf: bagSvg("#1b2429", "#253238", "#4e7183", "#0d161a"),
-  // Not coffee: a stack of paper cones in a carton.
-  p_filters: svgUri(
-    stage(
-      `
+/* Gated rather than merely unused. Every other fixture here is an object
+   literal, which the bundler drops on its own; these are built by calling
+   `bagSvg`, and a call it cannot prove is side-effect-free is a call it keeps —
+   which put the artwork in the release bundle even though nothing read it.
+   The condition folds to `false` at build time, so the branch goes with it. */
+export const fxProductImages: Record<string, string> = !USE_FIXTURES
+  ? {}
+  : {
+      // Berry-forward natural — magenta label.
+      p_eth_nat: bagSvg("#2a2028", "#3a2c37", "#8d5b7a", "#1a1016"),
+      // Everyday espresso — warm brown.
+      p_house: bagSvg("#282018", "#372c20", "#8a6a45", "#1c130a"),
+      // Red apple, caramel — clay red.
+      p_colombia: bagSvg("#2b1e1b", "#3b2a25", "#9a5b4c", "#1c100d"),
+      // Decaf reads cool so it is never confused with the others on the shelf.
+      p_decaf: bagSvg("#1b2429", "#253238", "#4e7183", "#0d161a"),
+      // Not coffee: a stack of paper cones in a carton.
+      p_filters: svgUri(
+        stage(
+          `
   <g>
     <path d="M96 118 h128 l-14 56 h-100 z" fill="#2d2a24"/>
     <path d="M96 118 h64 v56 h-50 z" fill="#3a362e" opacity="0.6"/>
@@ -848,7 +869,7 @@ export const fxProductImages: Record<string, string> = {
       <rect x="150" y="36" width="20" height="5" rx="2.5" fill="#6f6650"/>
     </g>
   </g>`,
-      "#a89a80",
-    ),
-  ),
-};
+          "#a89a80",
+        ),
+      ),
+    };
