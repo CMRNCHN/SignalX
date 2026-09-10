@@ -44,6 +44,7 @@ export const fxThreads: ThreadSummary[] = [
     unread_count: 3,
     message_count: 47,
     outbox_count: 0,
+    last_preview: "also — do you ship to PO boxes?",
   },
   {
     id: "+15555550188",
@@ -52,6 +53,7 @@ export const fxThreads: ThreadSummary[] = [
     unread_count: 0,
     message_count: 112,
     outbox_count: 1,
+    last_preview: "Invoice for order 4c81de09 — $16.50. Payable on pickup Saturday.",
   },
   {
     id: "group.aGFydmVzdA",
@@ -60,6 +62,7 @@ export const fxThreads: ThreadSummary[] = [
     unread_count: 12,
     message_count: 340,
     outbox_count: 0,
+    last_preview: "Pickup is 8am Saturday at the north gate.",
   },
   {
     id: "+15555550196",
@@ -68,6 +71,7 @@ export const fxThreads: ThreadSummary[] = [
     unread_count: 0,
     message_count: 23,
     outbox_count: 0,
+    last_preview: "Your 4kg House Blend shipped this morning — tracking to follow.",
   },
   {
     id: "+15555550173",
@@ -76,6 +80,7 @@ export const fxThreads: ThreadSummary[] = [
     unread_count: 0,
     message_count: 8,
     outbox_count: 0,
+    last_preview: "Contract renewal terms agreed. All documents signed.",
   },
   {
     id: "group.d2hvbGVzYWxl",
@@ -84,6 +89,7 @@ export const fxThreads: ThreadSummary[] = [
     unread_count: 0,
     message_count: 61,
     outbox_count: 0,
+    last_preview: "October price sheet attached. Order cutoff is Thursday 5pm.",
   },
   {
     id: "+15555550205",
@@ -92,6 +98,7 @@ export const fxThreads: ThreadSummary[] = [
     unread_count: 0,
     message_count: 15,
     outbox_count: 0,
+    last_preview: "Thanks for sending over the invoice details!",
   },
 ];
 
@@ -146,6 +153,64 @@ export const fxMessages: Message[] = [
     timestamp: mins(4),
     sender: "+15555550142",
     content: "also — do you ship to PO boxes?",
+    direction: "Incoming",
+  },
+  {
+    id: "m_dev_1",
+    thread_id: "+15555550188",
+    timestamp: mins(38),
+    sender: "self",
+    recipient: "+15555550188",
+    content: "That's $16.50 — I'll queue the invoice now.",
+    direction: "Outgoing",
+  },
+  {
+    id: "m_harv_1",
+    thread_id: "group.aGFydmVzdA",
+    timestamp: hours(2),
+    sender: "+15555550142",
+    content: "Pickup is 8am Saturday at the north gate.",
+    direction: "Incoming",
+  },
+  {
+    id: "m_priya_1",
+    thread_id: "+15555550196",
+    timestamp: hours(6),
+    sender: "self",
+    recipient: "+15555550196",
+    content: "Your 4kg House Blend shipped this morning — tracking to follow.",
+    direction: "Outgoing",
+  },
+  {
+    id: "m_ana_1",
+    thread_id: "+15555550173",
+    timestamp: days(1),
+    sender: "+15555550173",
+    content: "Contract renewal terms agreed. All documents signed.",
+    direction: "Incoming",
+  },
+  {
+    id: "m_ws_1",
+    thread_id: "group.d2hvbGVzYWxl",
+    timestamp: days(2),
+    sender: "+15555550173",
+    content: "October price sheet attached. Order cutoff is Thursday 5pm.",
+    direction: "Incoming",
+  },
+  {
+    id: "m_sat_1",
+    thread_id: "+15555550205",
+    timestamp: days(4),
+    sender: "+15555550205",
+    content: "Thanks for sending over the invoice details!",
+    direction: "Incoming",
+  },
+  {
+    id: "m_mkt_1",
+    thread_id: "group.bWFya2V0",
+    timestamp: days(3),
+    sender: "+15555550188",
+    content: "Booth setup starts at 6:00 AM sharp on Saturday.",
     direction: "Incoming",
   },
 ];
@@ -720,7 +785,7 @@ export const fxSalesSummary: SalesSummary = {
   order_count: 6,
   // Must equal the sum of `by_status` (and of `fxOrders`), or the dashboard
   // shows a revenue headline its own breakdown contradicts.
-  revenue_cents: 38800,
+  revenue_cents: 35450,
   by_status: [
     { status: "draft", count: 1, total_cents: 1550 },
     { status: "confirmed", count: 1, total_cents: 7500 },
@@ -747,12 +812,6 @@ export const fxSalesSummary: SalesSummary = {
       name: "Colombia Washed — Huila",
       quantity: 1,
       revenue_cents: 1650,
-    },
-    {
-      product_id: "p_decaf",
-      name: "Decaf Swiss Water",
-      quantity: 1,
-      revenue_cents: 1550,
     },
   ],
   orders: fxOrders,

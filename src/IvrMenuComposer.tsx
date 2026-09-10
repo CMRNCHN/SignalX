@@ -42,7 +42,7 @@ function captureBadge(slot: string): string {
   return "asks a question";
 }
 
-function emptyMenus(): IvrMenus {
+export function emptyMenus(): IvrMenus {
   return {
     version: 4,
     entry: "main",
@@ -171,6 +171,27 @@ function menusToScript(menus: IvrMenus): string {
   return lines.join("\n").trim() + "\n";
 }
 
+function walkDraft(menus: IvrMenus, inputs: string[]): { nodeId: string; reply: string } {
+  let nodeId = menus.entry;
+  let reply = menus.nodes[nodeId]?.prompt ?? "";
+  for (const input of inputs) {
+    const node = menus.nodes[nodeId];
+    if (!node) break;
+    const choice = node.choices?.[input];
+    if (!choice) {
+      reply = node.on_unknown || "Reply with a number from the menu.";
+      continue;
+    }
+    if (choice.goto && menus.nodes[choice.goto]) {
+      nodeId = choice.goto;
+      reply = choice.reply || menus.nodes[nodeId]?.prompt || "";
+    } else {
+      reply = choice.reply || node.prompt || reply;
+    }
+  }
+  return { nodeId, reply };
+}
+
 export interface IvrMenuComposerProps {
   menus: IvrMenus | null;
   busy?: boolean;
@@ -217,10 +238,13 @@ export function IvrMenuComposer({
   const choiceRows = choicesToRows(selected);
   const script = useMemo(() => menusToScript(working), [working]);
   const ttlMinutes = Math.round(working.session_ttl_ms / 60_000);
+  const draftWalk = useMemo(() => walkDraft(working, simPath), [working, simPath]);
   const livePreview =
     previewSteps.length > 0
       ? previewSteps[previewSteps.length - 1]
-      : null;
+      : simPath.length
+        ? { reply: draftWalk.reply }
+        : null;
 
   const patchMenus = (fn: (m: IvrMenus) => void) => {
     const next = cloneMenus(working);
@@ -345,14 +369,11 @@ export function IvrMenuComposer({
   };
 
   const pressSimDigit = (d: string) => {
-    const next = [...simPath, d];
-    setSimPath(next);
-    onPreview(next);
+    setSimPath((path) => [...path, d]);
   };
 
   const clearSim = () => {
     setSimPath([]);
-    onPreview([]);
   };
 
   const renderChoiceEditor = (nodeId: string, rows: ChoiceRow[]) => (
@@ -765,7 +786,7 @@ export function IvrMenuComposer({
                 </button>
               </div>
               <p className="hint tight ivr-phone-hint">
-                Test uses the <strong>last saved</strong> menu.
+                Keypad walks this draft. “Run again” uses the last saved menu.
               </p>
             </div>
 

@@ -1,5 +1,5 @@
 import type { ContactMeta, Customer, GroupMeta, Order, ThreadSummary } from "../../api";
-import { formatPhone } from "../../format";
+import { formatPhone, isGroupThread, stripThreadPrefix } from "../../format";
 
 export type PersonType = "Consumer" | "Supplier" | "Team";
 export type PersonStatus =
@@ -37,14 +37,14 @@ const OPEN_STATUSES = new Set(["draft", "confirmed", "invoiced"]);
 
 /** Thread ids are the bare contact id for DMs and may be prefixed for groups. */
 function threadFor(threads: ThreadSummary[], id: string): ThreadSummary | undefined {
-  const bare = id.replace(/^(dm:|group:)/, "");
-  return threads.find((t) => t.id === id || t.id.replace(/^(dm:|group:)/, "") === bare);
+  const bare = stripThreadPrefix(id);
+  return threads.find((t) => t.id === id || stripThreadPrefix(t.id) === bare);
 }
 
 function ordersFor(orders: Order[], id: string): Order[] {
-  const bare = id.replace(/^(dm:|group:)/, "");
+  const bare = stripThreadPrefix(id);
   return orders
-    .filter((o) => o.thread_id === id || o.thread_id.replace(/^(dm:|group:)/, "") === bare)
+    .filter((o) => o.thread_id === id || stripThreadPrefix(o.thread_id) === bare)
     .sort((a, b) => b.created_at - a.created_at);
 }
 
@@ -79,7 +79,7 @@ export function buildDirectory(
     const thread = threadFor(threads, c.contact_id);
     const mine = ordersFor(orders, c.contact_id);
     const customer = customers.find(
-      (x) => x.thread_id.replace(/^(dm:|group:)/, "") === c.contact_id.replace(/^(dm:|group:)/, ""),
+      (x) => stripThreadPrefix(x.thread_id) === stripThreadPrefix(c.contact_id),
     );
     const cats = c.categories || [];
     const type: PersonType = cats.includes("supplier") ? "Supplier" : "Consumer";
@@ -133,7 +133,7 @@ export function buildDirectory(
       key: g.group_id,
       threadId: thread?.id ?? g.group_id,
       kind: "group",
-      name: (g.display_name || "").trim() || g.group_id,
+      name: (g.display_name || "").trim() || "Unnamed group",
       subtitle: members ? `${members} member${members === 1 ? "" : "s"}` : "Group",
       type: "Team",
       statuses: statusesFor({ unreadCount, pendingCount, autoReply }),
@@ -157,8 +157,46 @@ export function buildDirectory(
       favorite: !!g.favorite,
       muted: !!g.muted,
       autoReply,
-      notes: "",
+      notes: (g.notes || "").trim(),
       customerId: null,
+    });
+  }
+
+  const seen = new Set(people.map((p) => stripThreadPrefix(p.threadId)));
+  for (const c of customers) {
+    const bare = stripThreadPrefix(c.thread_id);
+    if (!bare || seen.has(bare) || isGroupThread(c.thread_id)) continue;
+    seen.add(bare);
+    const thread = threadFor(threads, c.thread_id);
+    const mine = ordersFor(orders, c.thread_id);
+    const unreadCount = thread?.unread_count ?? 0;
+    const pendingCount = thread?.outbox_count ?? 0;
+    people.push({
+      key: c.thread_id,
+      threadId: thread?.id ?? c.thread_id,
+      kind: "contact",
+      name: (c.display_name || "").trim() || formatPhone(c.thread_id),
+      subtitle: formatPhone(c.thread_id),
+      type: "Consumer",
+      statuses: statusesFor({ unreadCount, pendingCount, autoReply: false }),
+      unreadCount,
+      pendingCount,
+      messageCount: thread?.message_count ?? 0,
+      lastActivity: thread?.last_message_timestamp ?? c.updated_at ?? null,
+      tags: [],
+      orders: mine,
+      orderCount: mine.length,
+      lifetimeCents: mine
+        .filter((o) => o.status !== "cancelled")
+        .reduce((n, o) => n + o.total_cents, 0),
+      openCents: mine
+        .filter((o) => OPEN_STATUSES.has(o.status))
+        .reduce((n, o) => n + o.total_cents, 0),
+      favorite: false,
+      muted: false,
+      autoReply: false,
+      notes: c.notes ?? "",
+      customerId: c.id,
     });
   }
 

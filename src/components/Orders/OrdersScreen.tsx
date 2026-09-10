@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ContactMeta, Customer, GroupMeta, Order, Product } from "../../api";
 import type { Panel } from "../../App";
+import { isGroupThread } from "../../format";
 import { IconBag, IconPlus, IconX } from "../../navIcons";
 import { WhyTip } from "../WhyTip";
 
@@ -35,7 +36,9 @@ type OrdersScreenProps = {
   confirmDraftOrder: (id: string) => Promise<void>;
   editDraftFirstLineQty: (o: Order) => Promise<void>;
   setOrderLifecycle: (id: string, status: string) => Promise<void>;
-  duplicateAsDraft: (id: string) => Promise<void>;
+  duplicateAsDraft: (id: string) => Promise<unknown>;
+  focusOrderId?: string | null;
+  onConsumedFocus?: () => void;
   orderParty: (o: Order) => string;
   threadTitle: (
     id: string,
@@ -80,6 +83,8 @@ export function OrdersScreen(props: OrdersScreenProps) {
     editDraftFirstLineQty,
     setOrderLifecycle,
     duplicateAsDraft,
+    focusOrderId,
+    onConsumedFocus,
     orderParty,
     threadTitle,
     contacts,
@@ -97,6 +102,7 @@ export function OrdersScreen(props: OrdersScreenProps) {
 
   const [openId, setOpenId] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
+  const didAutoOpen = useRef(false);
 
   // The list re-sorts and re-filters constantly, so hold the id and look the
   // order up rather than holding a snapshot that goes stale after an action.
@@ -115,7 +121,27 @@ export function OrdersScreen(props: OrdersScreenProps) {
     return { openCents, paidCents, drafts, count: orders.length };
   }, [orders]);
 
-  const canOrder = !!selectedId && !selectedId.startsWith("group:") && products.length > 0;
+  const canOrder = !!selectedId && !isGroupThread(selectedId) && products.length > 0;
+
+  useEffect(() => {
+    if (focusOrderId) {
+      setOpenId(focusOrderId);
+      setComposing(false);
+      onConsumedFocus?.();
+      return;
+    }
+    if (composing) return;
+    if (openId) {
+      if (!filteredOrders.some((o) => o.id === openId)) {
+        setOpenId(filteredOrders[0]?.id ?? null);
+      }
+      return;
+    }
+    if (!didAutoOpen.current && filteredOrders[0]) {
+      didAutoOpen.current = true;
+      setOpenId(filteredOrders[0].id);
+    }
+  }, [filteredOrders, composing, openId, focusOrderId, onConsumedFocus]);
   const activeProduct = products.find((p) => p.id === orderProductId);
 
   const lineQty = (l: Order["lines"][number]) => {
@@ -166,13 +192,20 @@ export function OrdersScreen(props: OrdersScreenProps) {
               <input
                 type="checkbox"
                 checked={orderFilter.thisThread}
+                disabled={!selectedId}
                 onChange={(e) => setOrderFilter((f) => ({ ...f, thisThread: e.target.checked }))}
               />
               This chat
             </label>
           </div>
 
-          <button type="button" className="orders-new-btn" onClick={startCompose}>
+          <button
+            type="button"
+            className="orders-new-btn"
+            onClick={startCompose}
+            disabled={!canOrder}
+            title={canOrder ? "New order" : "Select a DM thread with catalog products first"}
+          >
             <IconPlus />
             New order
           </button>
@@ -263,7 +296,13 @@ export function OrdersScreen(props: OrdersScreenProps) {
               confirmDraftOrder={confirmDraftOrder}
               editDraftFirstLineQty={editDraftFirstLineQty}
               setOrderLifecycle={setOrderLifecycle}
-              duplicateAsDraft={duplicateAsDraft}
+              duplicateAsDraft={async (id) => {
+                const created = await duplicateAsDraft(id);
+                if (created && typeof created === "object" && created && "id" in created) {
+                  setOpenId((created as { id: string }).id);
+                  setComposing(false);
+                }
+              }}
               openChat={() => {
                 setSelectedId(open.thread_id);
                 setPanel("threads");
@@ -305,7 +344,12 @@ export function OrdersScreen(props: OrdersScreenProps) {
                     ? "Choose one on the left to see its lines, where it is in the lifecycle, and what to do next."
                     : "Place an order against a DM thread and it will appear here."}
                 </p>
-                <button type="button" className="action-btn primary" onClick={startCompose}>
+                <button
+                  type="button"
+                  className="action-btn primary"
+                  onClick={startCompose}
+                  disabled={!canOrder}
+                >
                   New order
                 </button>
               </div>
@@ -365,7 +409,7 @@ function OrderDetail({
   const status = order.status.toLowerCase();
   const cancelled = status === "cancelled" || status === "canceled";
   const at = trackIndex(status);
-  const isGroup = order.thread_id.startsWith("group.") || order.thread_id.startsWith("group:");
+  const isGroup = isGroupThread(order.thread_id);
 
   // Counted across this order and its siblings, so the figures describe the
   // relationship rather than the one order that happens to be open.
@@ -538,7 +582,7 @@ function OrderDetail({
 
         <aside className="order-detail-side">
           <section className="order-side-block">
-            <h3 className="form-card-title">Customer</h3>
+            <h3 className="form-card-title">Person</h3>
             <dl className="order-side-stats">
               <div>
                 <dt>Orders</dt>
@@ -671,7 +715,7 @@ function OrderComposer({
 
       <div className="order-compose-body">
         <div className="order-target">
-          {selectedId && !selectedId.startsWith("group:") ? (
+          {selectedId && !isGroupThread(selectedId) ? (
             <>
               Ordering for <strong>{threadTitle(selectedId, contacts, groups, customers)}</strong>
               <span className="convo-sub inline">{formatPhone(selectedId)}</span>

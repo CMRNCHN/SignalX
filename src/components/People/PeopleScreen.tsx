@@ -66,6 +66,30 @@ function statusSlug(s: PersonStatus): string {
   return s.toLowerCase().replace(/\s+/g, "-");
 }
 
+function orderTone(status: string): "ok" | "warn" | "danger" | "muted" {
+  const s = status.toLowerCase();
+  if (s === "paid" || s === "fulfilled" || s === "completed") return "ok";
+  if (s === "cancelled" || s === "canceled" || s === "failed") return "danger";
+  if (s === "invoiced" || s === "sent" || s === "pending" || s === "confirmed") return "warn";
+  return "muted";
+}
+
+function standingPreview(
+  p: Person,
+  money: (cents: number) => string,
+  snippet: string | null | undefined,
+): string {
+  if (p.unreadCount > 0 && snippet) return snippet.slice(0, 140);
+  const bits: string[] = [];
+  if (p.openCents > 0) bits.push(`${money(p.openCents)} open`);
+  if (p.orderCount > 0) bits.push(`${p.orderCount} order${p.orderCount === 1 ? "" : "s"}`);
+  if (p.pendingCount > 0) bits.push(`${p.pendingCount} queued`);
+  if (bits.length) return bits.join(" · ");
+  if (snippet) return snippet.slice(0, 140);
+  if (snippet === null) return "No messages yet";
+  return "…";
+}
+
 type Props = {
   contacts: ContactMeta[];
   groups: GroupMeta[];
@@ -163,7 +187,7 @@ export function PeopleScreen({
       if (activeStatuses.length && !activeStatuses.some((s) => p.statuses.includes(s))) return false;
       if (activeTags.length && !activeTags.some((t) => p.tags.includes(t))) return false;
       if (!needle) return true;
-      const hay = `${p.name} ${p.subtitle} ${p.tags.join(" ")} ${p.notes}`.toLowerCase();
+      const hay = `${p.name} ${p.subtitle} ${p.tags.join(" ")} ${p.notes} ${p.key} ${p.threadId}`.toLowerCase();
       return hay.includes(needle);
     });
     return rows.sort((a, b) =>
@@ -228,7 +252,7 @@ export function PeopleScreen({
     const res =
       p.kind === "contact"
         ? await api.setContactMeta(p.key, patch)
-        : await api.setGroupMeta(p.key, {});
+        : await api.setGroupMeta(p.key, patch);
     if (!res.success) {
       setStatus(res.error);
       return;
@@ -238,13 +262,16 @@ export function PeopleScreen({
 
   const saveNotes = async (p: Person) => {
     if (notesDraft === null) return;
-    const res = await api.upsertCustomer({
-      id: p.customerId ?? "",
-      thread_id: p.threadId,
-      display_name: p.name,
-      notes: notesDraft,
-      updated_at: Date.now(),
-    });
+    const res =
+      p.kind === "group"
+        ? await api.setGroupMeta(p.key, { notes: notesDraft })
+        : await api.upsertCustomer({
+            id: p.customerId ?? "",
+            thread_id: p.threadId,
+            display_name: p.name,
+            notes: notesDraft,
+            updated_at: Date.now(),
+          });
     if (!res.success) {
       setStatus(res.error);
       return;
@@ -286,7 +313,7 @@ export function PeopleScreen({
 
   const exportCsv = () => {
     const head = "name,subtitle,type,orders,lifetime_cents,open_cents,tags\n";
-    const body = visible
+    const body = directory
       .map((p) =>
         [
           JSON.stringify(p.name),
@@ -307,7 +334,7 @@ export function PeopleScreen({
     a.click();
     URL.revokeObjectURL(url);
     setMenu(null);
-    setStatus(`Exported ${visible.length} directory rows`);
+    setStatus(`Exported ${directory.length} directory rows`);
   };
 
   return (
@@ -340,6 +367,7 @@ export function PeopleScreen({
                 onClick={() => setMenu(menu === "add" ? null : "add")}
               >
                 <IconPlus />
+                <span className="tool-label">Add</span>
                 <IconChevronDown className="caret" />
               </button>
               {menu === "add" && (
@@ -363,6 +391,7 @@ export function PeopleScreen({
                 onClick={() => setMenu(menu === "filter" ? null : "filter")}
               >
                 <IconFilter />
+                <span className="tool-label">Type</span>
                 <IconChevronDown className="caret" />
                 {activeTypes.length > 0 && <span className="tool-dot" />}
               </button>
@@ -393,6 +422,7 @@ export function PeopleScreen({
                 onClick={() => setMenu(menu === "status" ? null : "status")}
               >
                 <IconCheckCheck />
+                <span className="tool-label">Status</span>
                 <IconChevronDown className="caret" />
                 {activeStatuses.length > 0 && <span className="tool-dot" />}
               </button>
@@ -423,6 +453,7 @@ export function PeopleScreen({
                 onClick={() => setMenu(menu === "tags" ? null : "tags")}
               >
                 <IconTag />
+                <span className="tool-label">Tags</span>
                 <IconChevronDown className="caret" />
                 {activeTags.length > 0 && <span className="tool-dot" />}
               </button>
@@ -454,6 +485,20 @@ export function PeopleScreen({
             >
               <IconSort />
             </button>
+            {(q || activeTypes.length || activeStatuses.length || activeTags.length) && (
+              <button
+                type="button"
+                className="tool-btn"
+                onClick={() => {
+                  setQ("");
+                  setActiveTypes([]);
+                  setActiveStatuses([]);
+                  setActiveTags([]);
+                }}
+              >
+                Clear filters
+              </button>
+            )}
 
             <div className="menu-anchor">
               <button
@@ -580,13 +625,7 @@ export function PeopleScreen({
                 </div>
 
                 <div className="person-preview">
-                  <span>
-                    {preview
-                      ? preview.slice(0, 140)
-                      : preview === null
-                        ? "No messages yet"
-                        : "…"}
-                  </span>
+                  <span>{standingPreview(p, money, preview)}</span>
                   {p.lastActivity && <em>{fmtTime(p.lastActivity)}</em>}
                 </div>
 
@@ -649,6 +688,25 @@ export function PeopleScreen({
                   <span className="person-type">{selected.type}</span>
                 </div>
                 <div className="person-sub">{selected.subtitle}</div>
+                {selected.name === selected.subtitle && selected.kind === "contact" && (
+                  <label className="field-stack">
+                    <span className="field-label">Name</span>
+                    <input
+                      defaultValue=""
+                      placeholder="Add a display name"
+                      onBlur={(e) => {
+                        const name = e.target.value.trim();
+                        if (!name) return;
+                        void api
+                          .setContactMeta(selected.key, { display_name: name })
+                          .then((res) => {
+                            if (!res.success) setStatus(res.error);
+                            else onRefresh();
+                          });
+                      }}
+                    />
+                  </label>
+                )}
               </div>
               <div className="people-detail-actions">
                 <button
@@ -712,6 +770,13 @@ export function PeopleScreen({
               </p>
             )}
 
+            {selected.name === selected.subtitle && selected.kind === "contact" && (
+              <p className="people-unnamed-note">
+                Unnamed — this is just a number until you add a name from Add, or notes below.
+              </p>
+            )}
+
+            {!(selected.orderCount === 0 && selected.messageCount === 0 && selected.lifetimeCents === 0) && (
 <dl className="people-stats">
               <div>
                 <dt>Orders</dt>
@@ -730,6 +795,7 @@ export function PeopleScreen({
                 <dd>{selected.messageCount}</dd>
               </div>
             </dl>
+            )}
 
             <div className="people-detail-cols">
               <div className="people-col-main">
@@ -871,7 +937,7 @@ export function PeopleScreen({
                     <li key={o.id}>
                       <div className="people-order-top">
                         <span className="order-id">{o.id.slice(0, 12)}</span>
-                        <span className={`status-pill status-${o.status === "cancelled" ? "muted" : "ok"}`}>
+                        <span className={`status-pill status-${orderTone(o.status)}`}>
                           {o.status}
                         </span>
                       </div>

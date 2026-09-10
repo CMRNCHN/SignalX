@@ -2,6 +2,18 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { canInvoke } from "./runtime";
+
+export const DESKTOP_UNAVAILABLE = "Desktop commands need the SignalX app.";
+
+export function isDesktopUnavailable(error?: string | null): boolean {
+  if (!error) return false;
+  return (
+    error === DESKTOP_UNAVAILABLE ||
+    /reading ['"]invoke['"]/i.test(error) ||
+    /invoke is not a function/i.test(error)
+  );
+}
 
 export type ApiResult<T> =
   | { success: true; data: T }
@@ -25,6 +37,8 @@ export interface ThreadSummary {
   unread_count: number;
   message_count: number;
   outbox_count: number;
+  /** Snippet of the latest message; empty when the thread has none. */
+  last_preview?: string;
 }
 
 export interface OutboxItem {
@@ -138,6 +152,7 @@ export interface GroupMeta {
   favorite: boolean;
   muted: boolean;
   auto_reply_enabled?: boolean;
+  notes?: string | null;
   updated_at: number;
 }
 
@@ -346,12 +361,19 @@ export interface Order {
   updated_at: number;
 }
 
+function humanizeIpcError(e: unknown): string {
+  const s = e instanceof Error ? e.message : String(e);
+  if (isDesktopUnavailable(s)) return DESKTOP_UNAVAILABLE;
+  return s;
+}
+
 async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<ApiResult<T>> {
+  if (!canInvoke()) return { success: false, error: DESKTOP_UNAVAILABLE };
   try {
     const raw = await invoke<ApiResult<T>>(cmd, args);
     return raw;
   } catch (e) {
-    return { success: false, error: String(e) };
+    return { success: false, error: humanizeIpcError(e) };
   }
 }
 
@@ -415,8 +437,15 @@ export const api = {
   deleteContactMeta: (contactId: string) =>
     call<boolean>("cmd_delete_contact_meta", { contactId }),
   listGroupMeta: () => call<GroupMeta[]>("cmd_list_group_meta"),
-  setGroupMeta: (groupId: string, patch: { display_name?: string | null }) =>
-    call<GroupMeta>("cmd_set_group_meta", { groupId, patch }),
+  setGroupMeta: (
+    groupId: string,
+    patch: {
+      display_name?: string | null;
+      favorite?: boolean;
+      muted?: boolean;
+      notes?: string | null;
+    },
+  ) => call<GroupMeta>("cmd_set_group_meta", { groupId, patch }),
   createSignalGroup: (name: string, members: string[]) =>
     call<{
       thread_id: string;
@@ -605,6 +634,7 @@ export async function onEvent<T>(
   event: string,
   handler: (payload: T) => void,
 ): Promise<UnlistenFn> {
+  if (!canInvoke()) return () => {};
   return listen<T>(event, (e) => handler(e.payload));
 }
 

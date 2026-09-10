@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   api,
   errMsg,
+  isDesktopUnavailable,
   onEvent,
   unwrap,
   type AiStatus,
@@ -47,14 +48,14 @@ import {
   fxThreads,
 } from "./devFixtures";
 import { DeviceLinkQr } from "./DeviceLinkQr";
-import { IvrMenuComposer } from "./IvrMenuComposer";
+import { emptyMenus, IvrMenuComposer } from "./IvrMenuComposer";
 import { ProfileRail } from "./ProfileRail";
 import { PeopleScreen } from "./components/People/PeopleScreen";
 import { OrdersScreen } from "./components/Orders/OrdersScreen";
 import { SalesScreen } from "./components/Sales/SalesScreen";
 import { PanelResizer } from "./components/PanelResizer";
-import { formatPhone } from "./format";
-import { isTauriRuntime } from "./runtime";
+import { formatPhone, formatQty, isGroupThread, stockQtyFromMilli, threadTitle } from "./format";
+import { canInvoke, isTauriRuntime } from "./runtime";
 import { usePanelWidths, type PanelLayout } from "./usePanelWidths";
 import {
   IconAudit,
@@ -91,6 +92,7 @@ type SettingsTab = "account" | "ivr" | "auto" | "backup";
 
 type SellPackRow = {
   key: string;
+  id?: string;
   label: string;
   amount: string;
   unit: string;
@@ -200,31 +202,6 @@ function fmtTime(ts: number): string {
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-function threadTitle(
-  id: string,
-  contacts: ContactMeta[],
-  groups: GroupMeta[],
-  customers: Customer[] = [],
-): string {
-  if (id.startsWith("group:")) {
-    const g = groups.find((x) => x.group_id === id || x.group_id === id.replace(/^group:/, ""));
-    return g?.display_name || id.replace(/^group:/, "Group ");
-  }
-  const raw = id.replace(/^dm:/, "");
-  const cust = customers.find((c) => c.thread_id === id || c.thread_id === raw);
-  if (cust?.display_name?.trim()) return cust.display_name.trim();
-  const c = contacts.find(
-    (x) =>
-      x.contact_id === id ||
-      x.contact_id === raw ||
-      x.contact_id === `dm:${raw}` ||
-      x.contact_id.replace(/^dm:/, "") === raw,
-  );
-  const named = (c?.display_name || c?.alias || "").trim();
-  if (named) return named;
-  return formatPhone(raw || id);
-}
-
 function isEnvelopeNoiseContent(content: string): boolean {
   const t = content.trim();
   if (!t.startsWith("{")) return false;
@@ -262,22 +239,13 @@ function productStockLabel(p: Product): string {
   const milli = p.quantity_base_milli || 0;
   const base = productBaseUnit(p);
   const stockU = (p.stock_unit || "").trim().toLowerCase() || base;
-  // Approximate display: prefer legacy whole units when milli unset
   if (!milli && p.quantity_in_stock != null) {
     return stockU === "ea"
       ? `${p.quantity_in_stock} left`
       : `${p.quantity_in_stock} ${stockU} left`;
   }
-  const baseAmt = milli / 1000;
-  // lightweight client display — server formats precisely in IVR
-  if (stockU === base) {
-    const shown =
-      Math.abs(baseAmt - Math.round(baseAmt)) < 0.001
-        ? String(Math.round(baseAmt))
-        : baseAmt.toFixed(2);
-    return `${shown} ${stockU} left`;
-  }
-  return `${baseAmt.toFixed(2)} ${base} left`;
+  const shown = formatQty(stockQtyFromMilli(milli, stockU, base));
+  return stockU === "ea" ? `${shown} left` : `${shown} ${stockU} left`;
 }
 
 function isLowStock(p: Product): boolean {
@@ -366,7 +334,11 @@ export default function App() {
   const [attachFile, setAttachFile] = useState<File | null>(null);
   const [attachPreview, setAttachPreview] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatusState] = useState<string | null>(null);
+  const setStatus = (msg: string | null) => {
+    if (msg && isDesktopUnavailable(msg)) return;
+    setStatusState(msg);
+  };
   const [searchQ, setSearchQ] = useState("");
   const [searchHitsReal, setSearchHits] = useState<SearchResult[]>([]);
   const [contactsReal, setContacts] = useState<ContactMeta[]>([]);
@@ -383,6 +355,7 @@ export default function App() {
   const [threadIvr, setThreadIvr] = useState<ThreadIvrStatus | null>(null);
   const [productsReal, setProducts] = useState<Product[]>([]);
   const [customersReal, setCustomers] = useState<Customer[]>([]);
+  const [catalogFormOpen, setCatalogFormOpen] = useState(false);
   const [productForm, setProductForm] = useState({
     id: "",
     name: "",
@@ -418,17 +391,39 @@ export default function App() {
   const [salesRange, setSalesRange] = useState<"7" | "30" | "all">("30");
   const [salesStatus, setSalesStatus] = useState("all");
   const [peopleKey, setPeopleKey] = useState<string | null>(null);
+  const [focusOrderId, setFocusOrderId] = useState<string | null>(null);
+  const [newDmError, setNewDmError] = useState<string | null>(null);
   const [newDmOpen, setNewDmOpen] = useState(false);
   const [productImagesReal, setProductImages] = useState<Record<string, string>>({});
 
   // Dev-only design data. Real state always wins; fixtures fill in only while a
   // list is genuinely empty, and USE_FIXTURES is false in any release build.
   const threads = USE_FIXTURES && !threadsReal.length ? fxThreads : threadsReal;
-  const messages = USE_FIXTURES && !messagesReal.length ? fxMessages : messagesReal;
+  const messages = (() => {
+    const live = selectedId
+      ? messagesReal.filter(
+          (m) =>
+            m.thread_id === selectedId ||
+            m.thread_id.replace(/^dm:/, "") === selectedId.replace(/^dm:/, ""),
+        )
+      : messagesReal;
+    if (live.length) return live;
+    if (USE_FIXTURES && selectedId) {
+      return fxMessages.filter((m) => m.thread_id === selectedId);
+    }
+    return [];
+  })();
   const globalOutbox =
     USE_FIXTURES && !globalOutboxReal.length ? fxOutbox : globalOutboxReal;
-  const searchHits =
-    USE_FIXTURES && !searchHitsReal.length ? fxSearchHits : searchHitsReal;
+  const searchHits = searchHitsReal.length
+    ? searchHitsReal
+    : USE_FIXTURES
+      ? fxSearchHits.filter((h) => {
+          const q = searchQ.trim().toLowerCase();
+          if (!q) return false;
+          return `${h.snippet} ${h.thread_id} ${h.sender}`.toLowerCase().includes(q);
+        })
+      : [];
   const contacts = USE_FIXTURES && !contactsReal.length ? fxContacts : contactsReal;
   const groups = USE_FIXTURES && !groupsReal.length ? fxGroups : groupsReal;
   const products = USE_FIXTURES && !productsReal.length ? fxProducts : productsReal;
@@ -501,7 +496,13 @@ export default function App() {
       if (c.success) setContacts(c.data);
     }
     if (box.success) setOutbox(box.data.filter((i) => i.state !== "sent"));
-    await api.markThreadRead(threadId);
+    const marked = await api.markThreadRead(threadId);
+    if (marked.success) {
+      setThreads((prev) =>
+        prev.map((t) => (t.id === threadId ? { ...t, unread_count: 0 } : t)),
+      );
+      void refreshThreads();
+    }
   };
 
   const refreshMeta = async () => {
@@ -561,8 +562,6 @@ export default function App() {
     else setAccountNumber(d?.number ?? null);
     if (sess.success && sess.data.locked) {
       setStatus("Unlock an account to send and receive");
-    } else if (!d?.number) {
-      setStatus("Not configured — set SIGNALX_NUMBER and SIGNALX_SIGNALCLI_CONFIG in .signalx.env");
     }
     setHealth(unwrap(recv, null as unknown as ReceiveLoopState));
     setAi(unwrap(aiStatus, null as unknown as AiStatus));
@@ -575,6 +574,24 @@ export default function App() {
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
+    if (!canInvoke()) {
+      setAutoSettings({
+        enabled: false,
+        allowlist: [],
+        quiet_hours_start: null,
+        quiet_hours_end: null,
+        max_per_thread_per_hour: 4,
+        max_per_window: 20,
+        window_secs: 3600,
+      });
+      setIvrSettings({
+        enabled: false,
+        allowlist: [],
+        require_allowlist: false,
+        hide_zero_stock: false,
+      });
+      return;
+    }
     void bootstrap();
     const unsubs: Array<() => void> = [];
     void (async () => {
@@ -799,7 +816,7 @@ export default function App() {
 
   const toggleThreadAuto = async (enabled: boolean) => {
     if (!selectedId) return;
-    if (selectedId.startsWith("group:") && enabled) {
+    if (isGroupThread(selectedId) && enabled) {
       const ok = window.confirm(
         "Enable auto-reply for this group? Groups are off by default.",
       );
@@ -843,7 +860,7 @@ export default function App() {
   };
 
   const addToAllowlist = async (kind: "ivr" | "auto", threadId: string | null) => {
-    if (!threadId || threadId.startsWith("group:")) {
+    if (!threadId || isGroupThread(threadId)) {
       setStatus("Select a DM thread first");
       return;
     }
@@ -922,7 +939,7 @@ export default function App() {
 
   const toggleThreadIvr = async (enabled: boolean) => {
     if (!selectedId) return;
-    if (selectedId.startsWith("group:")) {
+    if (isGroupThread(selectedId)) {
       setStatus("Buyer menus only work in 1:1 chats, not groups");
       return;
     }
@@ -971,6 +988,7 @@ export default function App() {
     setProductImageFile(null);
     setProductImagePreview(null);
     setClearProductImageFlag(false);
+    setCatalogFormOpen(false);
   };
 
   const applyProductImageFile = (file: File | null) => {
@@ -982,12 +1000,13 @@ export default function App() {
     }
   };
 
-  const packsFromProduct = (p: Product): SellPackRow[] =>
+    const packsFromProduct = (p: Product): SellPackRow[] =>
     (p.sell_options || []).map((o) => ({
       key: o.id || newPackRow().key,
+      id: o.id,
       label: o.label,
       amount: String(o.amount),
-      unit: o.unit || "oz",
+      unit: o.unit || p.base_unit || "ea",
       price:
         o.price_cents != null && o.price_cents !== undefined
           ? (o.price_cents / 100).toFixed(2)
@@ -1013,10 +1032,10 @@ export default function App() {
         price_cents = Math.round(dollars * 100);
       }
       out.push({
-        id: "",
+        id: row.id || "",
         label,
         amount,
-        unit: row.unit || "oz",
+        unit: row.unit || productForm.baseUnit || "ea",
         price_cents,
       });
     }
@@ -1090,8 +1109,14 @@ export default function App() {
     // backend already converted quantity_in_stock through stock_unit when milli was 0.
     if (clearProductImageFlag && product.id) {
       const cleared = await api.clearProductImage(product.id);
-      if (cleared.success) product = cleared.data;
-      else setStatus(cleared.error);
+      if (cleared.success) {
+        product = cleared.data;
+        setProductImages((prev) => {
+          const next = { ...prev };
+          delete next[product.id];
+          return next;
+        });
+      } else setStatus(cleared.error);
     } else if (productImageFile && product.id) {
       try {
         const { b64, ext } = await fileToBase64(productImageFile);
@@ -1109,16 +1134,11 @@ export default function App() {
 
   const editProduct = async (p: Product) => {
     const stockU = (p.stock_unit || p.base_unit || p.unit || "ea").trim();
-    // Prefer server floor stock_in_unit via quantity_in_stock; for weight use milli→approx in stock unit
-    let stockAmt = String(p.quantity_in_stock ?? 0);
-    if (p.quantity_base_milli > 0 && stockU) {
-      // Show milli/1000 when stock unit == base; otherwise keep quantity_in_stock floor
-      const base = (p.base_unit || p.unit || "ea").trim();
-      if (stockU === base) {
-        const v = p.quantity_base_milli / 1000;
-        stockAmt = Math.abs(v - Math.round(v)) < 0.001 ? String(Math.round(v)) : v.toFixed(3);
-      }
-    }
+    const base = (p.base_unit || p.unit || "ea").trim();
+    const stockAmt =
+      p.quantity_base_milli > 0
+        ? formatQty(stockQtyFromMilli(p.quantity_base_milli, stockU, base))
+        : String(p.quantity_in_stock ?? 0);
     setProductForm({
       id: p.id,
       name: p.name,
@@ -1150,19 +1170,29 @@ export default function App() {
       }
     }
     setStatus(`Editing ${p.name}`);
+    setCatalogFormOpen(true);
   };
 
   const openNewDm = async () => {
     const phone = normalizePhoneInput(newDmPhone);
     if (!phone) {
+      setNewDmError("Enter a phone as +E164 (e.g. +15551234567)");
       setStatus("Enter a phone as +E164 (e.g. +15551234567)");
       return;
     }
+    setNewDmError(null);
     const tid = `dm:${phone}`;
-    await api.setContactMeta(tid, {});
+    const res = await api.setContactMeta(tid, {});
+    if (!res.success) {
+      setStatus(res.error);
+      return;
+    }
+    setMessages([]);
+    setOutbox([]);
     setSelectedId(tid);
     setPanel("threads");
     setNewDmPhone("");
+    setNewDmOpen(false);
     setStatus(`Compose to ${phone}`);
     await refreshMeta();
     await refreshThreads();
@@ -1207,20 +1237,38 @@ export default function App() {
       return;
     }
     setGroupForm({ name: "", members: "" });
-    setSelectedId(res.data.thread_id);
-    setPanel("threads");
+    setPeopleKey(res.data.thread_id);
     setStatus(`Group created: ${name}`);
     await refreshMeta();
     await refreshThreads();
   };
 
   const removeProduct = async (id: string) => {
-    await api.deleteProduct(id);
+    const sku = products.find((p) => p.id === id)?.sku?.trim();
+    const open = orders.filter(
+      (o) =>
+        ["draft", "confirmed", "invoiced"].includes(o.status) &&
+        o.lines.some((l) => l.product_id === id),
+    );
+    const warn = open.length
+      ? `\n\nThis SKU is on ${open.length} open order${open.length === 1 ? "" : "s"}${sku ? ` (${sku})` : ""}.`
+      : "";
+    if (!window.confirm(`Delete this product?${warn}`)) return;
+    const res = await api.deleteProduct(id);
+    if (!res.success) {
+      setStatus(res.error);
+      return;
+    }
+    setProductImages((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     await refreshMeta();
   };
 
   const linkCustomerFromThread = async () => {
-    if (!selectedId || selectedId.startsWith("group:")) {
+    if (!selectedId || isGroupThread(selectedId)) {
       setStatus("Select a DM thread first");
       return;
     }
@@ -1238,7 +1286,7 @@ export default function App() {
 
 
   const placeOrder = async (asDraft = false) => {
-    if (!selectedId || selectedId.startsWith("group:")) {
+    if (!selectedId || isGroupThread(selectedId)) {
       setStatus(asDraft ? "Select a DM thread to create a quote" : "Select a DM thread to place an order");
       return;
     }
@@ -1301,11 +1349,13 @@ export default function App() {
     const res = await api.duplicateOrderAsDraft(id);
     if (!res.success) {
       setStatus(res.error);
-      return;
+      return null;
     }
     setStatus(`Draft ${res.data.id.slice(0, 8)} from ${id.slice(0, 8)}`);
     await refreshMeta();
+    setFocusOrderId(res.data.id);
     setPanel("orders");
+    return res.data;
   };
 
   const editDraftFirstLineQty = async (o: Order) => {
@@ -1398,9 +1448,14 @@ export default function App() {
   };
 
   const loadIvrMenusEditor = async () => {
+    if (!canInvoke()) {
+      setIvrMenusDraft((cur) => cur ?? emptyMenus());
+      setIvrMenusError(null);
+      return;
+    }
     const res = await api.getIvrMenus();
     if (!res.success) {
-      setIvrMenusError(res.error);
+      if (!isDesktopUnavailable(res.error)) setIvrMenusError(res.error);
       return;
     }
     setIvrMenusDraft(res.data);
@@ -1418,7 +1473,6 @@ export default function App() {
       const res = await api.setIvrMenus(ivrMenusDraft);
       if (!res.success) {
         setIvrMenusError(res.error);
-        setStatus(res.error);
         return;
       }
       setIvrMenusDraft(res.data);
@@ -1435,7 +1489,6 @@ export default function App() {
     setIvrMenusBusy(false);
     if (!res.success) {
       setIvrMenusError(res.error);
-      setStatus(res.error);
       return;
     }
     setIvrMenusDraft(res.data);
@@ -1450,8 +1503,9 @@ export default function App() {
     }
     const res = await api.previewIvrPath(inputs);
     if (!res.success) {
-      setIvrMenusError(res.error);
-      setStatus(res.error);
+      if (!isDesktopUnavailable(res.error)) {
+        setIvrMenusError(res.error);
+      }
       return;
     }
     setIvrPreviewSteps(res.data);
@@ -1577,7 +1631,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panel, products]);
 
-  const showProfileRail = panel === "threads";
+  const showProfileRail = panel === "threads" && !!selectedId;
   // Only panels that render their own list column have a list seam; the wide
   // panels span both tracks and so expose just the rail edge.
   const panelLayout: PanelLayout = {
@@ -1607,14 +1661,14 @@ export default function App() {
 
   const filteredThreads = useMemo(() => {
     return threads.filter((t) => {
-      if (threadFilter.kind === "dm" && t.id.startsWith("group:")) return false;
-      if (threadFilter.kind === "group" && !t.id.startsWith("group:")) return false;
+      if (threadFilter.kind === "dm" && isGroupThread(t.id)) return false;
+      if (threadFilter.kind === "group" && !isGroupThread(t.id)) return false;
       if (threadFilter.unread && t.unread_count <= 0) return false;
       if (threadFilter.pending && t.outbox_count <= 0) return false;
       const label = threadTitle(t.id, contacts, groups, customers);
       return includesQ(`${label} ${t.id}`, threadFilter.q);
     });
-  }, [threads, threadFilter, contacts, groups]);
+  }, [threads, threadFilter, contacts, groups, customers]);
 
 
 
@@ -1626,13 +1680,13 @@ export default function App() {
       if (productFilter.stock === "out" && inStock) return false;
       if (productFilter.stock === "low" && !isLowStock(p)) return false;
       if (productFilter.unit !== "all" && productUnit(p) !== productFilter.unit) return false;
-      if (productFilter.hasImage && !p.image_path) return false;
+      if (productFilter.hasImage && !p.image_path && !productImages[p.id]) return false;
       return includesQ(
         `${p.name} ${p.sku} ${p.description} ${p.unit}`,
         productFilter.q,
       );
     });
-  }, [products, productFilter]);
+  }, [products, productFilter, productImages]);
 
 
   const filteredOrders = useMemo(() => {
@@ -1651,11 +1705,11 @@ export default function App() {
     return audit.filter((e) => {
       if (auditFilter.outcome !== "all" && e.outcome !== auditFilter.outcome) return false;
       return includesQ(
-        `${e.thread_id} ${e.outcome} ${e.draft} ${e.reason || ""}`,
+        `${e.thread_id} ${threadTitle(e.thread_id, contacts, groups, customers)} ${e.outcome} ${e.draft} ${e.reason || ""}`,
         auditFilter.q,
       );
     });
-  }, [audit, auditFilter]);
+  }, [audit, auditFilter, contacts, groups, customers]);
 
   const orderStatuses = useMemo(() => {
     const set = new Set(orders.map((o) => o.status).filter(Boolean));
@@ -1704,7 +1758,11 @@ export default function App() {
   const onLock = async () => {
     setAccountMenuOpen(false);
     const res = await api.lockSession();
-    if (res.success) applySession(res.data);
+    if (!res.success) {
+      setStatus(res.error);
+      return;
+    }
+    applySession(res.data);
     setStatus("Session locked");
   };
 
@@ -1956,8 +2014,8 @@ export default function App() {
                   type="button"
                   className={panel === id ? "nav-btn active" : "nav-btn"}
                   onClick={() => {
+                    if (id !== "search") setSearchQ("");
                     setPanel(id);
-                    if (id === "settings" && setupNeeded) setSettingsTab("account");
                   }}
                 >
                   <span className="nav-btn-label">
@@ -1985,6 +2043,14 @@ export default function App() {
         </nav>
 
         <div className="rail-foot">
+          {status && (
+            <div className="rail-status" role="status">
+              <span>{status}</span>
+              <button type="button" className="ghost-btn" onClick={() => setStatus(null)}>
+                Dismiss
+              </button>
+            </div>
+          )}
           <button
             type="button"
             className="ghost-btn"
@@ -2014,14 +2080,19 @@ export default function App() {
             <div className="compose-strip">
               <input
                 autoFocus
-                placeholder="Phone number"
+                placeholder="+15551234567"
                 value={newDmPhone}
-                onChange={(e) => setNewDmPhone(e.target.value)}
+                onChange={(e) => {
+                  setNewDmPhone(e.target.value);
+                  setNewDmError(null);
+                }}
                 onKeyDown={(e) => e.key === "Enter" && void openNewDm()}
+                aria-invalid={!!newDmError}
               />
               <button type="button" className="action-btn primary" onClick={() => void openNewDm()}>
                 Start
               </button>
+              {newDmError && <span className="warn-text">{newDmError}</span>}
             </div>
           )}
           <div className="filter-strip stacked">
@@ -2090,6 +2161,11 @@ export default function App() {
                     <span className="thread-time">{fmtTime(t.last_message_timestamp)}</span>
                   </div>
                   <div className="thread-row-meta">
+                    {t.last_preview ? (
+                      <span className="snippet">{t.last_preview}</span>
+                    ) : (
+                      <span className="snippet muted">No messages yet</span>
+                    )}
                     {t.unread_count > 0 && <span className="badge">{t.unread_count}</span>}
                     {t.outbox_count > 0 && <span className="badge muted">{t.outbox_count} pending</span>}
                   </div>
@@ -2122,6 +2198,7 @@ export default function App() {
                 className="thread-row p-3 gap-3"
                 onClick={() => {
                   setSelectedId(h.thread_id);
+                  setSearchQ("");
                   setPanel("threads");
                 }}
               >
@@ -2154,7 +2231,15 @@ export default function App() {
             setSelectedId(threadId);
             setPanel("threads");
           }}
-          onNavigate={(target) => setPanel(target)}
+          onNavigate={(target) => {
+            if (target === "orders" && peopleKey) {
+              const person = contacts.find((c) => c.contact_id === peopleKey);
+              const group = groups.find((g) => g.group_id === peopleKey);
+              setSelectedId(person?.contact_id ?? group?.group_id ?? peopleKey);
+              setOrderFilter((f) => ({ ...f, thisThread: true }));
+            }
+            setPanel(target);
+          }}
           onRefresh={() => void refreshMeta()}
           setStatus={setStatus}
           money={money}
@@ -2235,8 +2320,19 @@ export default function App() {
                   }}
                 />
               </label>
+              <button
+                type="button"
+                className="action-btn primary"
+                onClick={() => {
+                  resetProductForm();
+                  setCatalogFormOpen(true);
+                }}
+              >
+                New product
+              </button>
             </div>
-            <div className="catalog-layout">
+            <div className={`catalog-layout${catalogFormOpen ? "" : " grid-only"}`}>
+              {catalogFormOpen && (
               <div className="catalog-form-pane">
             <div className="product-form">
               <div className="form-card">
@@ -2305,6 +2401,13 @@ export default function App() {
                         setProductImageFile(null);
                         setProductImagePreview(null);
                         setClearProductImageFlag(true);
+                        if (productForm.id) {
+                          setProductImages((prev) => {
+                            const next = { ...prev };
+                            delete next[productForm.id];
+                            return next;
+                          });
+                        }
                       }}
                     >
                       Remove image
@@ -2383,7 +2486,12 @@ export default function App() {
                     <button
                       type="button"
                       className="action-btn"
-                      onClick={() => setSellPacks((rows) => [...rows, newPackRow()])}
+                      onClick={() =>
+                        setSellPacks((rows) => [
+                          ...rows,
+                          { ...newPackRow(), unit: productForm.baseUnit || "ea" },
+                        ])
+                      }
                     >
                       Add pack
                     </button>
@@ -2492,21 +2600,20 @@ export default function App() {
                 <button type="button" className="action-btn primary" onClick={() => void saveProduct()}>
                   {productForm.id ? "Save product" : "Add product"}
                 </button>
-                {productForm.id && (
-                  <button
-                    type="button"
-                    className="ghost-btn"
-                    onClick={() => resetProductForm()}
-                  >
-                    Cancel edit
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  onClick={() => resetProductForm()}
+                >
+                  {productForm.id ? "Cancel edit" : "Cancel"}
+                </button>
               </div>
             </div>
               </div>
+              )}
               <div className="catalog-grid-pane">
             <div className="product-grid">
-              {products.length === 0 && <p className="hint">No products yet — add one on the left.</p>}
+              {products.length === 0 && <p className="hint">No products yet — use New product.</p>}
               {products.length > 0 && filteredProducts.length === 0 && (
                 <p className="hint">No products match these filters.</p>
               )}
@@ -2612,6 +2719,8 @@ export default function App() {
           editDraftFirstLineQty={editDraftFirstLineQty}
           setOrderLifecycle={setOrderLifecycle}
           duplicateAsDraft={duplicateAsDraft}
+          focusOrderId={focusOrderId}
+          onConsumedFocus={() => setFocusOrderId(null)}
           orderParty={orderParty}
           threadTitle={threadTitle}
           contacts={contacts}
@@ -2644,6 +2753,7 @@ export default function App() {
           setStatus={setStatus}
           setPanel={setPanel}
           setSelectedId={setSelectedId}
+          setFocusOrderId={setFocusOrderId}
           threadTitle={threadTitle}
           money={money}
           fmtTime={fmtTime}
@@ -2656,9 +2766,15 @@ export default function App() {
           <header className="col-head">
             Outbox
             <span className="col-meta">
-              {outboxSummary
-                ? `${outboxSummary.queued} queued · ${outboxSummary.sending} sending · ${outboxSummary.failed} failed`
-                : "—"}
+              {(() => {
+                const queued = globalOutbox.filter((o) => o.state === "queued").length;
+                const sending = globalOutbox.filter((o) => o.state === "sending").length;
+                const failed = globalOutbox.filter((o) => o.state === "failed").length;
+                if (queued + sending + failed === 0 && outboxSummary) {
+                  return `${outboxSummary.queued} queued · ${outboxSummary.sending} sending · ${outboxSummary.failed} failed`;
+                }
+                return `${queued} queued · ${sending} sending · ${failed} failed`;
+              })()}
             </span>
           </header>
           <div className="filter-strip">
@@ -2667,31 +2783,41 @@ export default function App() {
             </button>
             <span className="col-meta">{globalOutbox.length} open</span>
           </div>
-          <div className="thread-list">
+          <div className="outbox-table">
             {globalOutbox.length === 0 && (
               <p className="empty">Outbox clear — nothing queued or failed.</p>
             )}
+            {globalOutbox.length > 0 && (
+              <div className="outbox-head" aria-hidden>
+                <span>To</span>
+                <span>Preview</span>
+                <span>Status</span>
+                <span>Age</span>
+                <span />
+              </div>
+            )}
             {globalOutbox.map((o) => (
-              <div key={o.id} className="thread-row product-row">
-                <div className="thread-row-top">
-                  <span className="thread-name">{threadTitle(o.thread_id, contacts, groups, customers)}</span>
-                  <span
-                    className={`status-pill status-${
-                      o.state === "failed" ? "danger" : o.state === "sending" ? "warn" : "muted"
-                    }`}
-                  >
-                    {o.state}
-                  </span>
+              <div key={o.id} className={`outbox-row state-${o.state}`}>
+                <div className="outbox-to">
+                  <strong>{threadTitle(o.thread_id, contacts, groups, customers)}</strong>
+                  {o.attachment_path ? <span className="convo-sub">Attachment</span> : null}
                 </div>
-                <div className="convo-sub">
-                  {o.attachment_path ? "📎 " : ""}
+                <div className="outbox-preview">
                   {o.content.slice(0, 120) || (o.attachment_path ? "(attachment)" : "(empty)")}
                   {o.content.length > 120 ? "…" : ""}
-                  {" · "}
-                  {fmtTime(o.created_at)}
-                  {o.attempt_count > 0 ? ` · tries ${o.attempt_count}` : ""}
+                  {o.last_error && <div className="bubble-err">{o.last_error}</div>}
                 </div>
-                {o.last_error && <div className="bubble-err">{o.last_error}</div>}
+                <span
+                  className={`status-pill status-${
+                    o.state === "failed" ? "danger" : o.state === "sending" ? "warn" : "muted"
+                  }`}
+                >
+                  {o.state}
+                </span>
+                <span className="outbox-age">
+                  {fmtTime(o.created_at)}
+                  {o.attempt_count > 0 ? ` · ${o.attempt_count}` : ""}
+                </span>
                 <div className="row-actions">
                   {o.state === "failed" && (
                     <button type="button" className="action-btn primary" onClick={() => void onRetry(o.id).then(() => refreshGlobalOutbox())}>
@@ -2713,7 +2839,7 @@ export default function App() {
                       setPanel("threads");
                     }}
                   >
-                    Open chat
+                    Open
                   </button>
                 </div>
               </div>
@@ -2756,10 +2882,10 @@ export default function App() {
             {filteredAudit.map((e) => (
               <div key={e.id} className="audit-row">
                 <div className="audit-top">
-                  <span className={`outcome outcome-${e.outcome}`}>{e.outcome}</span>
-                  <span className="thread-time">{fmtTime(e.created_at)}</span>
-                </div>
-                <div className="audit-thread">{formatPhone(e.thread_id)}</div>
+                    <span className={`outcome outcome-${e.outcome.toLowerCase().replace(/\s+/g, "_")}`}>{e.outcome}</span>
+                    <span className="thread-time">{fmtTime(e.created_at)}</span>
+                  </div>
+                  <div className="audit-thread">{threadTitle(e.thread_id, contacts, groups, customers)}</div>
                 <div className="snippet">{e.draft}</div>
                 {e.reason && <div className="reason">{e.reason}</div>}
               </div>
@@ -2819,9 +2945,11 @@ export default function App() {
                     >
                       {setupNeeded
                         ? "Needs link"
-                        : diagnostics?.signal_cli_usable
-                          ? "Ready"
-                          : "signal-cli issue"}
+                        : !canInvoke() || !diagnostics
+                          ? "Preview"
+                          : diagnostics.signal_cli_usable
+                            ? "Ready"
+                            : "signal-cli issue"}
                     </span>
                   </div>
                   <dl className="diag-grid diag-grid-4">
@@ -3060,6 +3188,7 @@ export default function App() {
             )}
 
             {settingsTab === "backup" && (
+              <>
               <div className="settings-card">
                 <div className="settings-card-head">
                   <h3>Backup &amp; migrate</h3>
@@ -3141,9 +3270,20 @@ export default function App() {
                   </div>
                 )}
               </div>
+              <div className="settings-card">
+                <div className="settings-card-head">
+                  <h3>What’s in a bundle</h3>
+                </div>
+                <p className="hint tight">
+                  Catalog, people records, orders, buyer menu, chats, and outbox. Signal login stays
+                  on the device — re-link after you move.
+                </p>
+              </div>
+              </>
             )}
 
             {settingsTab === "auto" && (
+              <>
               <div className="settings-card">
                 <div className="settings-card-head">
                   <h3>Auto-reply</h3>
@@ -3258,6 +3398,32 @@ export default function App() {
                   </>
                 )}
               </div>
+              <div className="settings-card">
+                <div className="settings-card-head">
+                  <h3>Recent log</h3>
+                  <button type="button" className="ghost-btn" onClick={() => setPanel("audit")}>
+                    Open log
+                  </button>
+                </div>
+                {audit.length === 0 ? (
+                  <p className="hint tight">No auto-reply activity yet.</p>
+                ) : (
+                  <ul className="settings-log">
+                    {audit.slice(0, 5).map((e) => (
+                      <li key={e.id}>
+                        <span className={`outcome outcome-${e.outcome.toLowerCase().replace(/\s+/g, "_")}`}>
+                          {e.outcome}
+                        </span>
+                        <span>
+                          {threadTitle(e.thread_id, contacts, groups, customers)}
+                          {e.reason ? ` — ${e.reason}` : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </>
             )}
 
             {settingsTab === "ivr" && (
@@ -3395,18 +3561,20 @@ export default function App() {
                 <strong>Orders</strong>
                 <span>Place orders and queue invoices via outbox.</span>
               </button>
-              <button type="button" className="quick-action" onClick={() => setPanel("customers")}>
-                <strong>Customers</strong>
-                <span>Linked chats and order history.</span>
+              <button type="button" className="quick-action" onClick={() => setPanel("people")}>
+                <strong>People</strong>
+                <span>Who they are — chats, orders, and notes.</span>
               </button>
             </div>
           </div>
         ) : (
           <>
             <header className="convo-head">
-              <div>
+              <div className="convo-head-id">
                 <h2>{title}</h2>
-                <div className="convo-sub">{formatPhone(selectedId)}</div>
+                <div className="convo-sub">
+                  {isGroupThread(selectedId) ? "Group" : formatPhone(selectedId)}
+                </div>
               </div>
               <div className="convo-actions">
                 {threadAuto?.effective && (
@@ -3427,7 +3595,7 @@ export default function App() {
                   type="button"
                   className={threadIvr?.enabled ? "act-btn active" : "act-btn"}
                   aria-pressed={!!threadIvr?.enabled}
-                  disabled={!!selectedId?.startsWith("group:")}
+                  disabled={isGroupThread(selectedId)}
                   title="Buyer menu"
                   onClick={() => void toggleThreadIvr(!threadIvr?.enabled)}
                 >
@@ -3439,7 +3607,7 @@ export default function App() {
                     Resume menu
                   </button>
                 )}
-                {!threadIvr?.enabled && ivrSettings?.enabled && !selectedId?.startsWith("group:") && (
+                {!threadIvr?.enabled && ivrSettings?.enabled && !isGroupThread(selectedId) && (
                   <span className="convo-sub inline-hint">Turn on to let this chat use the menu</span>
                 )}
                 <button
@@ -3453,11 +3621,18 @@ export default function App() {
                   <span>Auto-reply</span>
                 </button>
                 <span className="act-sep" aria-hidden />
+                <details className="act-more">
+                  <summary className="act-btn">More</summary>
+                  <div className="act-more-pop">
                 <button
                   type="button"
                   className="act-btn"
                   disabled={aiBusy || !ai?.configured}
-                  title="Summarize this conversation"
+                  title={
+                    ai?.configured
+                      ? "Summarize this conversation"
+                      : "AI not configured — enable Ollama in Settings."
+                  }
                   onClick={() => void onSummarize()}
                 >
                   <IconSparkle />
@@ -3467,7 +3642,11 @@ export default function App() {
                   type="button"
                   className="act-btn"
                   disabled={aiBusy || !ai?.configured}
-                  title="Draft a reply"
+                  title={
+                    ai?.configured
+                      ? "Draft a reply"
+                      : "AI not configured — enable Ollama in Settings."
+                  }
                   onClick={() => void onDraft()}
                 >
                   <IconReply />
@@ -3482,6 +3661,8 @@ export default function App() {
                   <IconExport />
                   <span>Export</span>
                 </button>
+                  </div>
+                </details>
               </div>
             </header>
 
@@ -3507,20 +3688,32 @@ export default function App() {
                     <span>
                       {isOutgoing(m)
                         ? "You"
-                        : threadTitle(selectedId || m.sender, contacts, groups, customers)}
+                        : isGroupThread(selectedId)
+                          ? threadTitle(m.sender, contacts, groups, customers)
+                          : threadTitle(selectedId || m.sender, contacts, groups, customers)}
                     </span>
                     <span>{fmtTime(m.timestamp)}</span>
                   </div>
                   <div className="bubble-body">{m.content}</div>
                 </div>
               ))}
-              {outbox.map((o) => (
+              {(outbox.length
+                ? outbox
+                : USE_FIXTURES && selectedId
+                  ? fxOutbox.filter((o) => o.thread_id === selectedId && o.state !== "sent")
+                  : []
+              ).map((o) => (
                 <div key={o.id} className={`bubble out pending state-${o.state}`}>
                   <div className="bubble-meta">
                     <span>{o.state}</span>
                     <span>{fmtTime(o.created_at)}</span>
                   </div>
                   <div className="bubble-body">{o.content}</div>
+                  {o.attachment_path && (
+                    <div className="attach-chip">
+                      <span>{o.attachment_path.split("/").pop() || "Attachment"}</span>
+                    </div>
+                  )}
                   {o.last_error && <div className="bubble-err">{o.last_error}</div>}
                   <div className="bubble-actions">
                     {o.state === "failed" && (
@@ -3536,15 +3729,6 @@ export default function App() {
               ))}
               <div ref={bottomRef} />
             </div>
-
-            {status && (
-              <div className="status-bar">
-                <span>{status}</span>
-                <button type="button" className="ghost-btn" onClick={() => setStatus(null)}>
-                  Dismiss
-                </button>
-              </div>
-            )}
 
             <div className="composer">
               {attachPreview && (
@@ -3632,20 +3816,43 @@ export default function App() {
             onMarkPaid={(id) => void setOrderLifecycle(id, "paid")}
             onToggleFavorite={(next) => {
               void (async () => {
-                const res = await api.setContactMeta(selectedId, { favorite: next });
+                const res = isGroupThread(selectedId)
+                  ? await api.setGroupMeta(selectedId, { favorite: next })
+                  : await api.setContactMeta(selectedId, { favorite: next });
                 if (!res.success) setStatus(res.error);
                 else await refreshMeta();
               })();
             }}
             onToggleMute={(next) => {
               void (async () => {
-                const res = await api.setContactMeta(selectedId, { muted: next });
+                const res = isGroupThread(selectedId)
+                  ? await api.setGroupMeta(selectedId, { muted: next })
+                  : await api.setContactMeta(selectedId, { muted: next });
                 if (!res.success) setStatus(res.error);
                 else await refreshMeta();
               })();
             }}
+            groupNotes={
+              isGroupThread(selectedId)
+                ? groups.find(
+                    (g) =>
+                      g.group_id === selectedId ||
+                      g.group_id.replace(/^group[:.]/, "") ===
+                        selectedId.replace(/^group[:.]/, ""),
+                  )?.notes ?? ""
+                : ""
+            }
             onSaveNotes={(notes) => {
               void (async () => {
+                if (isGroupThread(selectedId)) {
+                  const res = await api.setGroupMeta(selectedId, { notes });
+                  if (!res.success) setStatus(res.error);
+                  else {
+                    setStatus("Notes saved");
+                    await refreshMeta();
+                  }
+                  return;
+                }
                 if (!profileCustomer) {
                   setStatus("Link as customer before saving notes");
                   return;
@@ -3670,23 +3877,6 @@ export default function App() {
             </div>
           </aside>
         ))}
-
-      {status &&
-        (panel === "audit" ||
-          panel === "people" ||
-          panel === "settings" ||
-          panel === "products" ||
-          panel === "orders" ||
-          panel === "sales" ||
-          panel === "outbox" ||
-          !selectedId) && (
-          <div className="shell-status" role="status">
-            <span>{status}</span>
-            <button type="button" className="ghost-btn" onClick={() => setStatus(null)}>
-              Dismiss
-            </button>
-          </div>
-        )}
     </div>
   );
 }

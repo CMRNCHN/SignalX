@@ -1,5 +1,5 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { formatPhone } from "./format";
+import { formatPhone, isGroupThread } from "./format";
 import { useEffect, useMemo, useState } from "react";
 import {
   api,
@@ -83,7 +83,7 @@ function fallbackActions(
     out.push({ label: "Mark latest paid", kind: "mark_paid", payload: latestInvoiceable.id });
   }
   out.push({ label: "Open orders", kind: "open_orders", payload: threadId });
-  if (!hasCustomer && !threadId.startsWith("group:")) {
+  if (!hasCustomer && !isGroupThread(threadId)) {
     out.push({ label: "Link as customer", kind: "link_customer", payload: "" });
   }
   return out.slice(0, 5);
@@ -111,6 +111,7 @@ type Props = {
   onToggleFavorite: (next: boolean) => void;
   onToggleMute: (next: boolean) => void;
   onSaveNotes: (notes: string) => void;
+  groupNotes?: string;
 };
 
 export function ProfileRail(props: Props) {
@@ -136,12 +137,14 @@ export function ProfileRail(props: Props) {
     onToggleFavorite,
     onToggleMute,
     onSaveNotes,
+    groupNotes,
   } = props;
 
+  const group = isGroupThread(threadId);
   const [summary, setSummary] = useState<string | null>(null);
   const [actions, setActions] = useState<ThreadActionSuggestion[]>([]);
   const [actionsBusy, setActionsBusy] = useState(false);
-  const [notes, setNotes] = useState(customer?.notes ?? "");
+  const [notes, setNotes] = useState(customer?.notes ?? groupNotes ?? "");
   const [threadOutbox, setThreadOutbox] = useState<OutboxItem[]>([]);
   const [productThumbs, setProductThumbs] = useState<{ id: string; name: string; src: string }[]>(
     [],
@@ -154,9 +157,9 @@ export function ProfileRail(props: Props) {
   const standing = useMemo(() => computeStanding(threadOrders), [threadOrders]);
 
   useEffect(() => {
-    setNotes(customer?.notes ?? "");
+    setNotes(customer?.notes ?? groupNotes ?? "");
     setSummary(null);
-  }, [threadId, customer?.id, customer?.notes]);
+  }, [threadId, customer?.id, customer?.notes, groupNotes]);
 
   useEffect(() => {
     let cancelled = false;
@@ -300,7 +303,7 @@ export function ProfileRail(props: Props) {
         </span>
         <div className="profile-rail-title">
           <strong>{title}</strong>
-          <div className="convo-sub">{formatPhone(threadId)}</div>
+          <div className="convo-sub">{group ? "Group" : formatPhone(threadId)}</div>
         </div>
       </header>
 
@@ -325,7 +328,7 @@ export function ProfileRail(props: Props) {
 
       <div className="profile-section">
         <div className="profile-section-title">Contact</div>
-        {!threadId.startsWith("group:") && (
+        {!group && (
           <div className="profile-toggles">
             <label className="toggle compact">
               <input
@@ -347,7 +350,7 @@ export function ProfileRail(props: Props) {
         )}
         {customer ? (
           <p className="hint tight">Customer linked · {customer.display_name || customer.id.slice(0, 8)}</p>
-        ) : !threadId.startsWith("group:") ? (
+        ) : !group ? (
           <button type="button" className="action-btn primary" onClick={onLinkCustomer}>
             Link as customer
           </button>
@@ -362,10 +365,10 @@ export function ProfileRail(props: Props) {
             placeholder="Operator notes…"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            disabled={!customer}
+            disabled={!customer && !group}
           />
         </label>
-        {customer && (
+        {(customer || group) && (
           <button
             type="button"
             className="ghost-btn"

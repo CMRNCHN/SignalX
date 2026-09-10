@@ -3,6 +3,7 @@ use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use base64::Engine;
 use uuid::Uuid;
@@ -241,6 +242,8 @@ struct ThreadSummary {
   unread_count: u32,
   message_count: u32,
   outbox_count: u32,
+  #[serde(default)]
+  last_preview: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -330,6 +333,10 @@ struct OutboxStore {
 impl OutboxStore {
   fn new(dir: PathBuf) -> Self {
     Self { dir, data: Arc::new(Mutex::new(HashMap::new())), save_mutexes: Arc::new(Mutex::new(HashMap::new())) }
+  }
+
+  fn evict(&self, account_id: &str) {
+    self.data.lock().unwrap().remove(account_id);
   }
 
   fn path_for(&self, account_id: &str) -> PathBuf {
@@ -938,6 +945,20 @@ impl ThreadState {
           .get(&t.id)
           .map(|list| list.iter().filter(|o| o.status != OutboxStatus::Sent).count() as u32)
           .unwrap_or(0),
+        last_preview: t
+          .messages
+          .last()
+          .map(|m| {
+            let c = m.content.trim();
+            let mut it = c.chars();
+            let head: String = it.by_ref().take(96).collect();
+            if it.next().is_some() {
+              format!("{head}…")
+            } else {
+              head
+            }
+          })
+          .unwrap_or_default(),
       })
       .collect();
 
@@ -975,7 +996,7 @@ impl ThreadState {
     let d = self.data.lock().unwrap();
     let mut out: Vec<(String, String)> = Vec::new();
     for t in d.threads.values() {
-      if t.id.starts_with("group:") {
+      if is_group_thread_id(&t.id) {
         continue;
       }
       for msg in t.messages.iter().rev().take(30) {
@@ -1092,7 +1113,7 @@ impl GroupMetaData {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 struct GroupMeta {
-  group_id: String, // "group:XYZ"
+  group_id: String, // "group:XYZ" or signal-cli "group.BASE64"
   display_name: Option<String>,
   categories: Vec<String>,
   favorite: bool,
@@ -1100,6 +1121,9 @@ struct GroupMeta {
   icon: Option<String>,
   custom_fields: Vec<CustomField>,
   member_notes: Vec<String>, // optional (non-binding)
+  /// Operator notes. Groups are not customers; notes live on group meta.
+  #[serde(default)]
+  notes: String,
   /// Opt-in auto-reply for this group. Off by default; groups stay off unless explicitly enabled.
   #[serde(default)]
   auto_reply_enabled: bool,
@@ -1115,15 +1139,32 @@ struct GroupMetaPatch {
   icon: Option<Option<String>>,
   custom_fields: Option<Vec<CustomField>>,
   member_notes: Option<Vec<String>>,
+  notes: Option<String>,
   auto_reply_enabled: Option<bool>,
+}
+
+fn is_group_thread_id(id: &str) -> bool {
+  let s = id.trim();
+  s.starts_with("group:") || s.starts_with("group.")
+}
+
+fn group_id_aliases(id: &str) -> Vec<String> {
+  let s = id.trim();
+  let mut out = vec![s.to_string()];
+  if let Some(rest) = s.strip_prefix("group:") {
+    out.push(format!("group.{rest}"));
+  } else if let Some(rest) = s.strip_prefix("group.") {
+    out.push(format!("group:{rest}"));
+  }
+  out
 }
 
 fn normalize_group_id(input: &str) -> String {
   let s = input.trim();
-  if s.starts_with("group:") {
+  if s.starts_with("group:") || s.starts_with("group.") {
     return s.to_string();
   }
-  format!("group:{}", s)
+  format!("group:{s}")
 }
 
 #[derive(Clone)]
@@ -1216,18 +1257,28 @@ impl GroupStore {
     out
   }
 
+  fn resolve_group_key(groups: &HashMap<String, GroupMeta>, group_id: &str) -> String {
+    for alias in group_id_aliases(&normalize_group_id(group_id)) {
+      if groups.contains_key(&alias) {
+        return alias;
+      }
+    }
+    normalize_group_id(group_id)
+  }
+
   fn get(&self, account_id: &str, group_id: &str) -> Option<GroupMeta> {
     self.ensure_loaded(account_id);
-    let gid = normalize_group_id(group_id);
     let d = self.data.lock().unwrap();
-    d.get(account_id).and_then(|m| m.groups.get(&gid).cloned())
+    let m = d.get(account_id)?;
+    let gid = Self::resolve_group_key(&m.groups, group_id);
+    m.groups.get(&gid).cloned()
   }
 
   fn upsert_patch(&self, account_id: &str, group_id: &str, patch: GroupMetaPatch) -> Result<GroupMeta, String> {
     self.ensure_loaded(account_id);
-    let gid = normalize_group_id(group_id);
     let mut d = self.data.lock().unwrap();
     let m = d.entry(account_id.to_string()).or_insert_with(GroupMetaData::v1);
+    let gid = Self::resolve_group_key(&m.groups, group_id);
     let entry = m.groups.entry(gid.clone()).or_insert_with(|| GroupMeta {
       group_id: gid.clone(),
       ..Default::default()
@@ -1240,6 +1291,7 @@ impl GroupStore {
     if let Some(v) = patch.icon { entry.icon = v; }
     if let Some(v) = patch.custom_fields { entry.custom_fields = v; }
     if let Some(v) = patch.member_notes { entry.member_notes = v; }
+    if let Some(v) = patch.notes { entry.notes = v; }
     if let Some(v) = patch.auto_reply_enabled { entry.auto_reply_enabled = v; }
     entry.updated_at = now_ms();
 
@@ -1251,10 +1303,10 @@ impl GroupStore {
 
   fn delete(&self, account_id: &str, group_id: &str) -> Result<bool, String> {
     self.ensure_loaded(account_id);
-    let gid = normalize_group_id(group_id);
     let mut d = self.data.lock().unwrap();
     let mut changed = false;
     if let Some(m) = d.get_mut(account_id) {
+      let gid = Self::resolve_group_key(&m.groups, group_id);
       changed = m.groups.remove(&gid).is_some();
     }
     drop(d);
@@ -1503,7 +1555,7 @@ struct ContactStore {
 
 fn normalize_contact_id(input: &str) -> String {
   let s = input.trim();
-  if s.starts_with("dm:") || s.starts_with("group:") {
+  if s.starts_with("dm:") || is_group_thread_id(s) {
     return s.to_string();
   }
   // Back-compat: raw phone numbers become dm:+E164
@@ -1650,7 +1702,7 @@ impl ContactStore {
   /// Fill display_name from Signal profile when the operator has not set one.
   fn learn_display_name_if_empty(&self, account_id: &str, contact_id: &str, name: &str) {
     let name = name.trim();
-    if name.is_empty() || contact_id.starts_with("group:") {
+    if name.is_empty() || is_group_thread_id(contact_id) {
       return;
     }
     self.ensure_loaded(account_id);
@@ -2203,6 +2255,13 @@ impl AccountManager {
   fn set_active(&self, account_id: String) {
     *self.active_account.lock().unwrap() = Some(sanitize_filename(account_id.trim()));
   }
+
+  fn reload(&self, account_id: &str) {
+    let account_id = sanitize_filename(account_id.trim());
+    if let Some(ts) = self.states.lock().unwrap().get(&account_id) {
+      ts.load();
+    }
+  }
 }
 
 // --------------------
@@ -2294,7 +2353,7 @@ fn normalize_incoming_message(my_number: &str, v: &Value) -> Option<(Message, Ve
   };
 
   let mut participants: Vec<String> = vec![];
-  if thread_id.starts_with("group:") {
+  if is_group_thread_id(&thread_id) {
     if let Some(group) = data_msg.get("groupInfo") {
       if let Some(members) = group.get("members").and_then(|x| x.as_array()) {
         for m in members.iter().filter_map(|x| x.as_str()) {
@@ -2544,7 +2603,7 @@ fn thread_auto_reply_opted_in(state: &AppState, thread_id: &str) -> bool {
     None => return false,
   };
   let tid = thread_id.trim();
-  if tid.starts_with("group:") {
+  if is_group_thread_id(tid) {
     state
       .group_store
       .get(&account, tid)
@@ -2579,7 +2638,7 @@ fn auto_reply_guardrails(state: &AppState, thread_id: &str) -> Result<(), String
   if !settings.allowlist.iter().any(|t| t.trim() == tid) {
     return Err("thread not on allowlist".to_string());
   }
-  if tid.starts_with("group:") && !thread_auto_reply_opted_in(state, tid) {
+  if is_group_thread_id(tid) && !thread_auto_reply_opted_in(state, tid) {
     return Err("groups require explicit opt-in".to_string());
   }
   if in_quiet_hours(&settings) {
@@ -2625,6 +2684,9 @@ struct AppState {
   orders: OrderStore,
   commerce_audit: CommerceAuditStore,
   device_link: DeviceLinkManager,
+  /// After a backup import, memory may still be stale until restart.
+  /// Writes fail closed so they cannot overwrite imported files.
+  import_locked: Arc<AtomicBool>,
 }
 
 fn now_ms() -> i64 {
@@ -2704,6 +2766,25 @@ fn reload_shop_stores(state: &AppState, account_id: &str) {
   state.commerce_audit.reload_from(&dir);
   state.ivr.reload_from(&dir);
   state.auto_reply.reload_from(&dir);
+}
+
+fn reload_all_stores(state: &AppState, account_id: &str) {
+  reload_shop_stores(state, account_id);
+  state.contact_store.load_account(account_id);
+  state.group_store.load_account(account_id);
+  state.alias_manager.load_account(account_id);
+  state.account_manager.reload(account_id);
+  state.outbox_store.evict(account_id);
+}
+
+fn reject_if_import_locked(state: &AppState) -> Option<Value> {
+  if state.import_locked.load(Ordering::SeqCst) {
+    Some(err(
+      "Restart SignalX to finish import — writes are locked.".into(),
+    ))
+  } else {
+    None
+  }
 }
 
 fn stop_identity_workers(state: &AppState) {
@@ -2908,6 +2989,9 @@ fn recipient_from_thread_id(thread_id: &str) -> (String, String) {
   if let Some(rest) = tid.strip_prefix("group:") {
     return ("group".to_string(), rest.trim().to_string());
   }
+  if let Some(rest) = tid.strip_prefix("group.") {
+    return ("group".to_string(), rest.trim().to_string());
+  }
   ("dm".to_string(), tid.to_string())
 }
 
@@ -3041,6 +3125,9 @@ fn queue_outgoing_message_inner(
   attachment_b64: Option<String>,
   attachment_ext: Option<String>,
 ) -> Value {
+  if let Some(v) = reject_if_import_locked(state) {
+    return v;
+  }
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -3195,6 +3282,9 @@ fn get_alias(state: &AppState, number: String) -> Value {
 }
 
 fn set_alias(state: &AppState, number: String, alias: String) -> Value {
+  if let Some(v) = reject_if_import_locked(state) {
+    return v;
+  }
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return err("No active account".to_string()),
@@ -3234,6 +3324,9 @@ fn get_contact_meta(state: &AppState, contact_id: String) -> Value {
 }
 
 fn set_contact_meta(state: &AppState, contact_id: String, patch: ContactMetaPatch) -> Value {
+  if let Some(v) = reject_if_import_locked(state) {
+    return v;
+  }
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -3382,6 +3475,9 @@ fn get_group_meta(state: &AppState, group_id: String) -> Value {
 }
 
 fn set_group_meta(state: &AppState, group_id: String, patch: GroupMetaPatch) -> Value {
+  if let Some(v) = reject_if_import_locked(state) {
+    return v;
+  }
   let account_id = match require_active_account(&state) {
     Ok(a) => a,
     Err(v) => return v,
@@ -3867,7 +3963,7 @@ fn fallback_thread_actions(
     kind: "open_orders".into(),
     payload: thread_id.to_string(),
   });
-  if !has_customer && !thread_id.starts_with("group:") {
+  if !has_customer && !is_group_thread_id(thread_id) {
     out.push(ThreadActionSuggestion {
       label: "Link as customer".into(),
       kind: "link_customer".into(),
@@ -4295,7 +4391,15 @@ fn import_data_bundle_cmd(
     mode,
     now_ms(),
   ) {
-    Ok(v) => ok(v),
+    Ok(v) => {
+      reload_all_stores(state, &account);
+      state.import_locked.store(true, Ordering::SeqCst);
+      let mut payload = v;
+      if let Some(map) = payload.as_object_mut() {
+        map.insert("restart_required".into(), json!(true));
+      }
+      ok(payload)
+    }
     Err(e) => err(e),
   }
 }
@@ -4835,7 +4939,7 @@ fn set_thread_auto_reply(state: &AppState, thread_id: String, enabled: bool) -> 
     let _ = state.auto_reply.set_settings(settings);
   }
 
-  if tid.starts_with("group:") {
+  if is_group_thread_id(&tid) {
     match state.group_store.upsert_patch(
       &account,
       &tid,
@@ -4847,6 +4951,7 @@ fn set_thread_auto_reply(state: &AppState, thread_id: String, enabled: bool) -> 
         icon: None,
         custom_fields: None,
         member_notes: None,
+        notes: None,
         auto_reply_enabled: Some(enabled),
       },
     ) {
@@ -4939,6 +5044,7 @@ fn build_app_state() -> AppState {
     orders: OrderStore::new(&app_data_dir),
     commerce_audit: CommerceAuditStore::new(&app_data_dir),
     device_link: DeviceLinkManager::new(),
+    import_locked: Arc::new(AtomicBool::new(false)),
   }
 }
 
@@ -4975,7 +5081,7 @@ fn maybe_handle_ivr(state: &AppState, thread_id: &str, content: &str) -> bool {
   if state.session.is_locked() {
     return false;
   }
-  if thread_id.starts_with("group:") {
+  if is_group_thread_id(thread_id) {
     return false;
   }
   let Some(account) = configured_account_id() else {
@@ -5165,6 +5271,9 @@ fn get_ivr_menus(state: &AppState) -> Value {
 }
 
 fn set_ivr_menus(state: &AppState, menus: IvrMenus) -> Value {
+  if let Some(v) = reject_if_import_locked(state) {
+    return v;
+  }
   match state.ivr.set_menus(menus) {
     Ok(m) => {
       emit_event("ivr://menus", m.clone());
@@ -5226,7 +5335,7 @@ fn set_thread_ivr(state: &AppState, thread_id: String, enabled: bool) -> Value {
   if tid.is_empty() {
     return err("thread_id required".to_string());
   }
-  if tid.starts_with("group:") {
+  if is_group_thread_id(&tid) {
     return err("IVR is not available for group threads".to_string());
   }
   let account = match require_active_account(state) {
@@ -5296,6 +5405,9 @@ fn list_products(state: &AppState) -> Value {
 }
 
 fn upsert_product(state: &AppState, product: Product) -> Value {
+  if let Some(v) = reject_if_import_locked(state) {
+    return v;
+  }
   match state.commerce.upsert_product(product, now_ms()) {
     Ok(p) => {
       emit_event("commerce://products", state.commerce.list_products());
@@ -5306,6 +5418,9 @@ fn upsert_product(state: &AppState, product: Product) -> Value {
 }
 
 fn delete_product(state: &AppState, id: String) -> Value {
+  if let Some(v) = reject_if_import_locked(state) {
+    return v;
+  }
   match state.commerce.delete_product(id.trim()) {
     Ok(deleted) => {
       emit_event("commerce://products", state.commerce.list_products());
@@ -5485,6 +5600,7 @@ fn create_signal_group(state: &AppState, name: String, members: Vec<String>) -> 
       icon: None,
       custom_fields: None,
       member_notes: Some(normalized.clone()),
+      notes: None,
       auto_reply_enabled: None,
     },
   ) {
@@ -5504,6 +5620,9 @@ fn list_customers(state: &AppState) -> Value {
 }
 
 fn upsert_customer(state: &AppState, customer: Customer) -> Value {
+  if let Some(v) = reject_if_import_locked(state) {
+    return v;
+  }
   match state.commerce.upsert_customer(customer, now_ms()) {
     Ok(c) => {
       emit_event("commerce://customers", state.commerce.list_customers());
@@ -5559,11 +5678,14 @@ fn create_order(
   lines: Vec<OrderLineInput>,
   as_draft: Option<bool>,
 ) -> Value {
+  if let Some(v) = reject_if_import_locked(state) {
+    return v;
+  }
   let tid = thread_id.trim().to_string();
   if tid.is_empty() {
     return err("thread_id required".to_string());
   }
-  if tid.starts_with("group:") {
+  if is_group_thread_id(&tid) {
     return err("orders require a DM thread".to_string());
   }
   let customer = match state.commerce.customer_by_thread(&tid) {
@@ -5627,6 +5749,9 @@ fn update_draft_order_lines(
   id: String,
   lines: Vec<OrderLineInput>,
 ) -> Value {
+  if let Some(v) = reject_if_import_locked(state) {
+    return v;
+  }
   match state
     .orders
     .update_draft_lines(&state.commerce, id.trim(), lines, now_ms())
@@ -5648,6 +5773,9 @@ fn update_draft_order_lines(
 }
 
 fn confirm_order(state: &AppState, id: String) -> Value {
+  if let Some(v) = reject_if_import_locked(state) {
+    return v;
+  }
   if state.session.is_locked() {
     return err("session locked".to_string());
   }
@@ -5691,17 +5819,32 @@ fn duplicate_order_as_draft(state: &AppState, id: String) -> Value {
 }
 
 fn set_order_status(state: &AppState, id: String, status: String) -> Value {
-  match state.orders.set_status(id.trim(), status.trim(), now_ms()) {
+  if let Some(v) = reject_if_import_locked(state) {
+    return v;
+  }
+  match state
+    .orders
+    .set_status(&state.commerce, id.trim(), status.trim(), now_ms())
+  {
     Ok(order) => {
+      let restocked = status.trim() == "cancelled";
       state.commerce_audit.record(
         "order_status",
-        &format!("{} → {}", &order.id[..8.min(order.id.len())], order.status),
+        &format!(
+          "{} → {}{}",
+          &order.id[..8.min(order.id.len())],
+          order.status,
+          if restocked { " · restocked" } else { "" }
+        ),
         Some(order.id.clone()),
         None,
         Some(order.thread_id.clone()),
         now_ms(),
       );
       emit_event("commerce://orders", state.orders.list());
+      if restocked {
+        emit_event("commerce://products", state.commerce.list_products());
+      }
       ok_t(order)
     }
     Err(e) => err(e),
@@ -5720,15 +5863,28 @@ fn send_order_invoice(state: &AppState, id: String) -> Value {
   let (_k, recipient) = recipient_from_thread_id(&order.thread_id);
   match queue_outgoing_message(state, order.thread_id.clone(), recipient, body) {
     v if v.get("success").and_then(|x| x.as_bool()).unwrap_or(false) => {
+      let now = now_ms();
+      let updated = if order.status == "confirmed" {
+        match state
+          .orders
+          .set_status(&state.commerce, &order.id, "invoiced", now)
+        {
+          Ok(o) => o,
+          Err(e) => return err(format!("invoice queued but status update failed: {e}")),
+        }
+      } else {
+        order
+      };
       state.commerce_audit.record(
         "invoice_sent",
-        &format!("Invoice queued for {}", &order.id[..8.min(order.id.len())]),
-        Some(order.id.clone()),
+        &format!("Invoice queued for {}", &updated.id[..8.min(updated.id.len())]),
+        Some(updated.id.clone()),
         None,
-        Some(order.thread_id.clone()),
-        now_ms(),
+        Some(updated.thread_id.clone()),
+        now,
       );
-      ok_t(order)
+      emit_event("commerce://orders", state.orders.list());
+      ok_t(updated)
     }
     v => v,
   }
@@ -5882,8 +6038,11 @@ fn sales_summary(
     let e = by_status.entry(o.status.clone()).or_insert((0, 0));
     e.0 += 1;
     e.1 += o.total_cents;
-    if o.status != "cancelled" && o.status != "draft" {
+    if crate::orders::counts_toward_revenue(&o.status) {
       total_cents += o.total_cents;
+    }
+    if !crate::orders::counts_toward_revenue(&o.status) {
+      continue;
     }
     for line in &o.lines {
       let e = product_qty
@@ -6820,6 +6979,22 @@ mod foundation_tests {
     assert!(!path_is_under_root(&tmp, &outside));
     let _ = std::fs::remove_dir_all(&tmp);
     let _ = std::fs::remove_file(&outside);
+  }
+
+  #[test]
+  fn group_dot_ids_are_groups() {
+    assert!(is_group_thread_id("group.aGFydmVzdA"));
+    assert!(is_group_thread_id("group:abc"));
+    assert!(!is_group_thread_id("dm:+15551234567"));
+    assert_eq!(normalize_group_id("group.aGFydmVzdA"), "group.aGFydmVzdA");
+    assert_eq!(
+      recipient_from_thread_id("group.aGFydmVzdA"),
+      ("group".to_string(), "aGFydmVzdA".to_string())
+    );
+    assert_eq!(
+      recipient_from_thread_id("group:abc"),
+      ("group".to_string(), "abc".to_string())
+    );
   }
 
   #[test]

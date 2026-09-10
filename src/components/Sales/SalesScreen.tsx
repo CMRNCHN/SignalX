@@ -9,6 +9,7 @@ import {
   type Order,
 } from "../../api";
 import type { Panel } from "../../App";
+import { countsTowardRevenue } from "../../format";
 import { WhyTip } from "../WhyTip";
 
 type SalesScreenProps = {
@@ -26,6 +27,7 @@ type SalesScreenProps = {
   setStatus: (msg: string | null) => void;
   setPanel: (panel: Panel) => void;
   setSelectedId: (id: string) => void;
+  setFocusOrderId?: (id: string) => void;
   threadTitle: (
     id: string,
     contacts: ContactMeta[],
@@ -66,6 +68,7 @@ function bucketRevenue(orders: Order[], range: "7" | "30" | "all"): Bucket[] {
     });
   }
   for (const o of orders) {
+    if (!countsTowardRevenue(o.status)) continue;
     // Anything older than the first bucket lands in it rather than vanishing,
     // so the bars always add up to the headline revenue figure.
     let idx = buckets.findIndex(
@@ -93,6 +96,7 @@ export function SalesScreen({
   setStatus,
   setPanel,
   setSelectedId,
+  setFocusOrderId,
   threadTitle,
   money,
   fmtTime,
@@ -127,6 +131,8 @@ export function SalesScreen({
       return;
     }
     setStatus(`Draft ${res.data.id.slice(0, 8)} from ${id.slice(0, 8)}`);
+    setSelectedId(res.data.thread_id);
+    setFocusOrderId?.(res.data.id);
     setPanel("orders");
   };
 
@@ -140,8 +146,9 @@ export function SalesScreen({
   const peak = Math.max(1, ...buckets.map((b) => b.cents));
 
   const derived = useMemo(() => {
-    const avg = salesSummary?.order_count
-      ? Math.round(salesSummary.revenue_cents / salesSummary.order_count)
+    const revenueOrders = orders.filter((o) => countsTowardRevenue(o.status));
+    const avg = revenueOrders.length
+      ? Math.round((salesSummary?.revenue_cents ?? 0) / revenueOrders.length)
       : 0;
     const outstanding = orders
       .filter((o) => ["confirmed", "invoiced"].includes(o.status.toLowerCase()))
@@ -210,7 +217,7 @@ export function SalesScreen({
                 <div>
                   <dt>Revenue</dt>
                   <dd>{money(salesSummary.revenue_cents)}</dd>
-                  <span className="sales-metric-foot">across every status shown</span>
+                  <span className="sales-metric-foot">excluding draft and cancelled</span>
                 </div>
                 <div>
                   <dt>
@@ -319,7 +326,7 @@ export function SalesScreen({
                   <table className="sales-table">
                     <thead>
                       <tr>
-                        <th scope="col">Customer</th>
+                        <th scope="col">Person</th>
                         <th scope="col">Status</th>
                         <th scope="col">Date</th>
                         <th scope="col">Total</th>

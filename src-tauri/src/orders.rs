@@ -48,7 +48,7 @@ pub struct Order {
   pub id: String,
   pub customer_id: String,
   pub thread_id: String,
-  pub status: String, // draft | confirmed | paid | fulfilled | cancelled — see set_status
+  pub status: String, // draft | confirmed | invoiced | paid | fulfilled | cancelled
   pub lines: Vec<OrderLine>,
   pub total_cents: i64,
   pub created_at: i64,
@@ -58,13 +58,21 @@ pub struct Order {
 /// Allowed order statuses and transitions for `OrderStore::set_status`.
 ///
 /// - `cancelled` is terminal.
-/// - From `draft`: → confirmed | paid | fulfilled | cancelled
-/// - From `confirmed` | `paid` | `fulfilled`: → paid | fulfilled | cancelled
+/// - From `draft`: → confirmed | invoiced | paid | fulfilled | cancelled
+/// - From `confirmed`: → invoiced | paid | fulfilled | cancelled
+/// - From `invoiced` | `paid` | `fulfilled`: → paid | fulfilled | cancelled
 fn validate_status_transition(from: &str, to: &str) -> Result<(), String> {
-  const KNOWN: &[&str] = &["draft", "confirmed", "paid", "fulfilled", "cancelled"];
+  const KNOWN: &[&str] = &[
+    "draft",
+    "confirmed",
+    "invoiced",
+    "paid",
+    "fulfilled",
+    "cancelled",
+  ];
   if !KNOWN.contains(&to) {
     return Err(format!(
-      "invalid status '{}'; allowed: draft, confirmed, paid, fulfilled, cancelled",
+      "invalid status '{}'; allowed: draft, confirmed, invoiced, paid, fulfilled, cancelled",
       to
     ));
   }
@@ -75,10 +83,11 @@ fn validate_status_transition(from: &str, to: &str) -> Result<(), String> {
     return Err("cancelled orders are terminal; status cannot change".to_string());
   }
   let allowed: &[&str] = match from {
-    "draft" => &["confirmed", "paid", "fulfilled", "cancelled"],
-    "confirmed" | "paid" | "fulfilled" => &["paid", "fulfilled", "cancelled"],
+    "draft" => &["confirmed", "invoiced", "paid", "fulfilled", "cancelled"],
+    "confirmed" => &["invoiced", "paid", "fulfilled", "cancelled"],
+    "invoiced" | "paid" | "fulfilled" => &["paid", "fulfilled", "cancelled"],
     // Unknown/legacy on-disk status: only allow moving to a known non-draft status.
-    _ => &["confirmed", "paid", "fulfilled", "cancelled"],
+    _ => &["confirmed", "invoiced", "paid", "fulfilled", "cancelled"],
   };
   if !allowed.contains(&to) {
     return Err(format!(
@@ -87,6 +96,14 @@ fn validate_status_transition(from: &str, to: &str) -> Result<(), String> {
     ));
   }
   Ok(())
+}
+
+pub fn counts_toward_revenue(status: &str) -> bool {
+  !matches!(status, "draft" | "cancelled" | "canceled")
+}
+
+fn restocks_on_cancel(status: &str) -> bool {
+  matches!(status, "confirmed" | "invoiced" | "paid" | "fulfilled")
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -383,12 +400,24 @@ impl OrderStore {
     )
   }
 
-  pub fn set_status(&self, id: &str, status: &str, now: i64) -> Result<Order, String> {
+  pub fn set_status(
+    &self,
+    commerce: &CommerceStore,
+    id: &str,
+    status: &str,
+    now: i64,
+  ) -> Result<Order, String> {
     // draft → confirmed must go through confirm() so stock is decremented once.
-    if status == "confirmed" {
-      let cur = self.get(id).ok_or_else(|| "order not found".to_string())?;
-      if cur.status == "draft" {
-        return Err("use confirm_order to move draft → confirmed (decrements stock)".into());
+    let cur = self.get(id).ok_or_else(|| "order not found".to_string())?;
+    if status == "confirmed" && cur.status == "draft" {
+      return Err("use confirm_order to move draft → confirmed (decrements stock)".into());
+    }
+    validate_status_transition(&cur.status, status)?;
+    if status == "cancelled" && restocks_on_cancel(&cur.status) {
+      for line in &cur.lines {
+        if line.quantity_base_milli > 0 {
+          commerce.adjust_stock_milli(&line.product_id, line.quantity_base_milli, now)?;
+        }
       }
     }
     let mut out = None;
@@ -398,7 +427,6 @@ impl OrderStore {
         .iter_mut()
         .find(|x| x.id == id)
         .ok_or_else(|| "order not found".to_string())?;
-      validate_status_transition(&o.status, status)?;
       o.status = status.to_string();
       o.updated_at = now;
       out = Some(o.clone());
@@ -504,9 +532,13 @@ mod tests {
     assert!(validate_status_transition("draft", "cancelled").is_ok());
     assert!(validate_status_transition("draft", "paid").is_ok());
     assert!(validate_status_transition("draft", "fulfilled").is_ok());
+    assert!(validate_status_transition("confirmed", "invoiced").is_ok());
     assert!(validate_status_transition("confirmed", "paid").is_ok());
     assert!(validate_status_transition("confirmed", "fulfilled").is_ok());
     assert!(validate_status_transition("confirmed", "cancelled").is_ok());
+    assert!(validate_status_transition("invoiced", "paid").is_ok());
+    assert!(validate_status_transition("invoiced", "fulfilled").is_ok());
+    assert!(validate_status_transition("invoiced", "cancelled").is_ok());
     assert!(validate_status_transition("paid", "fulfilled").is_ok());
     assert!(validate_status_transition("paid", "cancelled").is_ok());
     assert!(validate_status_transition("fulfilled", "paid").is_ok());
@@ -557,17 +589,21 @@ mod tests {
       });
     }
 
-    let paid = store.set_status("o1", "paid", 2).unwrap();
-    assert_eq!(paid.status, "paid");
-    assert_eq!(paid.updated_at, 2);
+    let commerce = CommerceStore::new(&dir);
+    let invoiced = store.set_status(&commerce, "o1", "invoiced", 2).unwrap();
+    assert_eq!(invoiced.status, "invoiced");
 
-    let fulfilled = store.set_status("o1", "fulfilled", 3).unwrap();
+    let paid = store.set_status(&commerce, "o1", "paid", 3).unwrap();
+    assert_eq!(paid.status, "paid");
+    assert_eq!(paid.updated_at, 3);
+
+    let fulfilled = store.set_status(&commerce, "o1", "fulfilled", 4).unwrap();
     assert_eq!(fulfilled.status, "fulfilled");
 
-    let cancelled = store.set_status("o1", "cancelled", 4).unwrap();
+    let cancelled = store.set_status(&commerce, "o1", "cancelled", 5).unwrap();
     assert_eq!(cancelled.status, "cancelled");
 
-    let err = store.set_status("o1", "paid", 5).unwrap_err();
+    let err = store.set_status(&commerce, "o1", "paid", 6).unwrap_err();
     assert!(err.contains("terminal"), "{err}");
 
     let _ = std::fs::remove_dir_all(&dir);
@@ -627,5 +663,83 @@ mod tests {
     assert_eq!(commerce_b.list_products()[0].quantity_base_milli, 4000);
     assert_eq!(commerce_a.list_products()[0].quantity_base_milli, 5000);
     let _ = std::fs::remove_dir_all(&root);
+  }
+
+  #[test]
+  fn cancel_restocks_confirmed_not_draft() {
+    let dir = std::env::temp_dir().join(format!("signalx-restock-{}", Uuid::new_v4()));
+    let _ = std::fs::create_dir_all(&dir);
+    let commerce = CommerceStore::new(&dir);
+    commerce
+      .upsert_product(
+        crate::commerce::Product {
+          id: "p1".into(),
+          name: "Widget".into(),
+          description: String::new(),
+          sku: String::new(),
+          price_cents: 100,
+          cost_cents: 0,
+          supplier: String::new(),
+          base_unit: "ea".into(),
+          stock_unit: String::new(),
+          sales_unit: String::new(),
+          quantity_base_milli: 5000,
+          quantity_in_stock: 5,
+          stock_qty: None,
+          unit: "ea".into(),
+          weight: 0.0,
+          weight_unit: String::new(),
+          image_path: String::new(),
+          sell_options: vec![],
+          low_stock_threshold_milli: 0,
+          updated_at: 0,
+        },
+        1,
+      )
+      .unwrap();
+    let orders = OrderStore::new(&dir);
+    let draft = orders
+      .create_with_mode(
+        &commerce,
+        "c1".into(),
+        "dm:+1".into(),
+        vec![OrderLineInput {
+          product_id: "p1".into(),
+          quantity: 2.0,
+          unit: "ea".into(),
+          sell_option_id: String::new(),
+        }],
+        true,
+        2,
+      )
+      .unwrap();
+    assert_eq!(commerce.list_products()[0].quantity_base_milli, 5000);
+    orders
+      .set_status(&commerce, &draft.id, "cancelled", 3)
+      .unwrap();
+    assert_eq!(commerce.list_products()[0].quantity_base_milli, 5000);
+
+    let live = orders
+      .create_with_mode(
+        &commerce,
+        "c1".into(),
+        "dm:+1".into(),
+        vec![OrderLineInput {
+          product_id: "p1".into(),
+          quantity: 2.0,
+          unit: "ea".into(),
+          sell_option_id: String::new(),
+        }],
+        true,
+        4,
+      )
+      .unwrap();
+    orders.confirm(&commerce, &live.id, 5).unwrap();
+    assert_eq!(commerce.list_products()[0].quantity_base_milli, 3000);
+    orders
+      .set_status(&commerce, &live.id, "cancelled", 6)
+      .unwrap();
+    assert_eq!(commerce.list_products()[0].quantity_base_milli, 5000);
+    let _ = std::fs::remove_dir_all(&dir);
   }
 }
