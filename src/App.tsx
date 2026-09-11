@@ -310,6 +310,7 @@ function includesQ(hay: string, q: string): boolean {
 }
 
 export default function App() {
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [panel, setPanel] = useState<Panel>("threads");
   const [accountNumber, setAccountNumber] = useState<string | null>(null);
   const [session, setSession] = useState<SessionStatus | null>(null);
@@ -710,6 +711,18 @@ export default function App() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, outbox]);
+
+  useEffect(() => {
+    const handleKeydown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    };
+    window.addEventListener("keydown", handleKeydown);
+    return () => window.removeEventListener("keydown", handleKeydown);
+  }, []);
 
   const onSend = async () => {
     if (!selectedId || sending || restartRequired) return;
@@ -2052,6 +2065,7 @@ export default function App() {
         >
           <IconSearch className="rail-search-ico" />
           <input
+            ref={searchInputRef}
             value={searchQ}
             onChange={(e) => {
               const v = e.target.value;

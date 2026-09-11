@@ -1,7 +1,9 @@
 import type { CSSProperties } from "react";
+import { useState } from "react";
 import type { Order, Product } from "../../api";
 import type { Person } from "../People/people";
 import { SEARCH_SCOPES, type MessageHit, type SearchScope } from "../../globalSearch";
+import { IconCopy, IconCheckCheck } from "../../navIcons";
 
 type Props = {
   query: string;
@@ -42,19 +44,37 @@ export function SearchScreen({
   onOpenProduct,
   onOpenOrder,
 }: Props) {
+  const [copied, setCopied] = useState(false);
   const empty = !query.trim();
+
+  const copyQuery = () => {
+    navigator.clipboard.writeText(query.trim());
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <section className="thread-col wide">
-      <header className="col-head">
+      <header className=”col-head”>
         <div>
           <div>Search</div>
-          <div className="col-head-sub">
+          <div className=”col-head-sub”>
             {empty
-              ? "One search — pick Messages, People, Catalog, or Orders"
+              ? “One search — pick Messages, People, Catalog, or Orders”
               : `Results for “${query.trim()}”`}
           </div>
         </div>
+        {!empty && (
+          <button
+            type=”button”
+            className=”icon-btn”
+            onClick={copyQuery}
+            title={copied ? “Copied!” : “Copy query”}
+            aria-label={copied ? “Copied to clipboard” : “Copy query to clipboard”}
+          >
+            {copied ? <IconCheckCheck /> : <IconCopy />}
+          </button>
+        )}
       </header>
 
       <div className="search-scopes" role="tablist" aria-label="Search in">
