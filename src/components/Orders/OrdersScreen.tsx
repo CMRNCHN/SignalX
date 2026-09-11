@@ -1,8 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction } from "react";
 import type { ContactMeta, Customer, GroupMeta, Order, Product } from "../../api";
 import type { Panel } from "../../App";
 import { isGroupThread } from "../../format";
-import { IconBag, IconPlus, IconX } from "../../navIcons";
+import {
+  IconBag,
+  IconCheckCheck,
+  IconChevronDown,
+  IconClock,
+  IconPlus,
+  IconSort,
+  IconX,
+} from "../../navIcons";
 import { WhyTip } from "../WhyTip";
 
 /* The order lifecycle, in the order it actually happens. A quote is a draft
@@ -10,16 +18,65 @@ import { WhyTip } from "../WhyTip";
    order sits rather than every transition it could make. */
 const TRACK = ["draft", "confirmed", "invoiced", "paid", "fulfilled"] as const;
 
+export const ORDER_STATUS_OPTIONS = [
+  { id: "draft", label: "Draft" },
+  { id: "confirmed", label: "Confirmed" },
+  { id: "invoiced", label: "Invoiced" },
+  { id: "paid", label: "Paid" },
+  { id: "fulfilled", label: "Fulfilled" },
+  { id: "cancelled", label: "Cancelled" },
+] as const;
+
+export type OrderDateRange = "7" | "30" | "all";
+export type OrderPayment = "" | "unpaid" | "paid";
+export type OrderSort = "newest" | "oldest";
+
+export type OrderFilterState = {
+  q: string;
+  statuses: string[];
+  dateRange: OrderDateRange;
+  payment: OrderPayment;
+  sort: OrderSort;
+  thisThread: boolean;
+};
+
+export const EMPTY_ORDER_FILTER: OrderFilterState = {
+  q: "",
+  statuses: [],
+  dateRange: "all",
+  payment: "",
+  sort: "newest",
+  thisThread: false,
+};
+
+const DATE_OPTIONS: { id: OrderDateRange; label: string }[] = [
+  { id: "7", label: "Last 7 days" },
+  { id: "30", label: "Last 30 days" },
+  { id: "all", label: "All time" },
+];
+
+const PAYMENT_OPTIONS: { id: Exclude<OrderPayment, "">; label: string }[] = [
+  { id: "unpaid", label: "Unpaid" },
+  { id: "paid", label: "Paid" },
+];
+
 const trackIndex = (status: string) => TRACK.indexOf(status.toLowerCase() as (typeof TRACK)[number]);
+
+function statusKey(status: string): string {
+  const s = status.toLowerCase();
+  return s === "canceled" ? "cancelled" : s;
+}
+
+function isPaidStatus(status: string): boolean {
+  const s = statusKey(status);
+  return s === "paid" || s === "fulfilled";
+}
 
 type OrdersScreenProps = {
   orders: Order[];
   filteredOrders: Order[];
-  orderFilter: { q: string; status: string; thisThread: boolean };
-  setOrderFilter: React.Dispatch<
-    React.SetStateAction<{ q: string; status: string; thisThread: boolean }>
-  >;
-  orderStatuses: string[];
+  orderFilter: OrderFilterState;
+  setOrderFilter: Dispatch<SetStateAction<OrderFilterState>>;
   products: Product[];
   selectedId: string | null;
   setSelectedId: (id: string) => void;
@@ -56,7 +113,7 @@ type OrdersScreenProps = {
   productStockLabel: (p: Product) => string;
   formatPhone: (id: string) => string;
   initials: (name: string) => string;
-  avatarTint: (seed: string) => React.CSSProperties;
+  avatarTint: (seed: string) => CSSProperties;
 };
 
 export function OrdersScreen(props: OrdersScreenProps) {
@@ -65,7 +122,6 @@ export function OrdersScreen(props: OrdersScreenProps) {
     filteredOrders,
     orderFilter,
     setOrderFilter,
-    orderStatuses,
     products,
     selectedId,
     setSelectedId,
@@ -102,6 +158,7 @@ export function OrdersScreen(props: OrdersScreenProps) {
 
   const [openId, setOpenId] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
+  const [menu, setMenu] = useState<null | "status" | "date" | "payment">(null);
   const didAutoOpen = useRef(false);
 
   // The list re-sorts and re-filters constantly, so hold the id and look the
@@ -121,6 +178,45 @@ export function OrdersScreen(props: OrdersScreenProps) {
     return { openCents, paidCents, drafts, count: orders.length };
   }, [orders]);
 
+  const visible = useMemo(() => {
+    const now = Date.now();
+    const cutoff =
+      orderFilter.dateRange === "all"
+        ? 0
+        : now - (orderFilter.dateRange === "7" ? 7 : 30) * 24 * 60 * 60 * 1000;
+    const rows = filteredOrders.filter((o) => {
+      const key = statusKey(o.status);
+      if (orderFilter.statuses.length && !orderFilter.statuses.includes(key)) return false;
+      if (orderFilter.payment === "unpaid") {
+        if (isPaidStatus(o.status) || key === "cancelled") return false;
+      }
+      if (orderFilter.payment === "paid" && !isPaidStatus(o.status)) return false;
+      if (orderFilter.dateRange !== "all" && o.created_at < cutoff) return false;
+      return true;
+    });
+    rows.sort((a, b) =>
+      orderFilter.sort === "newest" ? b.created_at - a.created_at : a.created_at - b.created_at,
+    );
+    return rows;
+  }, [filteredOrders, orderFilter]);
+
+  const filtersActive = Boolean(
+    orderFilter.q.trim() ||
+      orderFilter.statuses.length ||
+      orderFilter.dateRange !== "all" ||
+      orderFilter.payment ||
+      orderFilter.sort !== "newest" ||
+      orderFilter.thisThread,
+  );
+
+  const toggleStatus = (id: string) =>
+    setOrderFilter((f) => ({
+      ...f,
+      statuses: f.statuses.includes(id) ? f.statuses.filter((s) => s !== id) : [...f.statuses, id],
+    }));
+
+  const clearFilters = () => setOrderFilter({ ...EMPTY_ORDER_FILTER });
+
   const canOrder = !!selectedId && !isGroupThread(selectedId) && products.length > 0;
 
   useEffect(() => {
@@ -132,16 +228,16 @@ export function OrdersScreen(props: OrdersScreenProps) {
     }
     if (composing) return;
     if (openId) {
-      if (!filteredOrders.some((o) => o.id === openId)) {
-        setOpenId(filteredOrders[0]?.id ?? null);
+      if (!visible.some((o) => o.id === openId)) {
+        setOpenId(visible[0]?.id ?? null);
       }
       return;
     }
-    if (!didAutoOpen.current && filteredOrders[0]) {
+    if (!didAutoOpen.current && visible[0]) {
       didAutoOpen.current = true;
-      setOpenId(filteredOrders[0].id);
+      setOpenId(visible[0].id);
     }
-  }, [filteredOrders, composing, openId, focusOrderId, onConsumedFocus]);
+  }, [visible, composing, openId, focusOrderId, onConsumedFocus]);
   const activeProduct = products.find((p) => p.id === orderProductId);
 
   const lineQty = (l: Order["lines"][number]) => {
@@ -160,44 +256,179 @@ export function OrdersScreen(props: OrdersScreenProps) {
 
   return (
     <section className="thread-col wide">
+      {menu && <div className="menu-scrim" onClick={() => setMenu(null)} />}
       <header className="col-head">
         Orders
         <span className="col-meta">
-          {filteredOrders.length === orders.length
+          {visible.length === orders.length
             ? `${orders.length} total`
-            : `${filteredOrders.length} of ${orders.length}`}
+            : `${visible.length} of ${orders.length}`}
         </span>
       </header>
 
       <div className="orders-layout">
         <div className="orders-list-pane">
-          <div className="filter-strip in-panel">
-            <input
-              placeholder="Filter orders…"
-              value={orderFilter.q}
-              onChange={(e) => setOrderFilter((f) => ({ ...f, q: e.target.value }))}
-            />
-            <select
-              aria-label="Order status"
-              value={orderFilter.status}
-              onChange={(e) => setOrderFilter((f) => ({ ...f, status: e.target.value }))}
-            >
-              {orderStatuses.map((s) => (
-                <option key={s} value={s}>
-                  {s === "all" ? "All statuses" : s}
-                </option>
-              ))}
-            </select>
-            <label className="filter-check">
+          <header className="orders-toolbar">
+            <div className="orders-search">
               <input
-                type="checkbox"
-                checked={orderFilter.thisThread}
-                disabled={!selectedId}
-                onChange={(e) => setOrderFilter((f) => ({ ...f, thisThread: e.target.checked }))}
+                value={orderFilter.q}
+                onChange={(e) => setOrderFilter((f) => ({ ...f, q: e.target.value }))}
+                placeholder="Search orders…"
+                aria-label="Search orders"
               />
-              This chat
-            </label>
-          </div>
+              {orderFilter.q && (
+                <button
+                  type="button"
+                  className="icon-btn tiny"
+                  onClick={() => setOrderFilter((f) => ({ ...f, q: "" }))}
+                  aria-label="Clear search"
+                >
+                  <IconX />
+                </button>
+              )}
+            </div>
+
+            <div className="orders-tools">
+              <div className="menu-anchor">
+                <button
+                  type="button"
+                  className={orderFilter.statuses.length ? "tool-btn active" : "tool-btn"}
+                  aria-label="Filter by status"
+                  title="Status"
+                  onClick={() => setMenu(menu === "status" ? null : "status")}
+                >
+                  <IconCheckCheck />
+                  <span className="tool-label">Status</span>
+                  <IconChevronDown className="caret" />
+                  {orderFilter.statuses.length > 0 && <span className="tool-dot" />}
+                </button>
+                {menu === "status" && (
+                  <div className="menu-pop">
+                    <span className="menu-label">Status</span>
+                    {ORDER_STATUS_OPTIONS.map((st) => (
+                      <button key={st.id} type="button" onClick={() => toggleStatus(st.id)}>
+                        <span className={orderFilter.statuses.includes(st.id) ? "tick on" : "tick"} />
+                        {st.label}
+                      </button>
+                    ))}
+                    {orderFilter.statuses.length > 0 && (
+                      <button
+                        type="button"
+                        className="menu-reset"
+                        onClick={() => setOrderFilter((f) => ({ ...f, statuses: [] }))}
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="menu-anchor">
+                <button
+                  type="button"
+                  className={orderFilter.dateRange !== "all" ? "tool-btn active" : "tool-btn"}
+                  aria-label="Filter by date"
+                  title="Date"
+                  onClick={() => setMenu(menu === "date" ? null : "date")}
+                >
+                  <IconClock />
+                  <span className="tool-label">Date</span>
+                  <IconChevronDown className="caret" />
+                  {orderFilter.dateRange !== "all" && <span className="tool-dot" />}
+                </button>
+                {menu === "date" && (
+                  <div className="menu-pop">
+                    <span className="menu-label">Date</span>
+                    {DATE_OPTIONS.map((d) => (
+                      <button
+                        key={d.id}
+                        type="button"
+                        onClick={() => setOrderFilter((f) => ({ ...f, dateRange: d.id }))}
+                      >
+                        <span className={orderFilter.dateRange === d.id ? "tick on" : "tick"} />
+                        {d.label}
+                      </button>
+                    ))}
+                    {orderFilter.dateRange !== "all" && (
+                      <button
+                        type="button"
+                        className="menu-reset"
+                        onClick={() => setOrderFilter((f) => ({ ...f, dateRange: "all" }))}
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="menu-anchor">
+                <button
+                  type="button"
+                  className={orderFilter.payment ? "tool-btn active" : "tool-btn"}
+                  aria-label="Filter by payment"
+                  title="Payment"
+                  onClick={() => setMenu(menu === "payment" ? null : "payment")}
+                >
+                  <IconBag />
+                  <span className="tool-label">Payment</span>
+                  <IconChevronDown className="caret" />
+                  {orderFilter.payment && <span className="tool-dot" />}
+                </button>
+                {menu === "payment" && (
+                  <div className="menu-pop">
+                    <span className="menu-label">Payment</span>
+                    {PAYMENT_OPTIONS.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() =>
+                          setOrderFilter((f) => ({
+                            ...f,
+                            payment: f.payment === p.id ? "" : p.id,
+                          }))
+                        }
+                      >
+                        <span className={orderFilter.payment === p.id ? "tick on" : "tick"} />
+                        {p.label}
+                      </button>
+                    ))}
+                    {orderFilter.payment && (
+                      <button
+                        type="button"
+                        className="menu-reset"
+                        onClick={() => setOrderFilter((f) => ({ ...f, payment: "" }))}
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                className={orderFilter.sort === "oldest" ? "tool-btn active" : "tool-btn"}
+                aria-label={orderFilter.sort === "newest" ? "Sorted newest first" : "Sorted oldest first"}
+                title={orderFilter.sort === "newest" ? "Newest first" : "Oldest first"}
+                onClick={() =>
+                  setOrderFilter((f) => ({
+                    ...f,
+                    sort: f.sort === "newest" ? "oldest" : "newest",
+                  }))
+                }
+              >
+                <IconSort />
+              </button>
+
+              {filtersActive && (
+                <button type="button" className="tool-btn" onClick={clearFilters}>
+                  Clear filters
+                </button>
+              )}
+            </div>
+          </header>
 
           <button
             type="button"
@@ -211,11 +442,23 @@ export function OrdersScreen(props: OrdersScreenProps) {
           </button>
 
           <div className="orders-list">
-            {orders.length === 0 && <p className="hint">No orders yet.</p>}
-            {orders.length > 0 && filteredOrders.length === 0 && (
-              <p className="hint">No orders match these filters.</p>
-            )}
-            {filteredOrders.map((o) => {
+            {orders.length === 0 ? (
+              <div className="empty-state">
+                <h3>No orders yet</h3>
+                <p>Orders will appear here when you create them.</p>
+              </div>
+            ) : visible.length === 0 ? (
+              <div className="empty-state">
+                <h3>No orders match these filters</h3>
+                <p>Try a different date range or status.</p>
+                {filtersActive && (
+                  <button type="button" className="ghost-btn" onClick={clearFilters}>
+                    Clear filters
+                  </button>
+                )}
+              </div>
+            ) : (
+              visible.map((o) => {
               const party = orderParty(o);
               return (
                 <button
@@ -248,7 +491,8 @@ export function OrdersScreen(props: OrdersScreenProps) {
                   </span>
                 </button>
               );
-            })}
+              }))
+            )}
           </div>
         </div>
 

@@ -112,6 +112,8 @@ type Props = {
   groupForm: { name: string; members: string };
   setGroupForm: (f: { name: string; members: string }) => void;
   createGroup: () => void | Promise<void>;
+  searchQuery?: string;
+  searchQueryTick?: number;
 };
 
 export function PeopleScreen({
@@ -136,8 +138,10 @@ export function PeopleScreen({
   groupForm,
   setGroupForm,
   createGroup,
+  searchQuery = "",
+  searchQueryTick = 0,
 }: Props) {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(searchQuery);
   const [activeTypes, setActiveTypes] = useState<PersonType[]>([]);
   const [activeStatuses, setActiveStatuses] = useState<PersonStatus[]>([]);
   const [activeTags, setActiveTags] = useState<string[]>([]);
@@ -167,6 +171,10 @@ export function PeopleScreen({
       /* private mode — archive stays in memory for this session */
     }
   };
+
+  useEffect(() => {
+    setQ(searchQuery);
+  }, [searchQuery, searchQueryTick]);
 
   const directory = useMemo(
     () => buildDirectory(contacts, groups, customers, threads, orders),

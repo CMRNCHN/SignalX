@@ -830,6 +830,33 @@ input[type="radio"] {
   margin: 0;
 }
 
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-dim);
+  min-height: 240px;
+}
+
+.empty-state h3 {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text);
+  margin: 0 0 8px 0;
+}
+
+.empty-state p {
+  margin: 0 0 16px 0;
+  font-size: 13px;
+}
+
+.empty-state button {
+  margin-top: 8px;
+}
+
 .search-box {
   display: flex;
   gap: 8px;
@@ -2954,6 +2981,23 @@ input[type="radio"] {
   margin: 4px 0 2px;
 }
 
+.search-scopes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 16px 4px;
+}
+
+.search-scope-n {
+  margin-left: 6px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+
+.search-results {
+  padding-top: 8px;
+}
+
 .rail-search-ico {
   position: absolute;
   left: 9px;
@@ -2970,7 +3014,7 @@ input[type="radio"] {
   border-radius: var(--radius-sm);
   box-shadow: var(--input-shadow);
   color: var(--text);
-  padding: 7px 10px 7px 30px;
+  padding: 7px 28px 7px 30px;
   font-size: 13px;
   outline: none;
 }
@@ -2979,9 +3023,15 @@ input[type="radio"] {
   color: var(--text-dim);
 }
 
-.rail-search input:focus {
+.rail-search input:focus,
+.rail-search.active input {
   border-color: var(--border-strong);
   box-shadow: var(--input-shadow), 0 0 0 3px rgba(250, 250, 250, 0.07);
+}
+
+.rail-search .icon-btn.tiny {
+  position: absolute;
+  right: 3px;
 }
 
 .nav-group {
@@ -3518,6 +3568,154 @@ input[type="radio"] {
 
 .people-col {
   background: var(--surface-list);
+  z-index: 42;
+  overflow: visible;
+}
+
+.catalog-col {
+  background: var(--surface-list);
+  z-index: 42;
+  overflow: visible;
+}
+
+.catalog-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: var(--edge-hi), 0 1px 8px rgba(0, 0, 0, 0.28);
+  position: relative;
+  z-index: 42;
+  flex-shrink: 0;
+}
+
+.catalog-search {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.catalog-search input {
+  width: 100%;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--input-shadow);
+  color: var(--text);
+  padding: 7px 28px 7px 10px;
+  font-size: 13px;
+  outline: none;
+}
+
+.catalog-search input:focus {
+  border-color: var(--border-strong);
+  box-shadow: var(--input-shadow), 0 0 0 3px rgba(250, 250, 250, 0.07);
+}
+
+.catalog-search .icon-btn.tiny {
+  position: absolute;
+  right: 3px;
+}
+
+.catalog-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.catalog-list {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
+.catalog-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--edge-hi), var(--shadow-xs);
+  color: inherit;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.catalog-card:hover {
+  background: var(--card-hover);
+  border-color: var(--border-strong);
+  box-shadow: var(--edge-hi), var(--shadow-md);
+}
+
+.catalog-card.active {
+  border-color: var(--border-strong);
+  box-shadow: var(--edge-hi), var(--shadow-md), inset 2px 0 0 var(--accent);
+}
+
+.catalog-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.catalog-card .person-avatar img,
+.catalog-detail .person-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.catalog-detail {
+  overflow: auto;
+}
+
+.catalog-detail-empty {
+  margin: auto;
+  padding: 32px;
+  max-width: 460px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.catalog-detail-empty h2 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.catalog-detail-body {
+  padding: 18px 22px 28px;
+}
+
+.catalog-form-wrap {
+  max-width: 720px;
+}
+
+.catalog-desc {
+  margin: 0 0 16px;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.catalog-stock-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
 }
 
 .people-toolbar {
@@ -3699,6 +3897,20 @@ input[type="radio"] {
   justify-content: center;
   color: var(--text-dim) !important;
   font-size: 12px !important;
+}
+
+.menu-file {
+  display: flex;
+  align-items: center;
+  padding: 7px 9px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.menu-file:hover {
+  background: var(--surface-4);
 }
 
 .tick {
@@ -4602,17 +4814,59 @@ body.is-resizing * {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
   background: var(--surface-list);
   border-right: 1px solid var(--border);
   box-shadow: 6px 0 22px rgba(0, 0, 0, 0.4);
-  z-index: 1;
+  z-index: 42;
 }
 
-.orders-list-pane .filter-strip.in-panel {
-  margin: 0;
-  padding: 10px 12px;
+.orders-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
   border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: var(--edge-hi), 0 1px 8px rgba(0, 0, 0, 0.28);
+  position: relative;
+  z-index: 41;
+  flex-shrink: 0;
+}
+
+.orders-search {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.orders-search input {
+  width: 100%;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--input-shadow);
+  color: var(--text);
+  padding: 7px 28px 7px 10px;
+  font-size: 13px;
+  outline: none;
+}
+
+.orders-search input:focus {
+  border-color: var(--border-strong);
+  box-shadow: var(--input-shadow), 0 0 0 3px rgba(250, 250, 250, 0.07);
+}
+
+.orders-search .icon-btn.tiny {
+  position: absolute;
+  right: 3px;
+}
+
+.orders-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
 }
 
 .orders-new-btn {
@@ -5608,5 +5862,26 @@ body.is-resizing * {
   }
   .sales-side > * {
     flex: 1;
+  }
+}
+
+/* Responsive toolbars: hide labels, shrink buttons on narrow screens */
+@media (max-width: 640px) {
+  .tool-label {
+    display: none;
+  }
+
+  .tool-btn {
+    width: 36px;
+    padding: 0 6px;
+    justify-content: center;
+  }
+
+  .tool-btn.add {
+    width: auto;
+  }
+
+  .tool-btn.add .tool-label {
+    display: inline;
   }
 }
