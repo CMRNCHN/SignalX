@@ -442,11 +442,23 @@ export function OrdersScreen(props: OrdersScreenProps) {
           </button>
 
           <div className="orders-list">
-            {orders.length === 0 && <p className="hint">No orders yet.</p>}
-            {orders.length > 0 && visible.length === 0 && (
-              <p className="hint">No orders match these filters.</p>
-            )}
-            {visible.map((o) => {
+            {orders.length === 0 ? (
+              <div className="empty-state">
+                <h3>No orders yet</h3>
+                <p>Orders will appear here when you create them.</p>
+              </div>
+            ) : visible.length === 0 ? (
+              <div className="empty-state">
+                <h3>No orders match these filters</h3>
+                <p>Try a different date range or status.</p>
+                {filtersActive && (
+                  <button type="button" className="ghost-btn" onClick={clearFilters}>
+                    Clear filters
+                  </button>
+                )}
+              </div>
+            ) : (
+              visible.map((o) => {
               const party = orderParty(o);
               return (
                 <button
@@ -479,7 +491,8 @@ export function OrdersScreen(props: OrdersScreenProps) {
                   </span>
                 </button>
               );
-            })}
+              }))
+            )}
           </div>
         </div>
 

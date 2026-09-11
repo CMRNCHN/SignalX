@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import type { Product } from "../../api";
+import type { Message, Order, Product } from "../../api";
 import {
   IconCheckCheck,
   IconChevronDown,
@@ -9,6 +9,8 @@ import {
   IconTag,
   IconX,
 } from "../../navIcons";
+import type { Person } from "../People/people";
+import { matchingProducts } from "../../globalSearch";
 import {
   CATALOG_STATUSES,
   STOCK_STATUSES,
@@ -26,6 +28,9 @@ type Props = {
   onSelectId: (id: string | null) => void;
   catalogSearchQuery?: string;
   catalogSearchTick?: number;
+  people?: Person[];
+  orders?: Order[];
+  messages?: Message[];
   productImages: Record<string, string>;
   productPriceLabel: (p: Product) => string;
   productStockLabel: (p: Product) => string;
@@ -47,6 +52,9 @@ export function CatalogScreen({
   onSelectId,
   catalogSearchQuery = "",
   catalogSearchTick = 0,
+  people = [],
+  orders = [],
+  messages = [],
   productImages,
   productPriceLabel,
   productStockLabel,
@@ -79,18 +87,32 @@ export function CatalogScreen({
   }, [products]);
 
   const visible = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    const rows = products.filter((p) => {
+    let rows: Product[];
+
+    // If search came from sidebar (catalogSearchTick > 0), use smart matching
+    if (catalogSearchTick > 0 && catalogSearchQuery.trim()) {
+      rows = matchingProducts(products, catalogSearchQuery, people, orders, messages);
+    } else {
+      // Local search input: use haystack
+      const needle = q.trim().toLowerCase();
+      rows = products.filter((p) => {
+        if (!needle) return true;
+        return productHaystack(p).toLowerCase().includes(needle);
+      });
+    }
+
+    // Apply local filters
+    rows = rows.filter((p) => {
       if (statuses.length && !statuses.includes(catalogStatus(p))) return false;
       if (categories.length && !categories.includes(catalogCategory(p))) return false;
       if (stocks.length && !stocks.includes(stockStatus(p))) return false;
-      if (!needle) return true;
-      return productHaystack(p).toLowerCase().includes(needle);
+      return true;
     });
+
     return rows.sort((a, b) =>
       sortAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name),
     );
-  }, [products, q, statuses, categories, stocks, sortAsc]);
+  }, [products, q, statuses, categories, stocks, sortAsc, catalogSearchQuery, catalogSearchTick, people, orders, messages]);
 
   const selected = products.find((p) => p.id === selectedId) ?? null;
 
@@ -305,48 +327,64 @@ export function CatalogScreen({
         </header>
 
         <div className="catalog-list">
-          {products.length === 0 && <p className="hint">No products yet — use Add.</p>}
-          {products.length > 0 && visible.length === 0 && (
-            <p className="hint">No products match these filters.</p>
-          )}
-          {visible.map((p) => {
-            const st = catalogStatus(p);
-            const stock = stockStatus(p);
-            return (
-              <button
-                key={p.id}
-                type="button"
-                className={selectedId === p.id ? "catalog-card active" : "catalog-card"}
-                onClick={() => onSelectId(p.id)}
-              >
-                <div className="catalog-card-head">
-                  <span className="person-avatar" aria-hidden>
-                    {productImages[p.id] ? (
-                      <img src={productImages[p.id]} alt="" />
-                    ) : (
-                      initials(p.name)
-                    )}
-                  </span>
-                  <div className="person-id">
-                    <div className="person-name-row">
-                      <span className="person-name">{p.name}</span>
-                      <span className="person-type">{st}</span>
-                    </div>
-                    <div className="person-sub">
-                      {[p.sku, catalogCategory(p)].filter(Boolean).join(" · ")}
+          {products.length === 0 ? (
+            <div className="empty-state">
+              <h3>Your catalog is empty</h3>
+              <p>Add your first product to get started.</p>
+              <button type="button" className="action-btn primary" onClick={onNew}>
+                New product
+              </button>
+            </div>
+          ) : visible.length === 0 ? (
+            <div className="empty-state">
+              <h3>No products match these filters</h3>
+              <p>Try adjusting your search or filters.</p>
+              {filtersActive && (
+                <button type="button" className="ghost-btn" onClick={clearFilters}>
+                  Clear filters
+                </button>
+              )}
+            </div>
+          ) : (
+            visible.map((p) => {
+              const st = catalogStatus(p);
+              const stock = stockStatus(p);
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={selectedId === p.id ? "catalog-card active" : "catalog-card"}
+                  onClick={() => onSelectId(p.id)}
+                >
+                  <div className="catalog-card-head">
+                    <span className="person-avatar" aria-hidden>
+                      {productImages[p.id] ? (
+                        <img src={productImages[p.id]} alt="" />
+                      ) : (
+                        initials(p.name)
+                      )}
+                    </span>
+                    <div className="person-id">
+                      <div className="person-name-row">
+                        <span className="person-name">{p.name}</span>
+                        <span className="person-type">{st}</span>
+                      </div>
+                      <div className="person-sub">
+                        {[p.sku, catalogCategory(p)].filter(Boolean).join(" · ")}
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="person-preview">
-                  <span>
-                    {productPriceLabel(p)} · {productStockLabel(p)}
-                    {stock === "low" ? " · low" : ""}
-                    {stock === "out-of-stock" ? " · out" : ""}
-                  </span>
-                </div>
-              </button>
-            );
-          })}
+                  <div className="person-preview">
+                    <span>
+                      {productPriceLabel(p)} · {productStockLabel(p)}
+                      {stock === "low" ? " · low" : ""}
+                      {stock === "out-of-stock" ? " · out" : ""}
+                    </span>
+                  </div>
+                </button>
+              );
+            })
+          )}
         </div>
       </section>
 

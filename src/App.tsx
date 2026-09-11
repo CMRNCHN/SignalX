@@ -1689,15 +1689,6 @@ export default function App() {
     });
   }, [threads, threadFilter, searchQ, contacts, groups, customers]);
 
-  const filteredOrders = useMemo(() => {
-    return orders.filter((o) => {
-      if (orderFilter.thisThread && selectedId && o.thread_id !== selectedId) return false;
-      const party = threadTitle(o.thread_id, contacts, groups, customers);
-      const lines = o.lines.map((l) => l.name).join(" ");
-      return includesQ(`${party} ${o.id} ${o.status} ${lines} ${o.thread_id}`, orderFilter.q);
-    });
-  }, [orders, orderFilter.q, orderFilter.thisThread, selectedId, contacts, groups, customers]);
-
   const directory = useMemo(
     () => buildDirectory(contacts, groups, customers, threads, orders),
     [contacts, groups, customers, threads, orders],
@@ -1712,6 +1703,25 @@ export default function App() {
     }
     return [...map.values()];
   }, [messagesReal]);
+
+  const filteredOrders = useMemo(() => {
+    let rows: Order[];
+
+    // Use smart matching if search query exists, otherwise use simple haystack
+    if (orderFilter.q.trim()) {
+      const partyOfLocal = (id: string) => threadTitle(id, contacts, groups, customers);
+      rows = matchingOrders(orders, orderFilter.q, directory, messageCorpus, partyOfLocal);
+    } else {
+      rows = orders;
+    }
+
+    // Apply thisThread filter
+    if (orderFilter.thisThread && selectedId) {
+      rows = rows.filter((o) => o.thread_id === selectedId);
+    }
+
+    return rows;
+  }, [orders, orderFilter.q, orderFilter.thisThread, selectedId, directory, messageCorpus, contacts, groups, customers, threadTitle]);
 
   const partyOf = (id: string) => threadTitle(id, contacts, groups, customers);
 
@@ -2318,6 +2328,9 @@ export default function App() {
           onSelectId={setCatalogProductId}
           catalogSearchQuery={catalogSearchQuery}
           catalogSearchTick={catalogSearchTick}
+          people={directory}
+          orders={orders}
+          messages={messageCorpus}
           productImages={productImages}
           productPriceLabel={productPriceLabel}
           productStockLabel={productStockLabel}
