@@ -50,8 +50,12 @@ import {
 import { DeviceLinkQr } from "./DeviceLinkQr";
 import { emptyMenus, IvrMenuComposer } from "./IvrMenuComposer";
 import { ProfileRail } from "./ProfileRail";
+import { CatalogScreen } from "./components/Catalog/CatalogScreen";
+import { SearchScreen } from "./components/Search/SearchScreen";
 import { PeopleScreen } from "./components/People/PeopleScreen";
-import { OrdersScreen } from "./components/Orders/OrdersScreen";
+import { buildDirectory } from "./components/People/people";
+import { matchingMessages, matchingOrders, matchingPeople, matchingProducts, type SearchScope } from "./globalSearch";
+import { OrdersScreen, EMPTY_ORDER_FILTER, type OrderFilterState } from "./components/Orders/OrdersScreen";
 import { SalesScreen } from "./components/Sales/SalesScreen";
 import { PanelResizer } from "./components/PanelResizer";
 import { formatPhone, formatQty, isGroupThread, stockQtyFromMilli, threadTitle } from "./format";
@@ -68,6 +72,7 @@ import {
   IconOrders,
   IconOutbox,
   IconSearch,
+  IconX,
   IconExport,
   IconMenuList,
   IconReply,
@@ -79,6 +84,7 @@ export type Panel =
   | "threads"
   | "search"
   | "people"
+  | "catalog"
   | "contacts"
   | "groups"
   | "products"
@@ -118,7 +124,7 @@ const NAV_GROUPS: NavItem[][] = [
   [{ id: "threads", label: "Messages", ico: <IconMessages /> }],
   [{ id: "people", label: "People", ico: <IconContacts /> }],
   [
-    { id: "products", label: "Catalog", ico: <IconCatalog /> },
+    { id: "catalog", label: "Catalog", ico: <IconCatalog /> },
     { id: "orders", label: "Orders", ico: <IconOrders /> },
     { id: "sales", label: "Sales", ico: <IconAudit /> },
   ],
@@ -248,11 +254,6 @@ function productStockLabel(p: Product): string {
   return stockU === "ea" ? `${shown} left` : `${shown} ${stockU} left`;
 }
 
-function isLowStock(p: Product): boolean {
-  const thr = p.low_stock_threshold_milli ?? 0;
-  return thr > 0 && (p.quantity_base_milli ?? 0) <= thr;
-}
-
 function lowStockThresholdLabel(milli: number): string {
   if (!milli) return "";
   const v = milli / 1000;
@@ -340,6 +341,10 @@ export default function App() {
     setStatusState(msg);
   };
   const [searchQ, setSearchQ] = useState("");
+  const [searchLiveQ, setSearchLiveQ] = useState("");
+  const [searchScope, setSearchScope] = useState<SearchScope>("messages");
+  const [peopleSearchQuery, setPeopleSearchQuery] = useState("");
+  const [peopleSearchTick, setPeopleSearchTick] = useState(0);
   const [searchHitsReal, setSearchHits] = useState<SearchResult[]>([]);
   const [contactsReal, setContacts] = useState<ContactMeta[]>([]);
   const [groupsReal, setGroups] = useState<GroupMeta[]>([]);
@@ -391,6 +396,9 @@ export default function App() {
   const [salesRange, setSalesRange] = useState<"7" | "30" | "all">("30");
   const [salesStatus, setSalesStatus] = useState("all");
   const [peopleKey, setPeopleKey] = useState<string | null>(null);
+  const [catalogProductId, setCatalogProductId] = useState<string | null>(null);
+  const [catalogSearchQuery, setCatalogSearchQuery] = useState("");
+  const [catalogSearchTick, setCatalogSearchTick] = useState(0);
   const [focusOrderId, setFocusOrderId] = useState<string | null>(null);
   const [newDmError, setNewDmError] = useState<string | null>(null);
   const [newDmOpen, setNewDmOpen] = useState(false);
@@ -419,7 +427,7 @@ export default function App() {
     ? searchHitsReal
     : USE_FIXTURES
       ? fxSearchHits.filter((h) => {
-          const q = searchQ.trim().toLowerCase();
+          const q = searchLiveQ.trim().toLowerCase();
           if (!q) return false;
           return `${h.snippet} ${h.thread_id} ${h.sender}`.toLowerCase().includes(q);
         })
@@ -451,22 +459,11 @@ export default function App() {
   const [backupBusy, setBackupBusy] = useState(false);
   const [restartRequired, setRestartRequired] = useState(false);
   const [threadFilter, setThreadFilter] = useState({
-    q: "",
     kind: "all" as "all" | "dm" | "group",
     unread: false,
     pending: false,
   });
-  const [productFilter, setProductFilter] = useState({
-    q: "",
-    stock: "all" as "all" | "in" | "out" | "low",
-    unit: "all",
-    hasImage: false,
-  });
-  const [orderFilter, setOrderFilter] = useState({
-    q: "",
-    status: "all",
-    thisThread: false,
-  });
+  const [orderFilter, setOrderFilter] = useState<OrderFilterState>(EMPTY_ORDER_FILTER);
   const [auditFilter, setAuditFilter] = useState({
     q: "",
     outcome: "all",
@@ -767,6 +764,27 @@ export default function App() {
     if (res.success) setSearchHits(res.data);
     else setStatus(res.error);
   };
+
+  useEffect(() => {
+    const q = searchQ.trim();
+    if (!q) {
+      setSearchLiveQ("");
+      setSearchHits([]);
+      return;
+    }
+    let cancelled = false;
+    const t = window.setTimeout(() => {
+      setSearchLiveQ(q);
+      void api.searchMessages(q).then((res) => {
+        if (cancelled || !res.success) return;
+        setSearchHits(res.data);
+      });
+    }, 300);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [searchQ]);
 
   const onSummarize = async (): Promise<string | null> => {
     if (!selectedId) return null;
@@ -1609,7 +1627,7 @@ export default function App() {
   // Product thumbnails arrive as base64 over the API, one call each, so fetch
   // them lazily for the catalog grid and keep what we've already resolved.
   useEffect(() => {
-    if (panel !== "products") return;
+    if (panel !== "catalog" && panel !== "products") return;
     const missing = products.filter((p) => p.image_path && !productImagesReal[p.id]);
     if (missing.length === 0) return;
     let cancelled = false;
@@ -1636,9 +1654,9 @@ export default function App() {
   // panels span both tracks and so expose just the rail edge.
   const panelLayout: PanelLayout = {
     listKey:
-      panel === "people"
+      panel === "people" || panel === "catalog" || panel === "products"
         ? "listPeople"
-        : panel === "threads" || panel === "search"
+        : panel === "threads"
           ? "list"
           : null,
     aside: showProfileRail,
@@ -1665,41 +1683,77 @@ export default function App() {
       if (threadFilter.kind === "group" && !isGroupThread(t.id)) return false;
       if (threadFilter.unread && t.unread_count <= 0) return false;
       if (threadFilter.pending && t.outbox_count <= 0) return false;
+      if (!searchQ.trim()) return true;
       const label = threadTitle(t.id, contacts, groups, customers);
-      return includesQ(`${label} ${t.id}`, threadFilter.q);
+      return includesQ(`${label} ${t.id} ${t.last_preview ?? ""}`, searchQ);
     });
-  }, [threads, threadFilter, contacts, groups, customers]);
-
-
-
-  const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
-      const milli = p.quantity_base_milli ?? 0;
-      const inStock = milli > 0 || p.quantity_in_stock > 0;
-      if (productFilter.stock === "in" && !inStock) return false;
-      if (productFilter.stock === "out" && inStock) return false;
-      if (productFilter.stock === "low" && !isLowStock(p)) return false;
-      if (productFilter.unit !== "all" && productUnit(p) !== productFilter.unit) return false;
-      if (productFilter.hasImage && !p.image_path && !productImages[p.id]) return false;
-      return includesQ(
-        `${p.name} ${p.sku} ${p.description} ${p.unit}`,
-        productFilter.q,
-      );
-    });
-  }, [products, productFilter, productImages]);
-
+  }, [threads, threadFilter, searchQ, contacts, groups, customers]);
 
   const filteredOrders = useMemo(() => {
-    return [...orders]
-      .sort((a, b) => b.created_at - a.created_at)
-      .filter((o) => {
-        if (orderFilter.status !== "all" && o.status !== orderFilter.status) return false;
-        if (orderFilter.thisThread && selectedId && o.thread_id !== selectedId) return false;
-        const party = threadTitle(o.thread_id, contacts, groups, customers);
-        const lines = o.lines.map((l) => l.name).join(" ");
-        return includesQ(`${party} ${o.id} ${o.status} ${lines} ${o.thread_id}`, orderFilter.q);
-      });
-  }, [orders, orderFilter, selectedId, contacts, groups]);
+    return orders.filter((o) => {
+      if (orderFilter.thisThread && selectedId && o.thread_id !== selectedId) return false;
+      const party = threadTitle(o.thread_id, contacts, groups, customers);
+      const lines = o.lines.map((l) => l.name).join(" ");
+      return includesQ(`${party} ${o.id} ${o.status} ${lines} ${o.thread_id}`, orderFilter.q);
+    });
+  }, [orders, orderFilter.q, orderFilter.thisThread, selectedId, contacts, groups, customers]);
+
+  const directory = useMemo(
+    () => buildDirectory(contacts, groups, customers, threads, orders),
+    [contacts, groups, customers, threads, orders],
+  );
+
+  const messageCorpus = useMemo(() => {
+    const map = new Map(messagesReal.map((m) => [m.id, m]));
+    if (USE_FIXTURES) {
+      for (const m of fxMessages) {
+        if (!map.has(m.id)) map.set(m.id, m);
+      }
+    }
+    return [...map.values()];
+  }, [messagesReal]);
+
+  const partyOf = (id: string) => threadTitle(id, contacts, groups, customers);
+
+  const openSearchScope = (scope: SearchScope) => {
+    const q = searchQ;
+    setSearchScope(scope);
+    if (scope === "messages") {
+      setPanel("threads");
+      return;
+    }
+    if (scope === "people") {
+      setPeopleSearchQuery(q);
+      setPeopleSearchTick((n) => n + 1);
+      setPanel("people");
+      return;
+    }
+    if (scope === "catalog") {
+      setCatalogSearchQuery(q);
+      setCatalogSearchTick((n) => n + 1);
+      setPanel("catalog");
+      return;
+    }
+    setOrderFilter((f) => ({ ...f, q, thisThread: false }));
+    setPanel("orders");
+  };
+
+  const searchPeopleHits = useMemo(
+    () => matchingPeople(directory, searchLiveQ, messageCorpus, orders),
+    [directory, searchLiveQ, messageCorpus, orders],
+  );
+  const searchOrderHits = useMemo(
+    () => matchingOrders(orders, searchLiveQ, directory, messageCorpus, partyOf),
+    [orders, searchLiveQ, directory, messageCorpus, contacts, groups, customers],
+  );
+  const searchProductHits = useMemo(
+    () => matchingProducts(products, searchLiveQ, directory, orders, messageCorpus),
+    [products, searchLiveQ, directory, orders, messageCorpus],
+  );
+  const searchMessageHits = useMemo(
+    () => matchingMessages(searchLiveQ, directory, messageCorpus, searchHits, partyOf),
+    [searchLiveQ, directory, messageCorpus, searchHits, contacts, groups, customers],
+  );
 
   const filteredAudit = useMemo(() => {
     return audit.filter((e) => {
@@ -1711,20 +1765,10 @@ export default function App() {
     });
   }, [audit, auditFilter, contacts, groups, customers]);
 
-  const orderStatuses = useMemo(() => {
-    const set = new Set(orders.map((o) => o.status).filter(Boolean));
-    return ["all", ...Array.from(set).sort()];
-  }, [orders]);
-
   const auditOutcomes = useMemo(() => {
     const set = new Set(audit.map((e) => e.outcome).filter(Boolean));
     return ["all", ...Array.from(set).sort()];
   }, [audit]);
-
-  const productUnits = useMemo(() => {
-    const set = new Set(products.map((p) => productUnit(p)));
-    return ["all", ...Array.from(set).sort()];
-  }, [products]);
 
   const setupNeeded = useMemo(
     () => needsDeviceSetup(diagnostics, health, linkStatus),
@@ -1810,7 +1854,7 @@ export default function App() {
       className={[
         "shell",
         showProfileRail ? "shell-with-profile" : "",
-        panel === "people" ? "shell-people" : "",
+        panel === "people" || panel === "catalog" || panel === "products" ? "shell-people" : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -1988,7 +2032,7 @@ export default function App() {
         </div>
 
         <form
-          className="rail-search"
+          className={panel === "search" ? "rail-search active" : "rail-search"}
           onSubmit={(e) => {
             e.preventDefault();
             if (!searchQ.trim()) return;
@@ -1999,10 +2043,24 @@ export default function App() {
           <IconSearch className="rail-search-ico" />
           <input
             value={searchQ}
-            onChange={(e) => setSearchQ(e.target.value)}
-            placeholder="Search messages"
-            aria-label="Search messages"
+            onChange={(e) => {
+              const v = e.target.value;
+              setSearchQ(v);
+              if (v.trim()) setPanel("search");
+            }}
+            placeholder="Search"
+            aria-label="Search Messages, People, Catalog, and Orders"
           />
+          {searchQ && (
+            <button
+              type="button"
+              className="icon-btn tiny"
+              onClick={() => setSearchQ("")}
+              aria-label="Clear search"
+            >
+              <IconX />
+            </button>
+          )}
         </form>
 
         <nav className="nav">
@@ -2014,7 +2072,6 @@ export default function App() {
                   type="button"
                   className={panel === id ? "nav-btn active" : "nav-btn"}
                   onClick={() => {
-                    if (id !== "search") setSearchQ("");
                     setPanel(id);
                   }}
                 >
@@ -2095,13 +2152,7 @@ export default function App() {
               {newDmError && <span className="warn-text">{newDmError}</span>}
             </div>
           )}
-          <div className="filter-strip stacked">
-            <input
-              className="filter-search"
-              placeholder="Filter threads…"
-              value={threadFilter.q}
-              onChange={(e) => setThreadFilter((f) => ({ ...f, q: e.target.value }))}
-            />
+          <div className="filter-strip">
             <div className="chip-row">
               {(["all", "dm", "group"] as const).map((k) => (
                 <button
@@ -2177,45 +2228,48 @@ export default function App() {
       )}
 
       {panel === "search" && (
-        <section className="thread-col">
-          <header className="col-head">Search</header>
-          <div className="search-box">
-            <input
-              value={searchQ}
-              onChange={(e) => setSearchQ(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && void onSearch()}
-              placeholder="Search messages…"
-            />
-            <button type="button" onClick={() => void onSearch()}>
-              Go
-            </button>
-          </div>
-          <div className="thread-list">
-            {searchHits.map((h) => (
-              <button
-                key={`${h.thread_id}-${h.message_id}`}
-                type="button"
-                className="thread-row p-3 gap-3"
-                onClick={() => {
-                  setSelectedId(h.thread_id);
-                  setSearchQ("");
-                  setPanel("threads");
-                }}
-              >
-                <span className="avatar-dot" style={avatarTint(h.thread_id)} aria-hidden>
-                  {initials(threadTitle(h.thread_id, contacts, groups, customers))}
-                </span>
-                <div className="thread-row-body">
-                  <div className="thread-row-top">
-                    <span className="thread-name">{threadTitle(h.thread_id, contacts, groups, customers)}</span>
-                    <span className="thread-time">{fmtTime(h.timestamp)}</span>
-                  </div>
-                  <div className="snippet">{h.snippet}</div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </section>
+        <SearchScreen
+          query={searchLiveQ}
+          scope={searchScope}
+          onTabClick={openSearchScope}
+          people={searchPeopleHits}
+          products={searchProductHits}
+          orders={searchOrderHits}
+          messages={searchMessageHits}
+          counts={{
+            messages: searchMessageHits.length,
+            people: searchPeopleHits.length,
+            catalog: searchProductHits.length,
+            orders: searchOrderHits.length,
+          }}
+          money={money}
+          fmtTime={fmtTime}
+          initials={initials}
+          avatarTint={avatarTint}
+          productPriceLabel={productPriceLabel}
+          onOpenMessage={(threadId) => {
+            setSelectedId(threadId);
+            setPanel("threads");
+          }}
+          onOpenPerson={(key) => {
+            setPeopleKey(key);
+            setPanel("people");
+          }}
+          onOpenProduct={(id) => {
+            const p = products.find((x) => x.id === id);
+            setCatalogProductId(id);
+            setCatalogSearchQuery(p?.name ?? searchQ);
+            setCatalogSearchTick((n) => n + 1);
+            setPanel("catalog");
+          }}
+          onOpenOrder={(id) => {
+            const o = orders.find((x) => x.id === id);
+            if (o) setSelectedId(o.thread_id);
+            setFocusOrderId(id);
+            setOrderFilter({ ...EMPTY_ORDER_FILTER });
+            setPanel("orders");
+          }}
+        />
       )}
 
       {panel === "people" && (
@@ -2252,88 +2306,37 @@ export default function App() {
           groupForm={groupForm}
           setGroupForm={setGroupForm}
           createGroup={createGroup}
+          searchQuery={peopleSearchQuery}
+          searchQueryTick={peopleSearchTick}
         />
       )}
 
-      {panel === "products" && (
-        <section className="thread-col wide">
-          <header className="col-head">
-            Catalog
-            <span className="col-meta">
-              {filteredProducts.length}/{products.length} products
-            </span>
-          </header>
-          <div className="catalog-body">
-            <div className="filter-strip in-panel">
-              <input
-                placeholder="Filter catalog…"
-                value={productFilter.q}
-                onChange={(e) => setProductFilter((f) => ({ ...f, q: e.target.value }))}
-              />
-              <select
-                aria-label="Stock filter"
-                value={productFilter.stock}
-                onChange={(e) =>
-                  setProductFilter((f) => ({
-                    ...f,
-                    stock: e.target.value as "all" | "in" | "out" | "low",
-                  }))
-                }
-              >
-                <option value="all">All stock</option>
-                <option value="in">In stock</option>
-                <option value="out">Out of stock</option>
-                <option value="low">Below threshold</option>
-              </select>
-              <select
-                aria-label="Unit filter"
-                value={productFilter.unit}
-                onChange={(e) => setProductFilter((f) => ({ ...f, unit: e.target.value }))}
-              >
-                {productUnits.map((u) => (
-                  <option key={u} value={u}>
-                    {u === "all" ? "All units" : `Unit: ${u}`}
-                  </option>
-                ))}
-              </select>
-              <label className="filter-check">
-                <input
-                  type="checkbox"
-                  checked={productFilter.hasImage}
-                  onChange={(e) => setProductFilter((f) => ({ ...f, hasImage: e.target.checked }))}
-                />
-                Has image
-              </label>
-              <button type="button" className="ghost-btn" onClick={() => void exportProductsCsv()}>
-                Export CSV
-              </button>
-              <label className="ghost-btn file-pick-btn">
-                Import CSV
-                <input
-                  type="file"
-                  accept=".csv,text/csv"
-                  hidden
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] || null;
-                    void importProductsCsvFile(file);
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-              <button
-                type="button"
-                className="action-btn primary"
-                onClick={() => {
-                  resetProductForm();
-                  setCatalogFormOpen(true);
-                }}
-              >
-                New product
-              </button>
-            </div>
-            <div className={`catalog-layout${catalogFormOpen ? "" : " grid-only"}`}>
-              {catalogFormOpen && (
-              <div className="catalog-form-pane">
+      {(panel === "catalog" || panel === "products") && (
+        <CatalogScreen
+          products={products}
+          selectedId={catalogProductId}
+          onSelectId={setCatalogProductId}
+          catalogSearchQuery={catalogSearchQuery}
+          catalogSearchTick={catalogSearchTick}
+          productImages={productImages}
+          productPriceLabel={productPriceLabel}
+          productStockLabel={productStockLabel}
+          productWeightLabel={productWeightLabel}
+          initials={initials}
+          formOpen={catalogFormOpen}
+          onNew={() => {
+            resetProductForm();
+            setCatalogFormOpen(true);
+          }}
+          onEdit={(p) => void editProduct(p)}
+          onDelete={(id) => {
+            if (catalogProductId === id) setCatalogProductId(null);
+            void removeProduct(id);
+          }}
+          onAdjustStock={(p, d) => void adjustStock(p, d)}
+          onExportCsv={() => void exportProductsCsv()}
+          onImportCsv={(file) => void importProductsCsvFile(file)}
+          form={
             <div className="product-form">
               <div className="form-card">
                 <h3 className="form-card-title">
@@ -2609,90 +2612,8 @@ export default function App() {
                 </button>
               </div>
             </div>
-              </div>
-              )}
-              <div className="catalog-grid-pane">
-            <div className="product-grid">
-              {products.length === 0 && <p className="hint">No products yet — use New product.</p>}
-              {products.length > 0 && filteredProducts.length === 0 && (
-                <p className="hint">No products match these filters.</p>
-              )}
-              {filteredProducts.map((p) => {
-                const img = productImages[p.id];
-                const out = p.quantity_in_stock <= 0 && (p.quantity_base_milli ?? 0) <= 0;
-                const low = isLowStock(p) && (p.quantity_base_milli ?? 0) > 0;
-                return (
-                  <article key={p.id} className="product-card">
-                    <div className="product-card-media">
-                      {img ? (
-                        <img src={img} alt="" />
-                      ) : (
-                        <span className="product-card-placeholder" aria-hidden>
-                          <IconCatalog />
-                        </span>
-                      )}
-                      {out && <span className="product-flag out">Out</span>}
-                      {low && <span className="product-flag low">Low</span>}
-                    </div>
-                    <div className="product-card-body">
-                      <div className="product-card-title">{p.name}</div>
-                      <div className="product-card-price">
-                        <strong>{productPriceLabel(p)}</strong>
-                        <span className="product-card-stock">{productStockLabel(p)}</span>
-                      </div>
-                      {p.description && (
-                        <p className="product-card-desc">{p.description}</p>
-                      )}
-                      <div className="product-card-meta">
-                        {[
-                          p.sku || p.id.slice(0, 8),
-                          p.supplier || null,
-                          productWeightLabel(p),
-                          (p.sell_options || []).length
-                            ? `${p.sell_options.length} pack${p.sell_options.length === 1 ? "" : "s"}`
-                            : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </div>
-                    </div>
-                    <div className="product-card-actions">
-                      <button type="button" className="ghost-btn" onClick={() => void editProduct(p)}>
-                        Edit
-                      </button>
-                      <div className="stock-stepper">
-                        <button
-                          type="button"
-                          title="Remove 1 stock unit"
-                          onClick={() => void adjustStock(p, -1)}
-                        >
-                          −
-                        </button>
-                        <span>stock</span>
-                        <button
-                          type="button"
-                          title="Add 1 stock unit"
-                          onClick={() => void adjustStock(p, 1)}
-                        >
-                          +
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        className="ghost-btn danger-text"
-                        onClick={() => void removeProduct(p.id)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-              </div>
-            </div>
-          </div>
-        </section>
+          }
+        />
       )}
 
       {panel === "orders" && (
@@ -2701,7 +2622,6 @@ export default function App() {
           filteredOrders={filteredOrders}
           orderFilter={orderFilter}
           setOrderFilter={setOrderFilter}
-          orderStatuses={orderStatuses}
           products={products}
           selectedId={selectedId}
           setSelectedId={setSelectedId}
@@ -3540,8 +3460,10 @@ export default function App() {
         panel === "people" ||
         panel === "settings" ||
         panel === "products" ||
+        panel === "catalog" ||
         panel === "orders" ||
         panel === "sales" ||
+        panel === "search" ||
         panel === "outbox") ? null : (
       <main className="convo">
         {!selectedId ? (
@@ -3553,7 +3475,7 @@ export default function App() {
                 <strong>Messages</strong>
                 <span>Open the thread list and reply over Signal.</span>
               </button>
-              <button type="button" className="quick-action" onClick={() => setPanel("products")}>
+              <button type="button" className="quick-action" onClick={() => setPanel("catalog")}>
                 <strong>Catalog</strong>
                 <span>Manage products, packs, and stock.</span>
               </button>
