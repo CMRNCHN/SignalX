@@ -930,7 +930,7 @@ impl CommerceStore {
     if c.thread_id.is_empty() {
       return Err("thread_id required".to_string());
     }
-    if c.thread_id.starts_with("group:") {
+    if c.thread_id.starts_with("group:") || c.thread_id.starts_with("group.") {
       return Err("customers must be DM threads".to_string());
     }
     c.display_name = c.display_name.trim().to_string();

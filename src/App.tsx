@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   api,
   errMsg,
+  isDesktopUnavailable,
   onEvent,
   unwrap,
   type AiStatus,
@@ -30,28 +31,54 @@ import {
   type ThreadIvrStatus,
   type ThreadSummary,
 } from "./api";
+import {
+  USE_FIXTURES,
+  fxAudit,
+  fxCommerceAudit,
+  fxContacts,
+  fxCustomers,
+  fxGroups,
+  fxMessages,
+  fxOrders,
+  fxOutbox,
+  fxProductImages,
+  fxProducts,
+  fxSalesSummary,
+  fxSearchHits,
+  fxThreads,
+} from "./devFixtures";
 import { DeviceLinkQr } from "./DeviceLinkQr";
-import { IvrMenuComposer } from "./IvrMenuComposer";
+import { emptyMenus, IvrMenuComposer } from "./IvrMenuComposer";
 import { ProfileRail } from "./ProfileRail";
+import { PeopleScreen } from "./components/People/PeopleScreen";
+import { OrdersScreen } from "./components/Orders/OrdersScreen";
 import { SalesScreen } from "./components/Sales/SalesScreen";
-import { isTauriRuntime } from "./runtime";
+import { PanelResizer } from "./components/PanelResizer";
+import { formatPhone, formatQty, isGroupThread, stockQtyFromMilli, threadTitle } from "./format";
+import { canInvoke, isTauriRuntime } from "./runtime";
+import { usePanelWidths, type PanelLayout } from "./usePanelWidths";
 import {
   IconAudit,
+  IconBolt,
   IconCatalog,
+  IconCompose,
   IconContacts,
-  IconCustomers,
-  IconGroups,
   IconImage,
   IconMessages,
   IconOrders,
   IconOutbox,
   IconSearch,
+  IconExport,
+  IconMenuList,
+  IconReply,
   IconSettings,
+  IconSparkle,
 } from "./navIcons";
 
 export type Panel =
   | "threads"
   | "search"
+  | "people"
   | "contacts"
   | "groups"
   | "products"
@@ -65,6 +92,7 @@ type SettingsTab = "account" | "ivr" | "auto" | "backup";
 
 type SellPackRow = {
   key: string;
+  id?: string;
   label: string;
   amount: string;
   unit: string;
@@ -83,25 +111,43 @@ function newPackRow(): SellPackRow {
   };
 }
 
-const NAV_ITEMS: { id: Panel; label: string; ico: ReactNode }[] = [
-  { id: "threads", label: "Messages", ico: <IconMessages /> },
-  { id: "search", label: "Search", ico: <IconSearch /> },
-  { id: "contacts", label: "Contacts", ico: <IconContacts /> },
-  { id: "groups", label: "Groups", ico: <IconGroups /> },
-  { id: "products", label: "Catalog", ico: <IconCatalog /> },
-  { id: "customers", label: "Customers", ico: <IconCustomers /> },
-  { id: "orders", label: "Orders", ico: <IconOrders /> },
-  { id: "sales", label: "Sales", ico: <IconAudit /> },
-  { id: "outbox", label: "Outbox", ico: <IconOutbox /> },
-  { id: "audit", label: "Auto-reply log", ico: <IconAudit /> },
-  { id: "settings", label: "Settings", ico: <IconSettings /> },
+type NavItem = { id: Panel; label: string; ico: ReactNode };
+
+/** Grouped so related destinations read as a set rather than a flat list. */
+const NAV_GROUPS: NavItem[][] = [
+  [{ id: "threads", label: "Messages", ico: <IconMessages /> }],
+  [{ id: "people", label: "People", ico: <IconContacts /> }],
+  [
+    { id: "products", label: "Catalog", ico: <IconCatalog /> },
+    { id: "orders", label: "Orders", ico: <IconOrders /> },
+    { id: "sales", label: "Sales", ico: <IconAudit /> },
+  ],
+  [
+    { id: "outbox", label: "Outbox", ico: <IconOutbox /> },
+    { id: "audit", label: "Auto-reply log", ico: <IconAudit /> },
+  ],
+  [{ id: "settings", label: "Settings", ico: <IconSettings /> }],
 ];
+
 
 function initials(label: string): string {
   const parts = label.replace(/^\+/, "").trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+/** Stable per-identity avatar tint. Low saturation so it reads as a tinted
+ *  grey rather than a colour accent, but distinct enough to tell rows apart. */
+function avatarTint(seed: string) {
+  let h = 0;
+  for (let i = 0; i < seed.length; i += 1) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  const hue = h % 360;
+  return {
+    background: `hsl(${hue} 16% 30%)`,
+    color: `hsl(${hue} 38% 84%)`,
+    boxShadow: `inset 0 0 0 1px hsl(${hue} 20% 42%)`,
+  };
 }
 
 function needsDeviceSetup(
@@ -156,31 +202,6 @@ function fmtTime(ts: number): string {
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-function threadTitle(
-  id: string,
-  contacts: ContactMeta[],
-  groups: GroupMeta[],
-  customers: Customer[] = [],
-): string {
-  if (id.startsWith("group:")) {
-    const g = groups.find((x) => x.group_id === id || x.group_id === id.replace(/^group:/, ""));
-    return g?.display_name || id.replace(/^group:/, "Group ");
-  }
-  const raw = id.replace(/^dm:/, "");
-  const cust = customers.find((c) => c.thread_id === id || c.thread_id === raw);
-  if (cust?.display_name?.trim()) return cust.display_name.trim();
-  const c = contacts.find(
-    (x) =>
-      x.contact_id === id ||
-      x.contact_id === raw ||
-      x.contact_id === `dm:${raw}` ||
-      x.contact_id.replace(/^dm:/, "") === raw,
-  );
-  const named = (c?.display_name || c?.alias || "").trim();
-  if (named) return named;
-  return raw || id;
-}
-
 function isEnvelopeNoiseContent(content: string): boolean {
   const t = content.trim();
   if (!t.startsWith("{")) return false;
@@ -218,22 +239,13 @@ function productStockLabel(p: Product): string {
   const milli = p.quantity_base_milli || 0;
   const base = productBaseUnit(p);
   const stockU = (p.stock_unit || "").trim().toLowerCase() || base;
-  // Approximate display: prefer legacy whole units when milli unset
   if (!milli && p.quantity_in_stock != null) {
     return stockU === "ea"
       ? `${p.quantity_in_stock} left`
       : `${p.quantity_in_stock} ${stockU} left`;
   }
-  const baseAmt = milli / 1000;
-  // lightweight client display — server formats precisely in IVR
-  if (stockU === base) {
-    const shown =
-      Math.abs(baseAmt - Math.round(baseAmt)) < 0.001
-        ? String(Math.round(baseAmt))
-        : baseAmt.toFixed(2);
-    return `${shown} ${stockU} left`;
-  }
-  return `${baseAmt.toFixed(2)} ${base} left`;
+  const shown = formatQty(stockQtyFromMilli(milli, stockU, base));
+  return stockU === "ea" ? `${shown} left` : `${shown} ${stockU} left`;
 }
 
 function isLowStock(p: Product): boolean {
@@ -312,21 +324,25 @@ export default function App() {
   const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
   const [health, setHealth] = useState<ReceiveLoopState | null>(null);
   const [ai, setAi] = useState<AiStatus | null>(null);
-  const [threads, setThreads] = useState<ThreadSummary[]>([]);
+  const [threadsReal, setThreads] = useState<ThreadSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messagesReal, setMessages] = useState<Message[]>([]);
   const [outbox, setOutbox] = useState<OutboxItem[]>([]);
-  const [globalOutbox, setGlobalOutbox] = useState<OutboxItem[]>([]);
+  const [globalOutboxReal, setGlobalOutbox] = useState<OutboxItem[]>([]);
   const [outboxSummary, setOutboxSummary] = useState<OutboxSummary | null>(null);
   const [composer, setComposer] = useState("");
   const [attachFile, setAttachFile] = useState<File | null>(null);
   const [attachPreview, setAttachPreview] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatusState] = useState<string | null>(null);
+  const setStatus = (msg: string | null) => {
+    if (msg && isDesktopUnavailable(msg)) return;
+    setStatusState(msg);
+  };
   const [searchQ, setSearchQ] = useState("");
-  const [searchHits, setSearchHits] = useState<SearchResult[]>([]);
-  const [contacts, setContacts] = useState<ContactMeta[]>([]);
-  const [groups, setGroups] = useState<GroupMeta[]>([]);
+  const [searchHitsReal, setSearchHits] = useState<SearchResult[]>([]);
+  const [contactsReal, setContacts] = useState<ContactMeta[]>([]);
+  const [groupsReal, setGroups] = useState<GroupMeta[]>([]);
   const [summaryText, setSummaryText] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [autoSettings, setAutoSettings] = useState<AutoReplySettings | null>(null);
@@ -337,8 +353,9 @@ export default function App() {
   const [ivrMenusBusy, setIvrMenusBusy] = useState(false);
   const [threadAuto, setThreadAuto] = useState<ThreadAutoReplyStatus | null>(null);
   const [threadIvr, setThreadIvr] = useState<ThreadIvrStatus | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [productsReal, setProducts] = useState<Product[]>([]);
+  const [customersReal, setCustomers] = useState<Customer[]>([]);
+  const [catalogFormOpen, setCatalogFormOpen] = useState(false);
   const [productForm, setProductForm] = useState({
     id: "",
     name: "",
@@ -365,14 +382,66 @@ export default function App() {
   const [newDmPhone, setNewDmPhone] = useState("");
   const [contactForm, setContactForm] = useState({ phone: "", name: "" });
   const [groupForm, setGroupForm] = useState({ name: "", members: "" });
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [ordersReal, setOrders] = useState<Order[]>([]);
   const [orderProductId, setOrderProductId] = useState("");
   const [orderQty, setOrderQty] = useState("1");
-  const [audit, setAudit] = useState<AutoReplyAuditEntry[]>([]);
-  const [salesSummary, setSalesSummary] = useState<SalesSummary | null>(null);
-  const [commerceAudit, setCommerceAudit] = useState<CommerceAuditEvent[]>([]);
+  const [auditReal, setAudit] = useState<AutoReplyAuditEntry[]>([]);
+  const [salesSummaryReal, setSalesSummary] = useState<SalesSummary | null>(null);
+  const [commerceAuditReal, setCommerceAudit] = useState<CommerceAuditEvent[]>([]);
   const [salesRange, setSalesRange] = useState<"7" | "30" | "all">("30");
   const [salesStatus, setSalesStatus] = useState("all");
+  const [peopleKey, setPeopleKey] = useState<string | null>(null);
+  const [focusOrderId, setFocusOrderId] = useState<string | null>(null);
+  const [newDmError, setNewDmError] = useState<string | null>(null);
+  const [newDmOpen, setNewDmOpen] = useState(false);
+  const [productImagesReal, setProductImages] = useState<Record<string, string>>({});
+
+  // Dev-only design data. Real state always wins; fixtures fill in only while a
+  // list is genuinely empty, and USE_FIXTURES is false in any release build.
+  const threads = USE_FIXTURES && !threadsReal.length ? fxThreads : threadsReal;
+  const messages = (() => {
+    const live = selectedId
+      ? messagesReal.filter(
+          (m) =>
+            m.thread_id === selectedId ||
+            m.thread_id.replace(/^dm:/, "") === selectedId.replace(/^dm:/, ""),
+        )
+      : messagesReal;
+    if (live.length) return live;
+    if (USE_FIXTURES && selectedId) {
+      return fxMessages.filter((m) => m.thread_id === selectedId);
+    }
+    return [];
+  })();
+  const globalOutbox =
+    USE_FIXTURES && !globalOutboxReal.length ? fxOutbox : globalOutboxReal;
+  const searchHits = searchHitsReal.length
+    ? searchHitsReal
+    : USE_FIXTURES
+      ? fxSearchHits.filter((h) => {
+          const q = searchQ.trim().toLowerCase();
+          if (!q) return false;
+          return `${h.snippet} ${h.thread_id} ${h.sender}`.toLowerCase().includes(q);
+        })
+      : [];
+  const contacts = USE_FIXTURES && !contactsReal.length ? fxContacts : contactsReal;
+  const groups = USE_FIXTURES && !groupsReal.length ? fxGroups : groupsReal;
+  const products = USE_FIXTURES && !productsReal.length ? fxProducts : productsReal;
+  const customers = USE_FIXTURES && !customersReal.length ? fxCustomers : customersReal;
+  const orders = USE_FIXTURES && !ordersReal.length ? fxOrders : ordersReal;
+  const audit = USE_FIXTURES && !auditReal.length ? fxAudit : auditReal;
+  const commerceAudit =
+    USE_FIXTURES && !commerceAuditReal.length ? fxCommerceAudit : commerceAuditReal;
+  // The sales API answers with a valid but zeroed summary when no account is
+  // configured, so treat "no orders" as empty rather than only null.
+  const salesSummary =
+    USE_FIXTURES && !salesSummaryReal?.order_count ? fxSalesSummary : salesSummaryReal;
+  // Fixture products have no `image_path`, so the loader below never fetches
+  // for them. Merge rather than replace: a real uploaded photo always wins.
+  const productImages = USE_FIXTURES
+    ? { ...fxProductImages, ...productImagesReal }
+    : productImagesReal;
+
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkUri, setLinkUri] = useState<string | null>(null);
   const [linkStatus, setLinkStatus] = useState<DeviceLinkStatus | null>(null);
@@ -387,27 +456,11 @@ export default function App() {
     unread: false,
     pending: false,
   });
-  const [contactFilter, setContactFilter] = useState({
-    q: "",
-    favorites: false,
-    hideMuted: false,
-    autoOnly: false,
-  });
-  const [groupFilter, setGroupFilter] = useState({
-    q: "",
-    favorites: false,
-    hideMuted: false,
-    autoOnly: false,
-  });
   const [productFilter, setProductFilter] = useState({
     q: "",
     stock: "all" as "all" | "in" | "out" | "low",
     unit: "all",
     hasImage: false,
-  });
-  const [customerFilter, setCustomerFilter] = useState({
-    q: "",
-    hasOrders: false,
   });
   const [orderFilter, setOrderFilter] = useState({
     q: "",
@@ -443,7 +496,13 @@ export default function App() {
       if (c.success) setContacts(c.data);
     }
     if (box.success) setOutbox(box.data.filter((i) => i.state !== "sent"));
-    await api.markThreadRead(threadId);
+    const marked = await api.markThreadRead(threadId);
+    if (marked.success) {
+      setThreads((prev) =>
+        prev.map((t) => (t.id === threadId ? { ...t, unread_count: 0 } : t)),
+      );
+      void refreshThreads();
+    }
   };
 
   const refreshMeta = async () => {
@@ -503,8 +562,6 @@ export default function App() {
     else setAccountNumber(d?.number ?? null);
     if (sess.success && sess.data.locked) {
       setStatus("Unlock an account to send and receive");
-    } else if (!d?.number) {
-      setStatus("Not configured — set SIGNALX_NUMBER and SIGNALX_SIGNALCLI_CONFIG in .signalx.env");
     }
     setHealth(unwrap(recv, null as unknown as ReceiveLoopState));
     setAi(unwrap(aiStatus, null as unknown as AiStatus));
@@ -517,6 +574,24 @@ export default function App() {
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
+    if (!canInvoke()) {
+      setAutoSettings({
+        enabled: false,
+        allowlist: [],
+        quiet_hours_start: null,
+        quiet_hours_end: null,
+        max_per_thread_per_hour: 4,
+        max_per_window: 20,
+        window_secs: 3600,
+      });
+      setIvrSettings({
+        enabled: false,
+        allowlist: [],
+        require_allowlist: false,
+        hide_zero_stock: false,
+      });
+      return;
+    }
     void bootstrap();
     const unsubs: Array<() => void> = [];
     void (async () => {
@@ -741,7 +816,7 @@ export default function App() {
 
   const toggleThreadAuto = async (enabled: boolean) => {
     if (!selectedId) return;
-    if (selectedId.startsWith("group:") && enabled) {
+    if (isGroupThread(selectedId) && enabled) {
       const ok = window.confirm(
         "Enable auto-reply for this group? Groups are off by default.",
       );
@@ -785,7 +860,7 @@ export default function App() {
   };
 
   const addToAllowlist = async (kind: "ivr" | "auto", threadId: string | null) => {
-    if (!threadId || threadId.startsWith("group:")) {
+    if (!threadId || isGroupThread(threadId)) {
       setStatus("Select a DM thread first");
       return;
     }
@@ -864,7 +939,7 @@ export default function App() {
 
   const toggleThreadIvr = async (enabled: boolean) => {
     if (!selectedId) return;
-    if (selectedId.startsWith("group:")) {
+    if (isGroupThread(selectedId)) {
       setStatus("Buyer menus only work in 1:1 chats, not groups");
       return;
     }
@@ -913,6 +988,7 @@ export default function App() {
     setProductImageFile(null);
     setProductImagePreview(null);
     setClearProductImageFlag(false);
+    setCatalogFormOpen(false);
   };
 
   const applyProductImageFile = (file: File | null) => {
@@ -924,12 +1000,13 @@ export default function App() {
     }
   };
 
-  const packsFromProduct = (p: Product): SellPackRow[] =>
+    const packsFromProduct = (p: Product): SellPackRow[] =>
     (p.sell_options || []).map((o) => ({
       key: o.id || newPackRow().key,
+      id: o.id,
       label: o.label,
       amount: String(o.amount),
-      unit: o.unit || "oz",
+      unit: o.unit || p.base_unit || "ea",
       price:
         o.price_cents != null && o.price_cents !== undefined
           ? (o.price_cents / 100).toFixed(2)
@@ -955,10 +1032,10 @@ export default function App() {
         price_cents = Math.round(dollars * 100);
       }
       out.push({
-        id: "",
+        id: row.id || "",
         label,
         amount,
-        unit: row.unit || "oz",
+        unit: row.unit || productForm.baseUnit || "ea",
         price_cents,
       });
     }
@@ -1032,8 +1109,14 @@ export default function App() {
     // backend already converted quantity_in_stock through stock_unit when milli was 0.
     if (clearProductImageFlag && product.id) {
       const cleared = await api.clearProductImage(product.id);
-      if (cleared.success) product = cleared.data;
-      else setStatus(cleared.error);
+      if (cleared.success) {
+        product = cleared.data;
+        setProductImages((prev) => {
+          const next = { ...prev };
+          delete next[product.id];
+          return next;
+        });
+      } else setStatus(cleared.error);
     } else if (productImageFile && product.id) {
       try {
         const { b64, ext } = await fileToBase64(productImageFile);
@@ -1051,16 +1134,11 @@ export default function App() {
 
   const editProduct = async (p: Product) => {
     const stockU = (p.stock_unit || p.base_unit || p.unit || "ea").trim();
-    // Prefer server floor stock_in_unit via quantity_in_stock; for weight use milli→approx in stock unit
-    let stockAmt = String(p.quantity_in_stock ?? 0);
-    if (p.quantity_base_milli > 0 && stockU) {
-      // Show milli/1000 when stock unit == base; otherwise keep quantity_in_stock floor
-      const base = (p.base_unit || p.unit || "ea").trim();
-      if (stockU === base) {
-        const v = p.quantity_base_milli / 1000;
-        stockAmt = Math.abs(v - Math.round(v)) < 0.001 ? String(Math.round(v)) : v.toFixed(3);
-      }
-    }
+    const base = (p.base_unit || p.unit || "ea").trim();
+    const stockAmt =
+      p.quantity_base_milli > 0
+        ? formatQty(stockQtyFromMilli(p.quantity_base_milli, stockU, base))
+        : String(p.quantity_in_stock ?? 0);
     setProductForm({
       id: p.id,
       name: p.name,
@@ -1092,19 +1170,29 @@ export default function App() {
       }
     }
     setStatus(`Editing ${p.name}`);
+    setCatalogFormOpen(true);
   };
 
   const openNewDm = async () => {
     const phone = normalizePhoneInput(newDmPhone);
     if (!phone) {
+      setNewDmError("Enter a phone as +E164 (e.g. +15551234567)");
       setStatus("Enter a phone as +E164 (e.g. +15551234567)");
       return;
     }
+    setNewDmError(null);
     const tid = `dm:${phone}`;
-    await api.setContactMeta(tid, {});
+    const res = await api.setContactMeta(tid, {});
+    if (!res.success) {
+      setStatus(res.error);
+      return;
+    }
+    setMessages([]);
+    setOutbox([]);
     setSelectedId(tid);
     setPanel("threads");
     setNewDmPhone("");
+    setNewDmOpen(false);
     setStatus(`Compose to ${phone}`);
     await refreshMeta();
     await refreshThreads();
@@ -1149,20 +1237,38 @@ export default function App() {
       return;
     }
     setGroupForm({ name: "", members: "" });
-    setSelectedId(res.data.thread_id);
-    setPanel("threads");
+    setPeopleKey(res.data.thread_id);
     setStatus(`Group created: ${name}`);
     await refreshMeta();
     await refreshThreads();
   };
 
   const removeProduct = async (id: string) => {
-    await api.deleteProduct(id);
+    const sku = products.find((p) => p.id === id)?.sku?.trim();
+    const open = orders.filter(
+      (o) =>
+        ["draft", "confirmed", "invoiced"].includes(o.status) &&
+        o.lines.some((l) => l.product_id === id),
+    );
+    const warn = open.length
+      ? `\n\nThis SKU is on ${open.length} open order${open.length === 1 ? "" : "s"}${sku ? ` (${sku})` : ""}.`
+      : "";
+    if (!window.confirm(`Delete this product?${warn}`)) return;
+    const res = await api.deleteProduct(id);
+    if (!res.success) {
+      setStatus(res.error);
+      return;
+    }
+    setProductImages((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     await refreshMeta();
   };
 
   const linkCustomerFromThread = async () => {
-    if (!selectedId || selectedId.startsWith("group:")) {
+    if (!selectedId || isGroupThread(selectedId)) {
       setStatus("Select a DM thread first");
       return;
     }
@@ -1178,13 +1284,9 @@ export default function App() {
     await refreshMeta();
   };
 
-  const removeCustomer = async (id: string) => {
-    await api.deleteCustomer(id);
-    await refreshMeta();
-  };
 
   const placeOrder = async (asDraft = false) => {
-    if (!selectedId || selectedId.startsWith("group:")) {
+    if (!selectedId || isGroupThread(selectedId)) {
       setStatus(asDraft ? "Select a DM thread to create a quote" : "Select a DM thread to place an order");
       return;
     }
@@ -1247,11 +1349,13 @@ export default function App() {
     const res = await api.duplicateOrderAsDraft(id);
     if (!res.success) {
       setStatus(res.error);
-      return;
+      return null;
     }
     setStatus(`Draft ${res.data.id.slice(0, 8)} from ${id.slice(0, 8)}`);
     await refreshMeta();
+    setFocusOrderId(res.data.id);
     setPanel("orders");
+    return res.data;
   };
 
   const editDraftFirstLineQty = async (o: Order) => {
@@ -1344,9 +1448,14 @@ export default function App() {
   };
 
   const loadIvrMenusEditor = async () => {
+    if (!canInvoke()) {
+      setIvrMenusDraft((cur) => cur ?? emptyMenus());
+      setIvrMenusError(null);
+      return;
+    }
     const res = await api.getIvrMenus();
     if (!res.success) {
-      setIvrMenusError(res.error);
+      if (!isDesktopUnavailable(res.error)) setIvrMenusError(res.error);
       return;
     }
     setIvrMenusDraft(res.data);
@@ -1364,7 +1473,6 @@ export default function App() {
       const res = await api.setIvrMenus(ivrMenusDraft);
       if (!res.success) {
         setIvrMenusError(res.error);
-        setStatus(res.error);
         return;
       }
       setIvrMenusDraft(res.data);
@@ -1381,7 +1489,6 @@ export default function App() {
     setIvrMenusBusy(false);
     if (!res.success) {
       setIvrMenusError(res.error);
-      setStatus(res.error);
       return;
     }
     setIvrMenusDraft(res.data);
@@ -1396,8 +1503,9 @@ export default function App() {
     }
     const res = await api.previewIvrPath(inputs);
     if (!res.success) {
-      setIvrMenusError(res.error);
-      setStatus(res.error);
+      if (!isDesktopUnavailable(res.error)) {
+        setIvrMenusError(res.error);
+      }
       return;
     }
     setIvrPreviewSteps(res.data);
@@ -1498,7 +1606,44 @@ export default function App() {
 
   const tone = healthTone(health);
   const title = selectedId ? threadTitle(selectedId, contacts, groups, customers) : "SignalX";
-  const showProfileRail = panel === "threads";
+  // Product thumbnails arrive as base64 over the API, one call each, so fetch
+  // them lazily for the catalog grid and keep what we've already resolved.
+  useEffect(() => {
+    if (panel !== "products") return;
+    const missing = products.filter((p) => p.image_path && !productImagesReal[p.id]);
+    if (missing.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const resolved: Record<string, string> = {};
+      for (const p of missing) {
+        const img = await api.getProductImage(p.id);
+        if (img.success) {
+          resolved[p.id] = `data:${img.data.mime};base64,${img.data.bytes_base64}`;
+        }
+      }
+      if (!cancelled && Object.keys(resolved).length > 0) {
+        setProductImages((prev) => ({ ...prev, ...resolved }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panel, products]);
+
+  const showProfileRail = panel === "threads" && !!selectedId;
+  // Only panels that render their own list column have a list seam; the wide
+  // panels span both tracks and so expose just the rail edge.
+  const panelLayout: PanelLayout = {
+    listKey:
+      panel === "people"
+        ? "listPeople"
+        : panel === "threads" || panel === "search"
+          ? "list"
+          : null,
+    aside: showProfileRail,
+  };
+  const { shellRef, styleVars, beginDrag, resetColumn, nudge } = usePanelWidths(panelLayout);
   const profileContact = selectedId
     ? contacts.find((c) => {
         const raw = selectedId.replace(/^dm:/, "");
@@ -1516,35 +1661,16 @@ export default function App() {
 
   const filteredThreads = useMemo(() => {
     return threads.filter((t) => {
-      if (threadFilter.kind === "dm" && t.id.startsWith("group:")) return false;
-      if (threadFilter.kind === "group" && !t.id.startsWith("group:")) return false;
+      if (threadFilter.kind === "dm" && isGroupThread(t.id)) return false;
+      if (threadFilter.kind === "group" && !isGroupThread(t.id)) return false;
       if (threadFilter.unread && t.unread_count <= 0) return false;
       if (threadFilter.pending && t.outbox_count <= 0) return false;
       const label = threadTitle(t.id, contacts, groups, customers);
       return includesQ(`${label} ${t.id}`, threadFilter.q);
     });
-  }, [threads, threadFilter, contacts, groups]);
+  }, [threads, threadFilter, contacts, groups, customers]);
 
-  const filteredContacts = useMemo(() => {
-    return contacts.filter((c) => {
-      if (contactFilter.favorites && !c.favorite) return false;
-      if (contactFilter.hideMuted && c.muted) return false;
-      if (contactFilter.autoOnly && !c.auto_reply_enabled) return false;
-      return includesQ(
-        `${c.display_name || ""} ${c.alias || ""} ${c.contact_id}`,
-        contactFilter.q,
-      );
-    });
-  }, [contacts, contactFilter]);
 
-  const filteredGroups = useMemo(() => {
-    return groups.filter((g) => {
-      if (groupFilter.favorites && !g.favorite) return false;
-      if (groupFilter.hideMuted && g.muted) return false;
-      if (groupFilter.autoOnly && !g.auto_reply_enabled) return false;
-      return includesQ(`${g.display_name || ""} ${g.group_id}`, groupFilter.q);
-    });
-  }, [groups, groupFilter]);
 
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
@@ -1554,23 +1680,14 @@ export default function App() {
       if (productFilter.stock === "out" && inStock) return false;
       if (productFilter.stock === "low" && !isLowStock(p)) return false;
       if (productFilter.unit !== "all" && productUnit(p) !== productFilter.unit) return false;
-      if (productFilter.hasImage && !p.image_path) return false;
+      if (productFilter.hasImage && !p.image_path && !productImages[p.id]) return false;
       return includesQ(
         `${p.name} ${p.sku} ${p.description} ${p.unit}`,
         productFilter.q,
       );
     });
-  }, [products, productFilter]);
+  }, [products, productFilter, productImages]);
 
-  const filteredCustomers = useMemo(() => {
-    return customers.filter((c) => {
-      const orderCount = orders.filter(
-        (o) => o.customer_id === c.id || o.thread_id === c.thread_id,
-      ).length;
-      if (customerFilter.hasOrders && orderCount === 0) return false;
-      return includesQ(`${c.display_name} ${c.thread_id} ${c.notes}`, customerFilter.q);
-    });
-  }, [customers, customerFilter, orders]);
 
   const filteredOrders = useMemo(() => {
     return [...orders]
@@ -1588,11 +1705,11 @@ export default function App() {
     return audit.filter((e) => {
       if (auditFilter.outcome !== "all" && e.outcome !== auditFilter.outcome) return false;
       return includesQ(
-        `${e.thread_id} ${e.outcome} ${e.draft} ${e.reason || ""}`,
+        `${e.thread_id} ${threadTitle(e.thread_id, contacts, groups, customers)} ${e.outcome} ${e.draft} ${e.reason || ""}`,
         auditFilter.q,
       );
     });
-  }, [audit, auditFilter]);
+  }, [audit, auditFilter, contacts, groups, customers]);
 
   const orderStatuses = useMemo(() => {
     const set = new Set(orders.map((o) => o.status).filter(Boolean));
@@ -1641,7 +1758,11 @@ export default function App() {
   const onLock = async () => {
     setAccountMenuOpen(false);
     const res = await api.lockSession();
-    if (res.success) applySession(res.data);
+    if (!res.success) {
+      setStatus(res.error);
+      return;
+    }
+    applySession(res.data);
     setStatus("Session locked");
   };
 
@@ -1683,7 +1804,45 @@ export default function App() {
   }
 
   return (
-    <div className={showProfileRail ? "shell shell-with-profile" : "shell"}>
+    <div
+      ref={shellRef}
+      style={styleVars}
+      className={[
+        "shell",
+        showProfileRail ? "shell-with-profile" : "",
+        panel === "people" ? "shell-people" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <PanelResizer
+        column="rail"
+        seam="rail"
+        label="Resize sidebar"
+        onBegin={beginDrag}
+        onReset={resetColumn}
+        onNudge={nudge}
+      />
+      {panelLayout.listKey && (
+        <PanelResizer
+          column={panelLayout.listKey}
+          seam="list"
+          label="Resize list column"
+          onBegin={beginDrag}
+          onReset={resetColumn}
+          onNudge={nudge}
+        />
+      )}
+      {panelLayout.aside && (
+        <PanelResizer
+          column="aside"
+          seam="aside"
+          label="Resize detail column"
+          onBegin={beginDrag}
+          onReset={resetColumn}
+          onNudge={nudge}
+        />
+      )}
       {restartRequired && (
         <div className="restart-banner" role="alert">
           <span>Imported data is on disk — quit and reopen SignalX to load it.</span>
@@ -1828,40 +1987,70 @@ export default function App() {
           )}
         </div>
 
+        <form
+          className="rail-search"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!searchQ.trim()) return;
+            setPanel("search");
+            void onSearch();
+          }}
+        >
+          <IconSearch className="rail-search-ico" />
+          <input
+            value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)}
+            placeholder="Search messages"
+            aria-label="Search messages"
+          />
+        </form>
+
         <nav className="nav">
-          {NAV_ITEMS.map(({ id, label, ico }) => (
-            <button
-              key={id}
-              type="button"
-              className={panel === id ? "nav-btn active" : "nav-btn"}
-              onClick={() => {
-                setPanel(id);
-                if (id === "settings" && setupNeeded) setSettingsTab("account");
-              }}
-            >
-              <span className="nav-btn-label">
-                <span className="nav-ico" aria-hidden>
-                  {ico}
-                </span>
-                <span>{label}</span>
-              </span>
-              {id === "orders" && orders.length > 0 && (
-                <span className="nav-count">{orders.length}</span>
-              )}
-              {id === "outbox" &&
-                outboxSummary &&
-                outboxSummary.queued + outboxSummary.sending + outboxSummary.failed > 0 && (
-                  <span className="nav-count">
-                    {outboxSummary.failed > 0
-                      ? outboxSummary.failed
-                      : outboxSummary.queued + outboxSummary.sending}
+          {NAV_GROUPS.map((group, gi) => (
+            <div className="nav-group" key={gi}>
+              {group.map(({ id, label, ico }) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={panel === id ? "nav-btn active" : "nav-btn"}
+                  onClick={() => {
+                    if (id !== "search") setSearchQ("");
+                    setPanel(id);
+                  }}
+                >
+                  <span className="nav-btn-label">
+                    <span className="nav-ico" aria-hidden>
+                      {ico}
+                    </span>
+                    <span>{label}</span>
                   </span>
-                )}
-            </button>
+                  {id === "orders" && orders.length > 0 && (
+                    <span className="nav-count">{orders.length}</span>
+                  )}
+                  {id === "outbox" &&
+                    outboxSummary &&
+                    outboxSummary.queued + outboxSummary.sending + outboxSummary.failed > 0 && (
+                      <span className="nav-count">
+                        {outboxSummary.failed > 0
+                          ? outboxSummary.failed
+                          : outboxSummary.queued + outboxSummary.sending}
+                      </span>
+                    )}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
 
         <div className="rail-foot">
+          {status && (
+            <div className="rail-status" role="status">
+              <span>{status}</span>
+              <button type="button" className="ghost-btn" onClick={() => setStatus(null)}>
+                Dismiss
+              </button>
+            </div>
+          )}
           <button
             type="button"
             className="ghost-btn"
@@ -1874,57 +2063,77 @@ export default function App() {
 
       {panel === "threads" && (
         <section className="thread-col">
-          <header className="col-head">Threads</header>
-          <div className="compose-strip">
-            <input
-              placeholder="New message — +15551234567"
-              value={newDmPhone}
-              onChange={(e) => setNewDmPhone(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && void openNewDm()}
-            />
-            <button type="button" className="action-btn primary" onClick={() => void openNewDm()}>
-              Open
+          <header className="col-head">
+            Messages
+            <button
+              type="button"
+              className={newDmOpen ? "icon-btn active" : "icon-btn"}
+              aria-label="New message"
+              aria-pressed={newDmOpen}
+              title="New message"
+              onClick={() => setNewDmOpen((v) => !v)}
+            >
+              <IconCompose />
             </button>
-          </div>
-          <div className="filter-strip">
+          </header>
+          {newDmOpen && (
+            <div className="compose-strip">
+              <input
+                autoFocus
+                placeholder="+15551234567"
+                value={newDmPhone}
+                onChange={(e) => {
+                  setNewDmPhone(e.target.value);
+                  setNewDmError(null);
+                }}
+                onKeyDown={(e) => e.key === "Enter" && void openNewDm()}
+                aria-invalid={!!newDmError}
+              />
+              <button type="button" className="action-btn primary" onClick={() => void openNewDm()}>
+                Start
+              </button>
+              {newDmError && <span className="warn-text">{newDmError}</span>}
+            </div>
+          )}
+          <div className="filter-strip stacked">
             <input
+              className="filter-search"
               placeholder="Filter threads…"
               value={threadFilter.q}
               onChange={(e) => setThreadFilter((f) => ({ ...f, q: e.target.value }))}
             />
-            <select
-              aria-label="Thread type"
-              value={threadFilter.kind}
-              onChange={(e) =>
-                setThreadFilter((f) => ({
-                  ...f,
-                  kind: e.target.value as "all" | "dm" | "group",
-                }))
-              }
-            >
-              <option value="all">All types</option>
-              <option value="dm">DMs</option>
-              <option value="group">Groups</option>
-            </select>
-            <label className="filter-check">
-              <input
-                type="checkbox"
-                checked={threadFilter.unread}
-                onChange={(e) => setThreadFilter((f) => ({ ...f, unread: e.target.checked }))}
-              />
-              Unread
-            </label>
-            <label className="filter-check">
-              <input
-                type="checkbox"
-                checked={threadFilter.pending}
-                onChange={(e) => setThreadFilter((f) => ({ ...f, pending: e.target.checked }))}
-              />
-              Pending
-            </label>
-            <span className="col-meta">
-              {filteredThreads.length}/{threads.length}
-            </span>
+            <div className="chip-row">
+              {(["all", "dm", "group"] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className={threadFilter.kind === k ? "chip active" : "chip"}
+                  onClick={() => setThreadFilter((f) => ({ ...f, kind: k }))}
+                >
+                  {k === "all" ? "All" : k === "dm" ? "Direct" : "Groups"}
+                </button>
+              ))}
+              <span className="chip-sep" aria-hidden />
+              <button
+                type="button"
+                className={threadFilter.unread ? "chip active" : "chip"}
+                aria-pressed={threadFilter.unread}
+                onClick={() => setThreadFilter((f) => ({ ...f, unread: !f.unread }))}
+              >
+                Unread
+              </button>
+              <button
+                type="button"
+                className={threadFilter.pending ? "chip active" : "chip"}
+                aria-pressed={threadFilter.pending}
+                onClick={() => setThreadFilter((f) => ({ ...f, pending: !f.pending }))}
+              >
+                Pending
+              </button>
+              <span className="chip-count">
+                {filteredThreads.length}/{threads.length}
+              </span>
+            </div>
           </div>
           <div className="thread-list">
             {threads.length === 0 && (
@@ -1943,7 +2152,7 @@ export default function App() {
                   setPanel("threads");
                 }}
               >
-                <span className="avatar-dot" aria-hidden>
+                <span className="avatar-dot" style={avatarTint(t.id)} aria-hidden>
                   {initials(threadTitle(t.id, contacts, groups, customers))}
                 </span>
                 <div className="thread-row-body">
@@ -1952,6 +2161,11 @@ export default function App() {
                     <span className="thread-time">{fmtTime(t.last_message_timestamp)}</span>
                   </div>
                   <div className="thread-row-meta">
+                    {t.last_preview ? (
+                      <span className="snippet">{t.last_preview}</span>
+                    ) : (
+                      <span className="snippet muted">No messages yet</span>
+                    )}
                     {t.unread_count > 0 && <span className="badge">{t.unread_count}</span>}
                     {t.outbox_count > 0 && <span className="badge muted">{t.outbox_count} pending</span>}
                   </div>
@@ -1984,10 +2198,11 @@ export default function App() {
                 className="thread-row p-3 gap-3"
                 onClick={() => {
                   setSelectedId(h.thread_id);
+                  setSearchQ("");
                   setPanel("threads");
                 }}
               >
-                <span className="avatar-dot" aria-hidden>
+                <span className="avatar-dot" style={avatarTint(h.thread_id)} aria-hidden>
                   {initials(threadTitle(h.thread_id, contacts, groups, customers))}
                 </span>
                 <div className="thread-row-body">
@@ -2003,191 +2218,41 @@ export default function App() {
         </section>
       )}
 
-      {panel === "contacts" && (
-        <section className="thread-col">
-          <header className="col-head">Contacts</header>
-          <div className="pane-section">
-            <h3 className="pane-section-title">Create new contact</h3>
-            <div className="compose-strip stacked p-4 gap-4 border-0">
-              <input
-                placeholder="+15551234567"
-                value={contactForm.phone}
-                onChange={(e) => setContactForm((f) => ({ ...f, phone: e.target.value }))}
-              />
-              <input
-                placeholder="Display name (optional)"
-                value={contactForm.name}
-                onChange={(e) => setContactForm((f) => ({ ...f, name: e.target.value }))}
-                onKeyDown={(e) => e.key === "Enter" && void addContact()}
-              />
-              <button type="button" className="action-btn primary" onClick={() => void addContact()}>
-                Add contact
-              </button>
-            </div>
-          </div>
-          {contacts.length > 0 && (
-            <div className="pane-section">
-              <h3 className="pane-section-title">Manage contacts</h3>
-              <div className="filter-strip p-4 gap-4 border-0">
-                <input
-                  placeholder="Filter contacts…"
-                  value={contactFilter.q}
-                  onChange={(e) => setContactFilter((f) => ({ ...f, q: e.target.value }))}
-                />
-                <label className="filter-check">
-                  <input
-                    type="checkbox"
-                    checked={contactFilter.favorites}
-                    onChange={(e) => setContactFilter((f) => ({ ...f, favorites: e.target.checked }))}
-                  />
-                  Favorites
-                </label>
-                <label className="filter-check">
-                  <input
-                    type="checkbox"
-                    checked={contactFilter.hideMuted}
-                    onChange={(e) => setContactFilter((f) => ({ ...f, hideMuted: e.target.checked }))}
-                  />
-                  Hide muted
-                </label>
-                <label className="filter-check">
-                  <input
-                    type="checkbox"
-                    checked={contactFilter.autoOnly}
-                    onChange={(e) => setContactFilter((f) => ({ ...f, autoOnly: e.target.checked }))}
-                  />
-                  Auto-reply
-                </label>
-                <span className="col-meta">
-                  {filteredContacts.length}/{contacts.length}
-                </span>
-              </div>
-            </div>
-          )}
-          <div className="thread-list">
-            {contacts.length === 0 && (
-              <p className="empty">No contacts yet — add one above.</p>
-            )}
-            {contacts.length > 0 && filteredContacts.length === 0 && (
-              <p className="empty">No contacts match these filters.</p>
-            )}
-            {filteredContacts.map((c) => (
-              <button
-                key={c.contact_id}
-                type="button"
-                className="thread-row"
-                onClick={() => {
-                  const tid = c.contact_id.startsWith("dm:")
-                    ? c.contact_id
-                    : `dm:${c.contact_id}`;
-                  setSelectedId(tid);
-                  setPanel("threads");
-                }}
-              >
-                <span className="avatar-dot" aria-hidden>
-                  {initials(c.display_name || c.alias || c.contact_id)}
-                </span>
-                <div className="thread-row-body">
-                  <div className="thread-row-top">
-                    <span className="thread-name">
-                      {c.display_name || c.alias || c.contact_id}
-                    </span>
-                    {c.auto_reply_enabled && <span className="badge danger">Auto</span>}
-                  </div>
-                  <div className="convo-sub">{c.contact_id}</div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {panel === "groups" && (
-        <section className="thread-col">
-          <header className="col-head">Groups</header>
-          <div className="compose-strip stacked">
-            <p className="hint tight">
-              Creates a real Signal group via signal-cli. Members must be +E164 numbers.
-            </p>
-            <input
-              placeholder="Group name"
-              value={groupForm.name}
-              onChange={(e) => setGroupForm((f) => ({ ...f, name: e.target.value }))}
-            />
-            <input
-              placeholder="Members +1555…, +1444…"
-              value={groupForm.members}
-              onChange={(e) => setGroupForm((f) => ({ ...f, members: e.target.value }))}
-              onKeyDown={(e) => e.key === "Enter" && void createGroup()}
-            />
-            <button type="button" className="action-btn primary" onClick={() => void createGroup()}>
-              Create group
-            </button>
-          </div>
-          <div className="filter-strip">
-            <input
-              placeholder="Filter groups…"
-              value={groupFilter.q}
-              onChange={(e) => setGroupFilter((f) => ({ ...f, q: e.target.value }))}
-            />
-            <label className="filter-check">
-              <input
-                type="checkbox"
-                checked={groupFilter.favorites}
-                onChange={(e) => setGroupFilter((f) => ({ ...f, favorites: e.target.checked }))}
-              />
-              Favorites
-            </label>
-            <label className="filter-check">
-              <input
-                type="checkbox"
-                checked={groupFilter.hideMuted}
-                onChange={(e) => setGroupFilter((f) => ({ ...f, hideMuted: e.target.checked }))}
-              />
-              Hide muted
-            </label>
-            <label className="filter-check">
-              <input
-                type="checkbox"
-                checked={groupFilter.autoOnly}
-                onChange={(e) => setGroupFilter((f) => ({ ...f, autoOnly: e.target.checked }))}
-              />
-              Auto-reply
-            </label>
-            <span className="col-meta">
-              {filteredGroups.length}/{groups.length}
-            </span>
-          </div>
-          <div className="thread-list">
-            {groups.length === 0 && (
-              <p className="empty">No groups yet — create one above.</p>
-            )}
-            {groups.length > 0 && filteredGroups.length === 0 && (
-              <p className="empty">No groups match these filters.</p>
-            )}
-            {filteredGroups.map((g) => (
-              <button
-                key={g.group_id}
-                type="button"
-                className="thread-row"
-                onClick={() => {
-                  setSelectedId(g.group_id.startsWith("group:") ? g.group_id : `group:${g.group_id}`);
-                  setPanel("threads");
-                }}
-              >
-                <span className="avatar-dot" aria-hidden>
-                  {initials(g.display_name || g.group_id)}
-                </span>
-                <div className="thread-row-body">
-                  <div className="thread-row-top">
-                    <span className="thread-name">{g.display_name || g.group_id}</span>
-                    {g.auto_reply_enabled && <span className="badge danger">Auto</span>}
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </section>
+      {panel === "people" && (
+        <PeopleScreen
+          contacts={contacts}
+          groups={groups}
+          customers={customers}
+          threads={threads}
+          orders={orders}
+          selectedKey={peopleKey}
+          onSelectKey={setPeopleKey}
+          onOpenChat={(threadId) => {
+            setSelectedId(threadId);
+            setPanel("threads");
+          }}
+          onNavigate={(target) => {
+            if (target === "orders" && peopleKey) {
+              const person = contacts.find((c) => c.contact_id === peopleKey);
+              const group = groups.find((g) => g.group_id === peopleKey);
+              setSelectedId(person?.contact_id ?? group?.group_id ?? peopleKey);
+              setOrderFilter((f) => ({ ...f, thisThread: true }));
+            }
+            setPanel(target);
+          }}
+          onRefresh={() => void refreshMeta()}
+          setStatus={setStatus}
+          money={money}
+          fmtTime={fmtTime}
+          initials={initials}
+          avatarTint={avatarTint}
+          contactForm={contactForm}
+          setContactForm={setContactForm}
+          addContact={addContact}
+          groupForm={groupForm}
+          setGroupForm={setGroupForm}
+          createGroup={createGroup}
+        />
       )}
 
       {panel === "products" && (
@@ -2198,7 +2263,7 @@ export default function App() {
               {filteredProducts.length}/{products.length} products
             </span>
           </header>
-          <div className="settings-body">
+          <div className="catalog-body">
             <div className="filter-strip in-panel">
               <input
                 placeholder="Filter catalog…"
@@ -2255,7 +2320,20 @@ export default function App() {
                   }}
                 />
               </label>
+              <button
+                type="button"
+                className="action-btn primary"
+                onClick={() => {
+                  resetProductForm();
+                  setCatalogFormOpen(true);
+                }}
+              >
+                New product
+              </button>
             </div>
+            <div className={`catalog-layout${catalogFormOpen ? "" : " grid-only"}`}>
+              {catalogFormOpen && (
+              <div className="catalog-form-pane">
             <div className="product-form">
               <div className="form-card">
                 <h3 className="form-card-title">
@@ -2323,6 +2401,13 @@ export default function App() {
                         setProductImageFile(null);
                         setProductImagePreview(null);
                         setClearProductImageFlag(true);
+                        if (productForm.id) {
+                          setProductImages((prev) => {
+                            const next = { ...prev };
+                            delete next[productForm.id];
+                            return next;
+                          });
+                        }
                       }}
                     >
                       Remove image
@@ -2401,7 +2486,12 @@ export default function App() {
                     <button
                       type="button"
                       className="action-btn"
-                      onClick={() => setSellPacks((rows) => [...rows, newPackRow()])}
+                      onClick={() =>
+                        setSellPacks((rows) => [
+                          ...rows,
+                          { ...newPackRow(), unit: productForm.baseUnit || "ea" },
+                        ])
+                      }
                     >
                       Add pack
                     </button>
@@ -2510,401 +2600,141 @@ export default function App() {
                 <button type="button" className="action-btn primary" onClick={() => void saveProduct()}>
                   {productForm.id ? "Save product" : "Add product"}
                 </button>
-                {productForm.id && (
-                  <button
-                    type="button"
-                    className="ghost-btn"
-                    onClick={() => resetProductForm()}
-                  >
-                    Cancel edit
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  onClick={() => resetProductForm()}
+                >
+                  {productForm.id ? "Cancel edit" : "Cancel"}
+                </button>
               </div>
             </div>
-            <div className="thread-list">
-              {products.length === 0 && <p className="hint">No products yet — add one above.</p>}
+              </div>
+              )}
+              <div className="catalog-grid-pane">
+            <div className="product-grid">
+              {products.length === 0 && <p className="hint">No products yet — use New product.</p>}
               {products.length > 0 && filteredProducts.length === 0 && (
                 <p className="hint">No products match these filters.</p>
               )}
               {filteredProducts.map((p) => {
+                const img = productImages[p.id];
+                const out = p.quantity_in_stock <= 0 && (p.quantity_base_milli ?? 0) <= 0;
+                const low = isLowStock(p) && (p.quantity_base_milli ?? 0) > 0;
                 return (
-                  <div key={p.id} className="thread-row product-row">
-                    <div className="thread-row-top">
-                      <span className="thread-name">{p.name}</span>
-                      <span className="thread-time">
-                        {productPriceLabel(p)} · {productStockLabel(p)}
-                      </span>
+                  <article key={p.id} className="product-card">
+                    <div className="product-card-media">
+                      {img ? (
+                        <img src={img} alt="" />
+                      ) : (
+                        <span className="product-card-placeholder" aria-hidden>
+                          <IconCatalog />
+                        </span>
+                      )}
+                      {out && <span className="product-flag out">Out</span>}
+                      {low && <span className="product-flag low">Low</span>}
                     </div>
-                    <div className="convo-sub">
-                      {[
-                        p.sku || p.id.slice(0, 8),
-                        p.supplier ? `from ${p.supplier}` : null,
-                        p.cost_cents
-                          ? `cost ${money(p.cost_cents)}/${productBaseUnit(p)}`
-                          : null,
-                        productWeightLabel(p),
-                        p.description ? p.description.slice(0, 40) : null,
-                        (p.sell_options || []).length
-                          ? `${p.sell_options.length} pack${p.sell_options.length === 1 ? "" : "s"}`
-                          : null,
-                        p.image_path ? "has image" : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
+                    <div className="product-card-body">
+                      <div className="product-card-title">{p.name}</div>
+                      <div className="product-card-price">
+                        <strong>{productPriceLabel(p)}</strong>
+                        <span className="product-card-stock">{productStockLabel(p)}</span>
+                      </div>
+                      {p.description && (
+                        <p className="product-card-desc">{p.description}</p>
+                      )}
+                      <div className="product-card-meta">
+                        {[
+                          p.sku || p.id.slice(0, 8),
+                          p.supplier || null,
+                          productWeightLabel(p),
+                          (p.sell_options || []).length
+                            ? `${p.sell_options.length} pack${p.sell_options.length === 1 ? "" : "s"}`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </div>
                     </div>
-                    {p.quantity_in_stock <= 0 && (p.quantity_base_milli ?? 0) <= 0 && (
-                      <span className="badge danger">Out of stock</span>
-                    )}
-                    {isLowStock(p) && (p.quantity_base_milli ?? 0) > 0 && (
-                      <span className="badge warn low-stock-badge">Low stock</span>
-                    )}
-                    <div className="product-row-actions">
+                    <div className="product-card-actions">
                       <button type="button" className="ghost-btn" onClick={() => void editProduct(p)}>
                         Edit
                       </button>
+                      <div className="stock-stepper">
+                        <button
+                          type="button"
+                          title="Remove 1 stock unit"
+                          onClick={() => void adjustStock(p, -1)}
+                        >
+                          −
+                        </button>
+                        <span>stock</span>
+                        <button
+                          type="button"
+                          title="Add 1 stock unit"
+                          onClick={() => void adjustStock(p, 1)}
+                        >
+                          +
+                        </button>
+                      </div>
                       <button
                         type="button"
-                        className="ghost-btn"
-                        title="Add 1 stock unit"
-                        onClick={() => void adjustStock(p, 1)}
+                        className="ghost-btn danger-text"
+                        onClick={() => void removeProduct(p.id)}
                       >
-                        +1
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost-btn"
-                        title="Remove 1 stock unit"
-                        onClick={() => void adjustStock(p, -1)}
-                      >
-                        −1
-                      </button>
-                      <button type="button" className="ghost-btn" onClick={() => void removeProduct(p.id)}>
                         Delete
                       </button>
                     </div>
-                  </div>
+                  </article>
                 );
               })}
             </div>
-          </div>
-        </section>
-      )}
-
-      {panel === "customers" && (
-        <section className="thread-col">
-          <header className="col-head">
-            Customers
-            <button type="button" className="ghost-btn" onClick={() => void linkCustomerFromThread()}>
-              Link current chat
-            </button>
-          </header>
-          <div className="filter-strip">
-            <input
-              placeholder="Filter customers…"
-              value={customerFilter.q}
-              onChange={(e) => setCustomerFilter((f) => ({ ...f, q: e.target.value }))}
-            />
-            <label className="filter-check">
-              <input
-                type="checkbox"
-                checked={customerFilter.hasOrders}
-                onChange={(e) => setCustomerFilter((f) => ({ ...f, hasOrders: e.target.checked }))}
-              />
-              Has orders
-            </label>
-            <span className="col-meta">
-              {filteredCustomers.length}/{customers.length}
-            </span>
-          </div>
-          <div className="thread-list">
-            {customers.length === 0 && (
-              <p className="hint">Open a DM and use “Link current chat”.</p>
-            )}
-            {customers.length > 0 && filteredCustomers.length === 0 && (
-              <p className="empty">No customers match these filters.</p>
-            )}
-            {filteredCustomers.map((c) => {
-              const orderCount = orders.filter(
-                (o) => o.customer_id === c.id || o.thread_id === c.thread_id,
-              ).length;
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  className={selectedId === c.thread_id ? "thread-row active" : "thread-row"}
-                  onClick={() => {
-                    setSelectedId(c.thread_id);
-                    setPanel("threads");
-                  }}
-                >
-                  <span className="avatar-dot" aria-hidden>
-                    {initials(c.display_name || c.thread_id)}
-                  </span>
-                  <div className="thread-row-body">
-                    <div className="thread-row-top">
-                      <span className="thread-name">{c.display_name || c.thread_id}</span>
-                      <button
-                        type="button"
-                        className="ghost-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void removeCustomer(c.id);
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                    <div className="convo-sub">{c.thread_id}</div>
-                    <div className="thread-row-meta">
-                      {orderCount > 0 && (
-                        <span className="badge muted">{orderCount} order{orderCount === 1 ? "" : "s"}</span>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-            {customers.length === 0 && (
-              <p className="hint">Open a DM and use “Link current chat”.</p>
-            )}
+              </div>
+            </div>
           </div>
         </section>
       )}
 
       {panel === "orders" && (
-        <section className="thread-col wide">
-          <header className="col-head">
-            Orders
-            <span className="col-meta">
-              {filteredOrders.length}/{orders.length} total
-            </span>
-          </header>
-          <div className="settings-body wide-body">
-            <div className="filter-strip in-panel">
-              <input
-                placeholder="Filter orders…"
-                value={orderFilter.q}
-                onChange={(e) => setOrderFilter((f) => ({ ...f, q: e.target.value }))}
-              />
-              <select
-                aria-label="Order status"
-                value={orderFilter.status}
-                onChange={(e) => setOrderFilter((f) => ({ ...f, status: e.target.value }))}
-              >
-                {orderStatuses.map((s) => (
-                  <option key={s} value={s}>
-                    {s === "all" ? "All statuses" : s}
-                  </option>
-                ))}
-              </select>
-              <label className="filter-check">
-                <input
-                  type="checkbox"
-                  checked={orderFilter.thisThread}
-                  onChange={(e) => setOrderFilter((f) => ({ ...f, thisThread: e.target.checked }))}
-                />
-                This chat only
-              </label>
-            </div>
-            <div className="product-form">
-              <p className="hint tight">
-                Place order decrements stock. Create quote saves a draft (no stock change) you can
-                send, edit, or confirm later.
-              </p>
-              <div className="order-target">
-                {selectedId && !selectedId.startsWith("group:") ? (
-                  <>
-                    Ordering for <strong>{threadTitle(selectedId, contacts, groups, customers)}</strong>
-                    <span className="convo-sub inline">{selectedId}</span>
-                  </>
-                ) : (
-                  <span className="warn-text">Select a DM thread first to place an order.</span>
-                )}
-              </div>
-              <select
-                value={orderProductId}
-                onChange={(e) => {
-                  setOrderProductId(e.target.value);
-                  setOrderSellOptionId("");
-                }}
-                disabled={products.length === 0}
-              >
-                {products.length === 0 && <option value="">No products — add in Catalog</option>}
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({productPriceLabel(p)}, {productStockLabel(p)})
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Sell pack"
-                value={orderSellOptionId}
-                onChange={(e) => setOrderSellOptionId(e.target.value)}
-                disabled={
-                  !(products.find((p) => p.id === orderProductId)?.sell_options?.length)
-                }
-              >
-                <option value="">Custom qty (sales UOM)</option>
-                {(products.find((p) => p.id === orderProductId)?.sell_options || []).map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label} — {o.amount} {o.unit}
-                    {o.price_cents != null ? ` @ ${money(o.price_cents)}` : ""}
-                  </option>
-                ))}
-              </select>
-              <input
-                placeholder="Qty (sales UOM)"
-                value={orderQty}
-                onChange={(e) => setOrderQty(e.target.value)}
-                disabled={!!orderSellOptionId}
-              />
-              <div className="row-actions">
-                <button
-                  type="button"
-                  className="action-btn primary"
-                  disabled={!selectedId || selectedId.startsWith("group:") || products.length === 0}
-                  onClick={() => void placeOrder(false)}
-                >
-                  Place order
-                </button>
-                <button
-                  type="button"
-                  className="action-btn"
-                  disabled={!selectedId || selectedId.startsWith("group:") || products.length === 0}
-                  onClick={() => void placeOrder(true)}
-                >
-                  Create quote
-                </button>
-              </div>
-            </div>
-            <div className="thread-list">
-              {orders.length === 0 && <p className="hint">No orders yet.</p>}
-              {orders.length > 0 && filteredOrders.length === 0 && (
-                <p className="hint">No orders match these filters.</p>
-              )}
-              {filteredOrders.map((o) => (
-                  <div key={o.id} className="thread-row product-row">
-                    <div className="thread-row-top">
-                      <span className="thread-name">
-                        {orderParty(o)}
-                        <span className="order-id"> · {o.id.slice(0, 8)}</span>
-                      </span>
-                      <span className={`status-pill status-${orderStatusTone(o.status)}`}>
-                        {o.status}
-                      </span>
-                    </div>
-                    <div className="convo-sub">
-                      {money(o.total_cents)} ·{" "}
-                      {o.lines
-                        .map((l) => {
-                          const u = (l.unit || "ea").toLowerCase();
-                          const q =
-                            Math.abs(l.quantity - Math.round(l.quantity)) < 0.001
-                              ? String(Math.round(l.quantity))
-                              : l.quantity.toFixed(3);
-                          const qty = u === "ea" ? q : `${q} ${u}`;
-                          const pack = l.sell_option_label ? ` (${l.sell_option_label})` : "";
-                          return `${l.name}${pack}×${qty}`;
-                        })
-                        .join(", ")}
-                      {" · "}
-                      {fmtTime(o.created_at)}
-                    </div>
-                    <div className="row-actions">
-                      {o.status === "draft" ? (
-                        <>
-                          <button
-                            type="button"
-                            className="action-btn primary"
-                            onClick={() => void sendQuote(o.id)}
-                            title="Queue quote text via outbox"
-                          >
-                            Send quote
-                          </button>
-                          <button
-                            type="button"
-                            className="ghost-btn"
-                            onClick={() => void confirmDraftOrder(o.id)}
-                          >
-                            Confirm
-                          </button>
-                          <button
-                            type="button"
-                            className="ghost-btn"
-                            onClick={() => void editDraftFirstLineQty(o)}
-                          >
-                            Edit lines
-                          </button>
-                          <button
-                            type="button"
-                            className="ghost-btn"
-                            onClick={() => void setOrderLifecycle(o.id, "cancelled")}
-                          >
-                            Cancel
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            className="action-btn primary"
-                            onClick={() => void sendInvoice(o.id)}
-                            title="Queue invoice text to this chat via outbox"
-                          >
-                            Send invoice
-                          </button>
-                          {o.status !== "cancelled" && o.status !== "paid" && (
-                            <button
-                              type="button"
-                              className="ghost-btn"
-                              onClick={() => void setOrderLifecycle(o.id, "paid")}
-                            >
-                              Mark paid
-                            </button>
-                          )}
-                          {o.status !== "cancelled" && o.status !== "fulfilled" && (
-                            <button
-                              type="button"
-                              className="ghost-btn"
-                              onClick={() => void setOrderLifecycle(o.id, "fulfilled")}
-                            >
-                              Mark fulfilled
-                            </button>
-                          )}
-                          {o.status !== "cancelled" && (
-                            <button
-                              type="button"
-                              className="ghost-btn"
-                              onClick={() => void setOrderLifecycle(o.id, "cancelled")}
-                            >
-                              Cancel
-                            </button>
-                          )}
-                        </>
-                      )}
-                      <button
-                        type="button"
-                        className="ghost-btn"
-                        onClick={() => void duplicateAsDraft(o.id)}
-                      >
-                        Duplicate as draft
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost-btn"
-                        onClick={() => {
-                          setSelectedId(o.thread_id);
-                          setPanel("threads");
-                        }}
-                      >
-                        Open chat
-                      </button>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </div>
-        </section>
+        <OrdersScreen
+          orders={orders}
+          filteredOrders={filteredOrders}
+          orderFilter={orderFilter}
+          setOrderFilter={setOrderFilter}
+          orderStatuses={orderStatuses}
+          products={products}
+          selectedId={selectedId}
+          setSelectedId={setSelectedId}
+          setPanel={setPanel}
+          orderProductId={orderProductId}
+          setOrderProductId={setOrderProductId}
+          orderSellOptionId={orderSellOptionId}
+          setOrderSellOptionId={setOrderSellOptionId}
+          orderQty={orderQty}
+          setOrderQty={setOrderQty}
+          placeOrder={placeOrder}
+          sendQuote={sendQuote}
+          sendInvoice={sendInvoice}
+          confirmDraftOrder={confirmDraftOrder}
+          editDraftFirstLineQty={editDraftFirstLineQty}
+          setOrderLifecycle={setOrderLifecycle}
+          duplicateAsDraft={duplicateAsDraft}
+          focusOrderId={focusOrderId}
+          onConsumedFocus={() => setFocusOrderId(null)}
+          orderParty={orderParty}
+          threadTitle={threadTitle}
+          contacts={contacts}
+          groups={groups}
+          customers={customers}
+          money={money}
+          fmtTime={fmtTime}
+          orderStatusTone={orderStatusTone}
+          productPriceLabel={productPriceLabel}
+          productStockLabel={productStockLabel}
+          formatPhone={formatPhone}
+          initials={initials}
+          avatarTint={avatarTint}
+        />
       )}
 
       {panel === "sales" && (
@@ -2923,6 +2753,7 @@ export default function App() {
           setStatus={setStatus}
           setPanel={setPanel}
           setSelectedId={setSelectedId}
+          setFocusOrderId={setFocusOrderId}
           threadTitle={threadTitle}
           money={money}
           fmtTime={fmtTime}
@@ -2935,9 +2766,15 @@ export default function App() {
           <header className="col-head">
             Outbox
             <span className="col-meta">
-              {outboxSummary
-                ? `${outboxSummary.queued} queued · ${outboxSummary.sending} sending · ${outboxSummary.failed} failed`
-                : "—"}
+              {(() => {
+                const queued = globalOutbox.filter((o) => o.state === "queued").length;
+                const sending = globalOutbox.filter((o) => o.state === "sending").length;
+                const failed = globalOutbox.filter((o) => o.state === "failed").length;
+                if (queued + sending + failed === 0 && outboxSummary) {
+                  return `${outboxSummary.queued} queued · ${outboxSummary.sending} sending · ${outboxSummary.failed} failed`;
+                }
+                return `${queued} queued · ${sending} sending · ${failed} failed`;
+              })()}
             </span>
           </header>
           <div className="filter-strip">
@@ -2946,31 +2783,41 @@ export default function App() {
             </button>
             <span className="col-meta">{globalOutbox.length} open</span>
           </div>
-          <div className="thread-list">
+          <div className="outbox-table">
             {globalOutbox.length === 0 && (
               <p className="empty">Outbox clear — nothing queued or failed.</p>
             )}
+            {globalOutbox.length > 0 && (
+              <div className="outbox-head" aria-hidden>
+                <span>To</span>
+                <span>Preview</span>
+                <span>Status</span>
+                <span>Age</span>
+                <span />
+              </div>
+            )}
             {globalOutbox.map((o) => (
-              <div key={o.id} className="thread-row product-row">
-                <div className="thread-row-top">
-                  <span className="thread-name">{threadTitle(o.thread_id, contacts, groups, customers)}</span>
-                  <span
-                    className={`status-pill status-${
-                      o.state === "failed" ? "danger" : o.state === "sending" ? "warn" : "muted"
-                    }`}
-                  >
-                    {o.state}
-                  </span>
+              <div key={o.id} className={`outbox-row state-${o.state}`}>
+                <div className="outbox-to">
+                  <strong>{threadTitle(o.thread_id, contacts, groups, customers)}</strong>
+                  {o.attachment_path ? <span className="convo-sub">Attachment</span> : null}
                 </div>
-                <div className="convo-sub">
-                  {o.attachment_path ? "📎 " : ""}
+                <div className="outbox-preview">
                   {o.content.slice(0, 120) || (o.attachment_path ? "(attachment)" : "(empty)")}
                   {o.content.length > 120 ? "…" : ""}
-                  {" · "}
-                  {fmtTime(o.created_at)}
-                  {o.attempt_count > 0 ? ` · tries ${o.attempt_count}` : ""}
+                  {o.last_error && <div className="bubble-err">{o.last_error}</div>}
                 </div>
-                {o.last_error && <div className="bubble-err">{o.last_error}</div>}
+                <span
+                  className={`status-pill status-${
+                    o.state === "failed" ? "danger" : o.state === "sending" ? "warn" : "muted"
+                  }`}
+                >
+                  {o.state}
+                </span>
+                <span className="outbox-age">
+                  {fmtTime(o.created_at)}
+                  {o.attempt_count > 0 ? ` · ${o.attempt_count}` : ""}
+                </span>
                 <div className="row-actions">
                   {o.state === "failed" && (
                     <button type="button" className="action-btn primary" onClick={() => void onRetry(o.id).then(() => refreshGlobalOutbox())}>
@@ -2992,7 +2839,7 @@ export default function App() {
                       setPanel("threads");
                     }}
                   >
-                    Open chat
+                    Open
                   </button>
                 </div>
               </div>
@@ -3035,10 +2882,10 @@ export default function App() {
             {filteredAudit.map((e) => (
               <div key={e.id} className="audit-row">
                 <div className="audit-top">
-                  <span className={`outcome outcome-${e.outcome}`}>{e.outcome}</span>
-                  <span className="thread-time">{fmtTime(e.created_at)}</span>
-                </div>
-                <div className="audit-thread">{e.thread_id}</div>
+                    <span className={`outcome outcome-${e.outcome.toLowerCase().replace(/\s+/g, "_")}`}>{e.outcome}</span>
+                    <span className="thread-time">{fmtTime(e.created_at)}</span>
+                  </div>
+                  <div className="audit-thread">{threadTitle(e.thread_id, contacts, groups, customers)}</div>
                 <div className="snippet">{e.draft}</div>
                 {e.reason && <div className="reason">{e.reason}</div>}
               </div>
@@ -3098,9 +2945,11 @@ export default function App() {
                     >
                       {setupNeeded
                         ? "Needs link"
-                        : diagnostics?.signal_cli_usable
-                          ? "Ready"
-                          : "signal-cli issue"}
+                        : !canInvoke() || !diagnostics
+                          ? "Preview"
+                          : diagnostics.signal_cli_usable
+                            ? "Ready"
+                            : "signal-cli issue"}
                     </span>
                   </div>
                   <dl className="diag-grid diag-grid-4">
@@ -3339,6 +3188,7 @@ export default function App() {
             )}
 
             {settingsTab === "backup" && (
+              <>
               <div className="settings-card">
                 <div className="settings-card-head">
                   <h3>Backup &amp; migrate</h3>
@@ -3420,9 +3270,20 @@ export default function App() {
                   </div>
                 )}
               </div>
+              <div className="settings-card">
+                <div className="settings-card-head">
+                  <h3>What’s in a bundle</h3>
+                </div>
+                <p className="hint tight">
+                  Catalog, people records, orders, buyer menu, chats, and outbox. Signal login stays
+                  on the device — re-link after you move.
+                </p>
+              </div>
+              </>
             )}
 
             {settingsTab === "auto" && (
+              <>
               <div className="settings-card">
                 <div className="settings-card-head">
                   <h3>Auto-reply</h3>
@@ -3537,6 +3398,32 @@ export default function App() {
                   </>
                 )}
               </div>
+              <div className="settings-card">
+                <div className="settings-card-head">
+                  <h3>Recent log</h3>
+                  <button type="button" className="ghost-btn" onClick={() => setPanel("audit")}>
+                    Open log
+                  </button>
+                </div>
+                {audit.length === 0 ? (
+                  <p className="hint tight">No auto-reply activity yet.</p>
+                ) : (
+                  <ul className="settings-log">
+                    {audit.slice(0, 5).map((e) => (
+                      <li key={e.id}>
+                        <span className={`outcome outcome-${e.outcome.toLowerCase().replace(/\s+/g, "_")}`}>
+                          {e.outcome}
+                        </span>
+                        <span>
+                          {threadTitle(e.thread_id, contacts, groups, customers)}
+                          {e.reason ? ` — ${e.reason}` : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </>
             )}
 
             {settingsTab === "ivr" && (
@@ -3650,6 +3537,7 @@ export default function App() {
       )}
 
       {(panel === "audit" ||
+        panel === "people" ||
         panel === "settings" ||
         panel === "products" ||
         panel === "orders" ||
@@ -3673,18 +3561,20 @@ export default function App() {
                 <strong>Orders</strong>
                 <span>Place orders and queue invoices via outbox.</span>
               </button>
-              <button type="button" className="quick-action" onClick={() => setPanel("customers")}>
-                <strong>Customers</strong>
-                <span>Linked chats and order history.</span>
+              <button type="button" className="quick-action" onClick={() => setPanel("people")}>
+                <strong>People</strong>
+                <span>Who they are — chats, orders, and notes.</span>
               </button>
             </div>
           </div>
         ) : (
           <>
             <header className="convo-head">
-              <div>
+              <div className="convo-head-id">
                 <h2>{title}</h2>
-                <div className="convo-sub">{selectedId}</div>
+                <div className="convo-sub">
+                  {isGroupThread(selectedId) ? "Group" : formatPhone(selectedId)}
+                </div>
               </div>
               <div className="convo-actions">
                 {threadAuto?.effective && (
@@ -3701,40 +3591,78 @@ export default function App() {
                     {ivrHint}
                   </span>
                 )}
-                <label className="toggle compact">
-                  <input
-                    type="checkbox"
-                    checked={!!threadIvr?.enabled}
-                    disabled={!!selectedId?.startsWith("group:")}
-                    onChange={(e) => void toggleThreadIvr(e.target.checked)}
-                  />
-                  Buyer menu
-                </label>
+                <button
+                  type="button"
+                  className={threadIvr?.enabled ? "act-btn active" : "act-btn"}
+                  aria-pressed={!!threadIvr?.enabled}
+                  disabled={isGroupThread(selectedId)}
+                  title="Buyer menu"
+                  onClick={() => void toggleThreadIvr(!threadIvr?.enabled)}
+                >
+                  <IconMenuList />
+                  <span>Buyer menu</span>
+                </button>
                 {threadIvr?.handed_off && (
                   <button type="button" className="ghost-btn" onClick={() => void resumeIvrBot()}>
                     Resume menu
                   </button>
                 )}
-                {!threadIvr?.enabled && ivrSettings?.enabled && !selectedId?.startsWith("group:") && (
+                {!threadIvr?.enabled && ivrSettings?.enabled && !isGroupThread(selectedId) && (
                   <span className="convo-sub inline-hint">Turn on to let this chat use the menu</span>
                 )}
-                <label className="toggle compact">
-                  <input
-                    type="checkbox"
-                    checked={!!threadAuto?.opted_in}
-                    onChange={(e) => void toggleThreadAuto(e.target.checked)}
-                  />
-                  Opt-in auto
-                </label>
-                <button type="button" className="ghost-btn" disabled={aiBusy || !ai?.configured} onClick={() => void onSummarize()}>
-                  Summarize
+                <button
+                  type="button"
+                  className={threadAuto?.opted_in ? "act-btn active" : "act-btn"}
+                  aria-pressed={!!threadAuto?.opted_in}
+                  title="Opt this chat in to auto-reply"
+                  onClick={() => void toggleThreadAuto(!threadAuto?.opted_in)}
+                >
+                  <IconBolt />
+                  <span>Auto-reply</span>
                 </button>
-                <button type="button" className="ghost-btn" disabled={aiBusy || !ai?.configured} onClick={() => void onDraft()}>
-                  Draft reply
+                <span className="act-sep" aria-hidden />
+                <details className="act-more">
+                  <summary className="act-btn">More</summary>
+                  <div className="act-more-pop">
+                <button
+                  type="button"
+                  className="act-btn"
+                  disabled={aiBusy || !ai?.configured}
+                  title={
+                    ai?.configured
+                      ? "Summarize this conversation"
+                      : "AI not configured — enable Ollama in Settings."
+                  }
+                  onClick={() => void onSummarize()}
+                >
+                  <IconSparkle />
+                  <span>Summarize</span>
                 </button>
-                <button type="button" className="ghost-btn" onClick={() => void onExportThread()}>
-                  Export
+                <button
+                  type="button"
+                  className="act-btn"
+                  disabled={aiBusy || !ai?.configured}
+                  title={
+                    ai?.configured
+                      ? "Draft a reply"
+                      : "AI not configured — enable Ollama in Settings."
+                  }
+                  onClick={() => void onDraft()}
+                >
+                  <IconReply />
+                  <span>Draft</span>
                 </button>
+                <button
+                  type="button"
+                  className="act-btn"
+                  title="Export this thread"
+                  onClick={() => void onExportThread()}
+                >
+                  <IconExport />
+                  <span>Export</span>
+                </button>
+                  </div>
+                </details>
               </div>
             </header>
 
@@ -3760,20 +3688,32 @@ export default function App() {
                     <span>
                       {isOutgoing(m)
                         ? "You"
-                        : threadTitle(selectedId || m.sender, contacts, groups, customers)}
+                        : isGroupThread(selectedId)
+                          ? threadTitle(m.sender, contacts, groups, customers)
+                          : threadTitle(selectedId || m.sender, contacts, groups, customers)}
                     </span>
                     <span>{fmtTime(m.timestamp)}</span>
                   </div>
                   <div className="bubble-body">{m.content}</div>
                 </div>
               ))}
-              {outbox.map((o) => (
+              {(outbox.length
+                ? outbox
+                : USE_FIXTURES && selectedId
+                  ? fxOutbox.filter((o) => o.thread_id === selectedId && o.state !== "sent")
+                  : []
+              ).map((o) => (
                 <div key={o.id} className={`bubble out pending state-${o.state}`}>
                   <div className="bubble-meta">
                     <span>{o.state}</span>
                     <span>{fmtTime(o.created_at)}</span>
                   </div>
                   <div className="bubble-body">{o.content}</div>
+                  {o.attachment_path && (
+                    <div className="attach-chip">
+                      <span>{o.attachment_path.split("/").pop() || "Attachment"}</span>
+                    </div>
+                  )}
                   {o.last_error && <div className="bubble-err">{o.last_error}</div>}
                   <div className="bubble-actions">
                     {o.state === "failed" && (
@@ -3789,15 +3729,6 @@ export default function App() {
               ))}
               <div ref={bottomRef} />
             </div>
-
-            {status && (
-              <div className="status-bar">
-                <span>{status}</span>
-                <button type="button" className="ghost-btn" onClick={() => setStatus(null)}>
-                  Dismiss
-                </button>
-              </div>
-            )}
 
             <div className="composer">
               {attachPreview && (
@@ -3885,20 +3816,43 @@ export default function App() {
             onMarkPaid={(id) => void setOrderLifecycle(id, "paid")}
             onToggleFavorite={(next) => {
               void (async () => {
-                const res = await api.setContactMeta(selectedId, { favorite: next });
+                const res = isGroupThread(selectedId)
+                  ? await api.setGroupMeta(selectedId, { favorite: next })
+                  : await api.setContactMeta(selectedId, { favorite: next });
                 if (!res.success) setStatus(res.error);
                 else await refreshMeta();
               })();
             }}
             onToggleMute={(next) => {
               void (async () => {
-                const res = await api.setContactMeta(selectedId, { muted: next });
+                const res = isGroupThread(selectedId)
+                  ? await api.setGroupMeta(selectedId, { muted: next })
+                  : await api.setContactMeta(selectedId, { muted: next });
                 if (!res.success) setStatus(res.error);
                 else await refreshMeta();
               })();
             }}
+            groupNotes={
+              isGroupThread(selectedId)
+                ? groups.find(
+                    (g) =>
+                      g.group_id === selectedId ||
+                      g.group_id.replace(/^group[:.]/, "") ===
+                        selectedId.replace(/^group[:.]/, ""),
+                  )?.notes ?? ""
+                : ""
+            }
             onSaveNotes={(notes) => {
               void (async () => {
+                if (isGroupThread(selectedId)) {
+                  const res = await api.setGroupMeta(selectedId, { notes });
+                  if (!res.success) setStatus(res.error);
+                  else {
+                    setStatus("Notes saved");
+                    await refreshMeta();
+                  }
+                  return;
+                }
                 if (!profileCustomer) {
                   setStatus("Link as customer before saving notes");
                   return;
@@ -3923,22 +3877,6 @@ export default function App() {
             </div>
           </aside>
         ))}
-
-      {status &&
-        (panel === "audit" ||
-          panel === "settings" ||
-          panel === "products" ||
-          panel === "orders" ||
-          panel === "sales" ||
-          panel === "outbox" ||
-          !selectedId) && (
-          <div className="shell-status" role="status">
-            <span>{status}</span>
-            <button type="button" className="ghost-btn" onClick={() => setStatus(null)}>
-              Dismiss
-            </button>
-          </div>
-        )}
     </div>
   );
 }

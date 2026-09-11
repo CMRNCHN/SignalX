@@ -493,7 +493,7 @@ fn apply_choice(
 }
 
 pub fn thread_allowed(settings: &IvrSettings, thread_id: &str) -> bool {
-  if thread_id.starts_with("group:") {
+  if thread_id.starts_with("group:") || thread_id.starts_with("group.") {
     return false;
   }
   if !settings.enabled {
