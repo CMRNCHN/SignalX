@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { Order, Product } from "../../api";
 import type { Person } from "../People/people";
 import { SEARCH_SCOPES, type MessageHit, type SearchScope } from "../../globalSearch";
-import { IconCopy, IconCheckCheck } from "../../navIcons";
+import { IconExport, IconCheckCheck } from "../../navIcons";
 
 type Props = {
   query: string;
@@ -55,24 +55,24 @@ export function SearchScreen({
 
   return (
     <section className="thread-col wide">
-      <header className=”col-head”>
+      <header className="col-head">
         <div>
           <div>Search</div>
-          <div className=”col-head-sub”>
+          <div className="col-head-sub">
             {empty
-              ? “One search — pick Messages, People, Catalog, or Orders”
-              : `Results for “${query.trim()}”`}
+              ? "One search — pick Messages, People, Catalog, or Orders"
+              : `Results for "${query.trim()}"`}
           </div>
         </div>
         {!empty && (
           <button
-            type=”button”
-            className=”icon-btn”
+            type="button"
+            className="icon-btn"
             onClick={copyQuery}
-            title={copied ? “Copied!” : “Copy query”}
-            aria-label={copied ? “Copied to clipboard” : “Copy query to clipboard”}
+            title={copied ? "Copied!" : "Copy query"}
+            aria-label={copied ? "Copied to clipboard" : "Copy query to clipboard"}
           >
-            {copied ? <IconCheckCheck /> : <IconCopy />}
+            {copied ? <IconCheckCheck /> : <IconExport />}
           </button>
         )}
       </header>
