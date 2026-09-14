@@ -495,8 +495,7 @@ export function OrdersScreen(props: OrdersScreenProps) {
                 </button>
               );
               })
-            )
-            }
+            )}
           </div>
         </div>
 
