@@ -28,7 +28,7 @@ import {
   IconTruck,
   IconX,
 } from "../../navIcons";
-import { USE_FIXTURES, fxMessages, fxThreadPreviews } from "../../devFixtures";
+import { USE_FIXTURES, fxMessages } from "../../devFixtures";
 import { WhyTip } from "../WhyTip";
 import { actionsFor, buildDirectory, insightsFor, type Person, type PersonStatus, type PersonType } from "./people";
 
@@ -148,7 +148,6 @@ export function PeopleScreen({
   const [sortAsc, setSortAsc] = useState(true);
   const [menu, setMenu] = useState<null | "add" | "filter" | "status" | "tags" | "more">(null);
   const [composer, setComposer] = useState<null | "contact" | "group">(null);
-  const [previews, setPreviews] = useState<Record<string, string | null>>({});
   const [notesDraft, setNotesDraft] = useState<string | null>(null);
   const [recent, setRecent] = useState<Message[]>([]);
   const [showArchived, setShowArchived] = useState(false);
@@ -208,26 +207,11 @@ export function PeopleScreen({
     [directory, selectedKey],
   );
 
-  // ThreadSummary carries no snippet, so the preview line needs one call per
-  // thread. Capped and cached; a last_message field on the summary would remove this.
-  useEffect(() => {
-    const wanted = visible.slice(0, 30).filter((p) => !(p.threadId in previews));
-    if (wanted.length === 0) return;
-    let cancelled = false;
-    void (async () => {
-      const found: Record<string, string | null> = {};
-      for (const p of wanted) {
-        const res = await api.getThreadMessages(p.threadId);
-        const live = res.success && res.data.length ? res.data[res.data.length - 1].content : null;
-        found[p.threadId] = live ?? (USE_FIXTURES ? (fxThreadPreviews[p.threadId] ?? null) : null);
-      }
-      if (!cancelled) setPreviews((prev) => ({ ...prev, ...found }));
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
+  const previewByThreadId = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    for (const t of threads) map[t.id] = t.last_preview || null;
+    return map;
+  }, [threads]);
 
   useEffect(() => setNotesDraft(null), [selectedKey]);
 
@@ -589,7 +573,7 @@ export function PeopleScreen({
             <p className="hint">No one matches these filters.</p>
           )}
           {visible.map((p) => {
-            const preview = previews[p.threadId];
+            const preview = previewByThreadId[p.threadId];
             const attention = p.statuses.includes("Needs attention");
             const unread = p.unreadCount > 0;
             const cls = [
