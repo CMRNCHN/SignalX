@@ -194,6 +194,14 @@ export interface AutoReplyAuditEntry {
   reason?: string | null;
 }
 
+export interface SimpleAuditEntry {
+  id: string;
+  thread_id: string;
+  created_at: number;
+  summary: string;
+  outcome: string;
+}
+
 export interface ThreadAutoReplyStatus {
   thread_id: string;
   opted_in: boolean;
@@ -508,6 +516,10 @@ export const api = {
     call<AutoReplySettings>("cmd_set_auto_reply_settings", { settings }),
   listAutoReplyAudit: (limit = 100) =>
     call<AutoReplyAuditEntry[]>("cmd_list_auto_reply_audit", { limit }),
+  listIvrAudit: (limit = 100) =>
+    call<SimpleAuditEntry[]>("cmd_list_ivr_audit", { limit }),
+  listOutboxAudit: (limit = 100) =>
+    call<SimpleAuditEntry[]>("cmd_list_outbox_audit", { limit }),
   setThreadAutoReply: (threadId: string, enabled: boolean) =>
     call<unknown>("cmd_set_thread_auto_reply", { threadId, enabled }),
   getThreadAutoReply: (threadId: string) =>

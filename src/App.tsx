@@ -9,6 +9,7 @@ import {
   type AutoReplyAuditEntry,
   type AutoReplySettings,
   type CommerceAuditEvent,
+  type SimpleAuditEntry,
   type ContactMeta,
   type Customer,
   type Diagnostics,
@@ -34,6 +35,8 @@ import {
 import {
   USE_FIXTURES,
   fxAudit,
+  fxIvrAudit,
+  fxOutboxAudit,
   fxCommerceAudit,
   fxContacts,
   fxCustomers,
@@ -64,6 +67,7 @@ import { usePanelWidths, type PanelLayout } from "./usePanelWidths";
 import { useEscapeLayer } from "./overlayEscape";
 import { useGlobalShortcuts } from "./useGlobalShortcuts";
 import { ShortcutsHelp } from "./components/ShortcutsHelp";
+import { AuditScreen } from "./components/Audit/AuditScreen";
 import { AttachmentPreview } from "./attachmentPreview";
 import {
   IconAudit,
@@ -134,7 +138,7 @@ const NAV_GROUPS: NavItem[][] = [
   ],
   [
     { id: "outbox", label: "Outbox", ico: <IconOutbox /> },
-    { id: "audit", label: "Auto-reply log", ico: <IconAudit /> },
+    { id: "audit", label: "Audit", ico: <IconAudit /> },
   ],
   [{ id: "settings", label: "Settings", ico: <IconSettings /> }],
 ];
@@ -398,6 +402,8 @@ export default function App() {
   const [auditReal, setAudit] = useState<AutoReplyAuditEntry[]>([]);
   const [salesSummaryReal, setSalesSummary] = useState<SalesSummary | null>(null);
   const [commerceAuditReal, setCommerceAudit] = useState<CommerceAuditEvent[]>([]);
+  const [ivrAuditReal, setIvrAudit] = useState<SimpleAuditEntry[]>([]);
+  const [outboxAuditReal, setOutboxAudit] = useState<SimpleAuditEntry[]>([]);
   const [salesRange, setSalesRange] = useState<"7" | "30" | "all">("30");
   const [salesStatus, setSalesStatus] = useState("all");
   const [peopleKey, setPeopleKey] = useState<string | null>(null);
@@ -446,6 +452,8 @@ export default function App() {
   const audit = USE_FIXTURES && !auditReal.length ? fxAudit : auditReal;
   const commerceAudit =
     USE_FIXTURES && !commerceAuditReal.length ? fxCommerceAudit : commerceAuditReal;
+  const ivrAudit = USE_FIXTURES && !ivrAuditReal.length ? fxIvrAudit : ivrAuditReal;
+  const outboxAudit = USE_FIXTURES && !outboxAuditReal.length ? fxOutboxAudit : outboxAuditReal;
   // The sales API answers with a valid but zeroed summary when no account is
   // configured, so treat "no orders" as empty rather than only null.
   const salesSummary =
@@ -470,10 +478,6 @@ export default function App() {
     pending: false,
   });
   const [orderFilter, setOrderFilter] = useState<OrderFilterState>(EMPTY_ORDER_FILTER);
-  const [auditFilter, setAuditFilter] = useState({
-    q: "",
-    outcome: "all",
-  });
   const bottomRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<string | null>(null);
   selectedRef.current = selectedId;
@@ -1654,6 +1658,20 @@ export default function App() {
 
   useEffect(() => {
     if (panel === "outbox") void refreshGlobalOutbox();
+    if (panel === "audit") {
+      void api.listAutoReplyAudit(80).then((r) => {
+        if (r.success) setAudit(r.data);
+      });
+      void api.listCommerceAudit(80).then((r) => {
+        if (r.success) setCommerceAudit(r.data);
+      });
+      void api.listIvrAudit(80).then((r) => {
+        if (r.success) setIvrAudit(r.data);
+      });
+      void api.listOutboxAudit(80).then((r) => {
+        if (r.success) setOutboxAudit(r.data);
+      });
+    }
   }, [panel]);
 
   useEffect(() => {
@@ -1804,21 +1822,6 @@ export default function App() {
     () => matchingMessages(searchLiveQ, directory, messageCorpus, searchHits, partyOf),
     [searchLiveQ, directory, messageCorpus, searchHits, contacts, groups, customers],
   );
-
-  const filteredAudit = useMemo(() => {
-    return audit.filter((e) => {
-      if (auditFilter.outcome !== "all" && e.outcome !== auditFilter.outcome) return false;
-      return includesQ(
-        `${e.thread_id} ${threadTitle(e.thread_id, contacts, groups, customers)} ${e.outcome} ${e.draft} ${e.reason || ""}`,
-        auditFilter.q,
-      );
-    });
-  }, [audit, auditFilter, contacts, groups, customers]);
-
-  const auditOutcomes = useMemo(() => {
-    const set = new Set(audit.map((e) => e.outcome).filter(Boolean));
-    return ["all", ...Array.from(set).sort()];
-  }, [audit]);
 
   const setupNeeded = useMemo(
     () => needsDeviceSetup(diagnostics, health, linkStatus),
@@ -2823,49 +2826,18 @@ export default function App() {
       )}
 
       {panel === "audit" && (
-        <section className="thread-col wide">
-          <header className="col-head">
-            Auto-reply audit
-            <span className="col-meta">
-              {filteredAudit.length}/{audit.length}
-            </span>
-          </header>
-          <div className="filter-strip">
-            <input
-              placeholder="Filter audit…"
-              value={auditFilter.q}
-              onChange={(e) => setAuditFilter((f) => ({ ...f, q: e.target.value }))}
-            />
-            <select
-              aria-label="Audit outcome"
-              value={auditFilter.outcome}
-              onChange={(e) => setAuditFilter((f) => ({ ...f, outcome: e.target.value }))}
-            >
-              {auditOutcomes.map((o) => (
-                <option key={o} value={o}>
-                  {o === "all" ? "All outcomes" : o}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="audit-list">
-            {audit.length === 0 && <p className="empty">No auto-reply activity yet.</p>}
-            {audit.length > 0 && filteredAudit.length === 0 && (
-              <p className="empty">No audit rows match these filters.</p>
-            )}
-            {filteredAudit.map((e) => (
-              <div key={e.id} className="audit-row">
-                <div className="audit-top">
-                    <span className={`outcome outcome-${e.outcome.toLowerCase().replace(/\s+/g, "_")}`}>{e.outcome}</span>
-                    <span className="thread-time">{fmtTime(e.created_at)}</span>
-                  </div>
-                  <div className="audit-thread">{threadTitle(e.thread_id, contacts, groups, customers)}</div>
-                <div className="snippet">{e.draft}</div>
-                {e.reason && <div className="reason">{e.reason}</div>}
-              </div>
-            ))}
-          </div>
-        </section>
+        <AuditScreen
+          autoReply={audit}
+          commerce={commerceAudit}
+          ivr={ivrAudit}
+          outbox={outboxAudit}
+          threadTitle={(id) => threadTitle(id, contacts, groups, customers)}
+          fmtTime={fmtTime}
+          onOpenThread={(threadId) => {
+            setSelectedId(threadId);
+            setPanel("threads");
+          }}
+        />
       )}
 
       {panel === "settings" && (

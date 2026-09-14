@@ -20,6 +20,7 @@ mod link;
 mod uom;
 mod backup;
 mod session;
+mod simple_audit;
 use ivr::{thread_allowed, IvrMenus, IvrSettings, IvrStore};
 use commerce::{format_catalog_list, CommerceStore, Customer, Product};
 use commerce_audit::CommerceAuditStore;
@@ -27,6 +28,7 @@ use orders::{format_invoice, format_order_status, format_quote, Order, OrderLine
 use link::{DeviceLinkManager, DeviceLinkStatus};
 use backup::{export_data_bundle, import_data_bundle, ImportMode};
 use session::SessionControl;
+use simple_audit::SimpleAuditStore;
 
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
@@ -2751,6 +2753,8 @@ struct AppState {
   commerce: CommerceStore,
   orders: OrderStore,
   commerce_audit: CommerceAuditStore,
+  ivr_audit: SimpleAuditStore,
+  outbox_audit: SimpleAuditStore,
   device_link: DeviceLinkManager,
   /// After a backup import, memory may still be stale until restart.
   /// Writes fail closed so they cannot overwrite imported files.
@@ -2834,6 +2838,8 @@ fn reload_shop_stores(state: &AppState, account_id: &str) {
   state.commerce_audit.reload_from(&dir);
   state.ivr.reload_from(&dir);
   state.auto_reply.reload_from(&dir);
+  state.ivr_audit.reload_from(&dir, "ivr/audit.json");
+  state.outbox_audit.reload_from(&dir, "outbox/audit.json");
 }
 
 fn reload_all_stores(state: &AppState, account_id: &str) {
@@ -4777,6 +4783,7 @@ fn ensure_outbox_worker(state: AppState, account_id: String) {
             emit_outbox_updated(&account_id, Some(&item.thread_id), summary);
           }
           emit_outbox_item_updated(&item);
+          note_outbox_failure(&state, &item);
           tokio::time::sleep(std::time::Duration::from_millis(600)).await;
           continue;
         }
@@ -4791,6 +4798,7 @@ fn ensure_outbox_worker(state: AppState, account_id: String) {
             emit_outbox_updated(&account_id, Some(&item.thread_id), summary);
           }
           emit_outbox_item_updated(&item);
+          note_outbox_failure(&state, &item);
           tokio::time::sleep(std::time::Duration::from_millis(600)).await;
           continue;
         }
@@ -4825,6 +4833,7 @@ fn ensure_outbox_worker(state: AppState, account_id: String) {
           emit_outbox_updated(&account_id, Some(&item.thread_id), summary);
         }
         emit_outbox_item_updated(&item);
+        note_outbox_failure(&state, &item);
         continue;
       }
 
@@ -4893,6 +4902,7 @@ fn ensure_outbox_worker(state: AppState, account_id: String) {
             emit_outbox_updated(&account_id, Some(&item.thread_id), summary);
           }
           emit_outbox_item_updated(&item);
+          note_outbox_failure(&state, &item);
           tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
       }
@@ -4980,6 +4990,26 @@ fn set_auto_reply_settings(state: &AppState, settings: AutoReplySettings) -> Val
     }
     Err(e) => err(e),
   }
+}
+
+fn list_ivr_audit(state: &AppState, limit: Option<u32>) -> Value {
+  let n = limit.unwrap_or(100).min(500) as usize;
+  ok_t(state.ivr_audit.list(n))
+}
+
+fn list_outbox_audit(state: &AppState, limit: Option<u32>) -> Value {
+  let n = limit.unwrap_or(100).min(500) as usize;
+  ok_t(state.outbox_audit.list(n))
+}
+
+fn note_outbox_failure(state: &AppState, item: &OutboxItem) {
+  let err = item.last_error.as_deref().unwrap_or("send failed");
+  state.outbox_audit.record(
+    &item.thread_id,
+    &format!("Outbox send failed: {err}"),
+    "failed",
+    now_ms(),
+  );
 }
 
 fn list_auto_reply_audit(state: &AppState, limit: Option<u32>) -> Value {
@@ -5113,6 +5143,8 @@ fn build_app_state() -> AppState {
     commerce: CommerceStore::new(&app_data_dir),
     orders: OrderStore::new(&app_data_dir),
     commerce_audit: CommerceAuditStore::new(&app_data_dir),
+    ivr_audit: SimpleAuditStore::at_account(&app_data_dir, "ivr/audit.json"),
+    outbox_audit: SimpleAuditStore::at_account(&app_data_dir, "outbox/audit.json"),
     device_link: DeviceLinkManager::new(),
     import_locked: Arc::new(AtomicBool::new(false)),
   }
@@ -5169,7 +5201,25 @@ fn maybe_handle_ivr(state: &AppState, thread_id: &str, content: &str) -> bool {
   }
 
   let menus = state.ivr.menus();
+  let prev_node = session.node_id.clone();
   let result = ivr::step(session, content, &menus, now);
+  if result.handled {
+    let input = content.trim();
+    if prev_node == menus.entry || input.eq_ignore_ascii_case("menu") || input == "0" {
+      state.ivr_audit.record(thread_id, "Entered buyer menu", "ok", now);
+    }
+    if !input.is_empty() {
+      state.ivr_audit.record(
+        thread_id,
+        &format!("Digit '{}' (node {})", input, result.session.node_id),
+        "ok",
+        now,
+      );
+    }
+    if result.action.as_deref() == Some("place_order") {
+      state.ivr_audit.record(thread_id, "Order placed via IVR", "ok", now);
+    }
+  }
   let _ = state.ivr.save_session(&account, result.session.clone());
   emit_event(
     "ivr://session",
@@ -6423,6 +6473,14 @@ fn cmd_list_auto_reply_audit(state: State<'_, AppState>, limit: Option<u32>) -> 
   list_auto_reply_audit(&state, limit)
 }
 #[tauri::command]
+fn cmd_list_ivr_audit(state: State<'_, AppState>, limit: Option<u32>) -> Value {
+  list_ivr_audit(&state, limit)
+}
+#[tauri::command]
+fn cmd_list_outbox_audit(state: State<'_, AppState>, limit: Option<u32>) -> Value {
+  list_outbox_audit(&state, limit)
+}
+#[tauri::command]
 fn cmd_set_thread_auto_reply(
   state: State<'_, AppState>,
   thread_id: String,
@@ -6958,6 +7016,8 @@ pub fn run() {
       cmd_get_auto_reply_settings,
       cmd_set_auto_reply_settings,
       cmd_list_auto_reply_audit,
+      cmd_list_ivr_audit,
+      cmd_list_outbox_audit,
       cmd_set_thread_auto_reply,
       cmd_get_thread_auto_reply,
       cmd_get_ivr_settings,

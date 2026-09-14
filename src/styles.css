@@ -1748,6 +1748,27 @@ button.attach-chip {
   margin-top: 4px;
 }
 
+button.audit-thread.linkish {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+button.audit-thread.linkish:hover {
+  text-decoration: underline;
+}
+
+.outcome-ivr,
+.outcome-commerce,
+.outcome-outbox,
+.outcome-auto-reply {
+  text-transform: capitalize;
+}
+
 .settings-body {
   padding: 20px;
   display: flex;
