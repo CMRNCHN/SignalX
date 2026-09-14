@@ -1667,6 +1667,19 @@ input[type="radio"] {
   color: var(--text-dim);
 }
 
+button.attach-chip {
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.bubble .attach-chip img {
+  width: 160px;
+  height: auto;
+  max-height: 200px;
+  object-fit: cover;
+}
+
 .attach-chip img {
   width: 40px;
   height: 40px;

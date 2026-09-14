@@ -64,6 +64,7 @@ import { usePanelWidths, type PanelLayout } from "./usePanelWidths";
 import { useEscapeLayer } from "./overlayEscape";
 import { useGlobalShortcuts } from "./useGlobalShortcuts";
 import { ShortcutsHelp } from "./components/ShortcutsHelp";
+import { AttachmentPreview } from "./attachmentPreview";
 import {
   IconAudit,
   IconBolt,
@@ -3670,6 +3671,7 @@ export default function App() {
                     <span>{fmtTime(m.timestamp)}</span>
                   </div>
                   <div className="bubble-body">{m.content}</div>
+                  {m.attachment_path && <AttachmentPreview path={m.attachment_path} />}
                 </div>
               ))}
               {(outbox.length
@@ -3684,11 +3686,7 @@ export default function App() {
                     <span>{fmtTime(o.created_at)}</span>
                   </div>
                   <div className="bubble-body">{o.content}</div>
-                  {o.attachment_path && (
-                    <div className="attach-chip">
-                      <span>{o.attachment_path.split("/").pop() || "Attachment"}</span>
-                    </div>
-                  )}
+                  {o.attachment_path && <AttachmentPreview path={o.attachment_path} />}
                   {o.last_error && <div className="bubble-err">{o.last_error}</div>}
                   <div className="bubble-actions">
                     {o.state === "failed" && (
@@ -3775,6 +3773,7 @@ export default function App() {
             customer={profileCustomer}
             orders={orders}
             products={products}
+            messages={messages}
             ai={ai}
             aiBusy={aiBusy}
             onStatus={setStatus}

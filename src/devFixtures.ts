@@ -148,6 +148,15 @@ export const fxMessages: Message[] = [
     direction: "Incoming",
   },
   {
+    id: "m5b",
+    thread_id: "+15555550142",
+    timestamp: mins(7),
+    sender: "+15555550142",
+    content: "storefront.jpg",
+    direction: "Incoming",
+    attachment_path: "/tmp/storefront.jpg",
+  },
+  {
     id: "m6",
     thread_id: "+15555550142",
     timestamp: mins(4),

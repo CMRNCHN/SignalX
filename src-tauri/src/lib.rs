@@ -232,6 +232,9 @@ struct Message {
   content: String,
   direction: Direction,
   raw_json: Option<Value>,
+  /// Absolute path under `{app_data}/attachments/` when present. Old JSON omits this.
+  #[serde(default)]
+  attachment_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -2288,6 +2291,64 @@ fn envelope_source_name(v: &Value) -> Option<String> {
     .filter(|s| !s.is_empty())
 }
 
+fn first_data_attachment(data_msg: &Value) -> Option<&Value> {
+  data_msg
+    .get("attachments")
+    .and_then(|a| a.as_array())
+    .and_then(|a| a.first())
+}
+
+fn attachment_str<'a>(att: &'a Value, keys: &[&str]) -> Option<&'a str> {
+  for k in keys {
+    if let Some(s) = att.get(*k).and_then(|x| x.as_str()).map(|s| s.trim()).filter(|s| !s.is_empty()) {
+      return Some(s);
+    }
+  }
+  None
+}
+
+fn attachment_display_name(att: &Value) -> Option<String> {
+  attachment_str(att, &["filename", "fileName", "name"]).map(|s| s.to_string())
+}
+
+fn attachment_source_path(att: &Value) -> Option<PathBuf> {
+  let raw = attachment_str(att, &["file", "storedFilename", "path", "localPath"])?;
+  let p = PathBuf::from(raw);
+  if p.is_file() {
+    Some(p)
+  } else {
+    None
+  }
+}
+
+fn ext_from_attachment(att: &Value) -> String {
+  if let Some(name) = attachment_display_name(att) {
+    if let Some(ext) = Path::new(&name).extension().and_then(|e| e.to_str()) {
+      if normalize_attachment_ext(ext).is_ok() {
+        return ext.to_lowercase();
+      }
+    }
+  }
+  match attachment_str(att, &["contentType", "content_type"]).unwrap_or("") {
+    "image/jpeg" | "image/jpg" => "jpg".into(),
+    "image/png" => "png".into(),
+    "image/gif" => "gif".into(),
+    "image/webp" => "webp".into(),
+    "application/pdf" => "pdf".into(),
+    _ => "bin".into(),
+  }
+}
+
+fn persist_inbound_attachment(app_data_dir: &Path, msg_id: &str, att: &Value) -> Option<String> {
+  let src = attachment_source_path(att)?;
+  let ext = normalize_attachment_ext(&ext_from_attachment(att)).unwrap_or_else(|_| "bin".into());
+  let dir = app_data_dir.join("attachments");
+  std::fs::create_dir_all(&dir).ok()?;
+  let dest = dir.join(format!("{}.{}", sanitize_filename(msg_id), ext));
+  std::fs::copy(&src, &dest).ok()?;
+  Some(dest.to_string_lossy().to_string())
+}
+
 /// Prefer E.164 sourceNumber over UUID `source` for stable thread ids.
 fn envelope_peer_id(env: &Value) -> String {
   if let Some(num) = env
@@ -2306,7 +2367,11 @@ fn envelope_peer_id(env: &Value) -> String {
     .to_string()
 }
 
-fn normalize_incoming_message(my_number: &str, v: &Value) -> Option<(Message, Vec<String>)> {
+fn normalize_incoming_message(
+  my_number: &str,
+  v: &Value,
+  app_data_dir: Option<&Path>,
+) -> Option<(Message, Vec<String>)> {
   let env = v.get("envelope")?;
   let ts = env.get("timestamp").and_then(|x| x.as_i64()).unwrap_or_else(now_ms);
   let source = envelope_peer_id(env);
@@ -2318,14 +2383,12 @@ fn normalize_incoming_message(my_number: &str, v: &Value) -> Option<(Message, Ve
     .get("message")
     .and_then(|x| x.as_str())
     .map(|s| s.to_string());
-  let has_attachments = data_msg
-    .get("attachments")
-    .and_then(|a| a.as_array())
-    .map(|a| !a.is_empty())
-    .unwrap_or(false);
+  let att = first_data_attachment(data_msg);
   let content = match text {
     Some(s) if !s.trim().is_empty() => s,
-    _ if has_attachments => "[attachment]".to_string(),
+    _ if att.is_some() => att
+      .and_then(attachment_display_name)
+      .unwrap_or_else(|| "[attachment]".to_string()),
     _ => return None,
   };
 
@@ -2340,6 +2403,9 @@ fn normalize_incoming_message(my_number: &str, v: &Value) -> Option<(Message, Ve
   }
 
   let id = format!("incoming-{}-{}-{}", source, ts, source_device);
+  let attachment_path = att.and_then(|a| {
+    app_data_dir.and_then(|root| persist_inbound_attachment(root, &id, a))
+  });
 
   let msg = Message {
     id,
@@ -2350,6 +2416,7 @@ fn normalize_incoming_message(my_number: &str, v: &Value) -> Option<(Message, Ve
     content,
     direction: Direction::Incoming,
     raw_json: Some(v.clone()),
+    attachment_path,
   };
 
   let mut participants: Vec<String> = vec![];
@@ -2385,6 +2452,7 @@ fn normalize_outgoing_message(my_number: &str, thread_id: &str, recipient: &str,
     content: content.to_string(),
     direction: Direction::Outgoing,
     raw_json: None,
+    attachment_path: None,
   };
   (msg, vec![my_number.to_string(), recipient.to_string()])
 }
@@ -4601,7 +4669,9 @@ async fn receive_loop(state: AppState, agent_mode: Option<AgentModeConfig>) {
           let ts = state.account_manager.get_or_create(&account);
 
           for v in list.iter() {
-            if let Some((msg, participants)) = normalize_incoming_message(&my_number, v) {
+            if let Some((msg, participants)) =
+              normalize_incoming_message(&my_number, v, Some(&state.app_data_dir))
+            {
               let thread_id = msg.thread_id.clone();
               let msg_id = msg.id.clone();
               if let Some(name) = envelope_source_name(v) {
@@ -7022,7 +7092,7 @@ mod foundation_tests {
         "receiptMessage": { "isDelivery": true, "timestamps": [1], "when": 1 }
       }
     });
-    assert!(normalize_incoming_message("+16172990756", &receipt).is_none());
+    assert!(normalize_incoming_message("+16172990756", &receipt, None).is_none());
 
     let text = json!({
       "envelope": {
@@ -7034,7 +7104,7 @@ mod foundation_tests {
         "dataMessage": { "message": "hello from Keelan" }
       }
     });
-    let (msg, _) = normalize_incoming_message("+16172990756", &text).expect("text msg");
+    let (msg, _) = normalize_incoming_message("+16172990756", &text, None).expect("text msg");
     assert_eq!(msg.content, "hello from Keelan");
     assert_eq!(msg.thread_id, "+17028575560");
     assert_eq!(envelope_source_name(&text).as_deref(), Some("Keelan Miskel"));
@@ -7042,6 +7112,37 @@ mod foundation_tests {
       r#"{"envelope":{"receiptMessage":{"isDelivery":true},"source":"+17028575560"}}"#
     ));
     assert!(!is_envelope_noise_content("if you can do tomorrow night"));
+  }
+
+  #[test]
+  fn inbound_attachment_copied_into_app_data() {
+    let root = std::env::temp_dir().join(format!("signalx-att-{}", Uuid::new_v4()));
+    let src = std::env::temp_dir().join(format!("signalx-src-{}.jpg", Uuid::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(&src, b"fake-jpeg").unwrap();
+    let env = json!({
+      "envelope": {
+        "sourceNumber": "+17028575560",
+        "sourceDevice": 1,
+        "timestamp": 9,
+        "dataMessage": {
+          "message": "",
+          "attachments": [{
+            "filename": "patio.jpg",
+            "contentType": "image/jpeg",
+            "file": src.to_string_lossy(),
+          }]
+        }
+      }
+    });
+    let (msg, _) = normalize_incoming_message("+16172990756", &env, Some(&root)).expect("att");
+    assert_eq!(msg.content, "patio.jpg");
+    let path = msg.attachment_path.expect("path");
+    assert!(path.contains("attachments"));
+    assert!(path.ends_with(".jpg"));
+    assert_eq!(std::fs::read(&path).unwrap(), b"fake-jpeg");
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_file(&src);
   }
 
   #[test]

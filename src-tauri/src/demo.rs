@@ -90,6 +90,7 @@ fn msg(
       Direction::Outgoing
     },
     raw_json: None,
+    attachment_path: None,
   }
 }
 

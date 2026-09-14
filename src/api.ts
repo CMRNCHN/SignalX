@@ -28,6 +28,7 @@ export interface Message {
   content: string;
   direction: "Incoming" | "Outgoing" | string;
   raw_json?: unknown;
+  attachment_path?: string | null;
 }
 
 export interface ThreadSummary {
