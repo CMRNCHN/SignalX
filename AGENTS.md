@@ -1,5 +1,12 @@
 # AGENTS.md
 
+## Task queue
+
+`docs/CURSOR_TASKS.md` has four scoped, pre-grounded implementation tasks
+(keyboard shortcuts, inbound attachments, unified audit panel, backup
+encryption) with exact file/line citations — read it before picking up new
+feature work in this repo.
+
 ## Cursor Cloud specific instructions
 
 SignalX is a **Tauri v2 desktop app**: a React/Vite frontend (`src/`, dev server on port 5173, `strictPort`) driving a Rust backend/daemon (`src-tauri/`). The published docs (`README.md`, `docs/QUICKSTART.md`, `docs/BUILD.md`) are macOS-oriented (Homebrew paths, `.command`/`.app` bundles); the notes below cover the Linux/cloud differences. Standard commands live in `package.json` scripts and `src-tauri/Cargo.toml` — refer to those rather than duplicating.

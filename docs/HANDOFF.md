@@ -12,7 +12,8 @@
 - **Send path:** all outbound messages go through the outbox.
 - **Next:** see long-term backlog in `docs/NEXT_STEPS.md` (inbound media,
   unified Audit, keyboard shortcuts, backup v2, etc.). Commerce-depth phases
-  1–4 are shipped.
+  1–4 are shipped. `docs/CURSOR_TASKS.md` has four of these scoped into
+  ready-to-implement tasks with exact file/line citations.
 
 ## Run it
 
