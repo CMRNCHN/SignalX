@@ -491,14 +491,16 @@ export const api = {
     }),
   exportAccount: (format = "json") =>
     call<unknown>("cmd_export_account", { format, fromTs: null, toTs: null }),
-  exportDataBundle: () =>
+  exportDataBundle: (password?: string) =>
     call<{
       path: string;
       bytes: number;
       counts: { files: number; attachments: number };
-    }>("cmd_export_data_bundle"),
+    }>("cmd_export_data_bundle", {
+      password: password?.trim() ? password.trim() : null,
+    }),
   importDataBundle: (
-    opts: { path?: string; bytesBase64?: string; mode: "replace" | "merge" },
+    opts: { path?: string; bytesBase64?: string; mode: "replace" | "merge"; password?: string },
   ) =>
     call<{
       restart_required: boolean;
@@ -509,6 +511,7 @@ export const api = {
       path: opts.path ?? null,
       bytesBase64: opts.bytesBase64 ?? null,
       mode: opts.mode,
+      password: opts.password?.trim() ? opts.password.trim() : null,
     }),
   openPath: (path: string) => call<boolean>("cmd_open_path", { path }),
   getAutoReplySettings: () => call<AutoReplySettings>("cmd_get_auto_reply_settings"),

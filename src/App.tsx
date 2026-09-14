@@ -471,6 +471,7 @@ export default function App() {
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("account");
   const [importMode, setImportMode] = useState<"replace" | "merge">("replace");
   const [backupBusy, setBackupBusy] = useState(false);
+  const [backupPassword, setBackupPassword] = useState("");
   const [restartRequired, setRestartRequired] = useState(false);
   const [threadFilter, setThreadFilter] = useState({
     kind: "all" as "all" | "dm" | "group",
@@ -1602,7 +1603,7 @@ export default function App() {
 
   const onExportDataBundle = async () => {
     setBackupBusy(true);
-    const res = await api.exportDataBundle();
+    const res = await api.exportDataBundle(backupPassword);
     setBackupBusy(false);
     if (!res.success) {
       setStatus(res.error);
@@ -1631,7 +1632,11 @@ export default function App() {
     setBackupBusy(true);
     try {
       const { b64 } = await fileToBase64(file);
-      const res = await api.importDataBundle({ bytesBase64: b64, mode: importMode });
+      const res = await api.importDataBundle({
+        bytesBase64: b64,
+        mode: importMode,
+        password: backupPassword,
+      });
       if (!res.success) {
         setStatus(res.error);
         return;
@@ -3141,8 +3146,20 @@ export default function App() {
                 </div>
                 <p className="hint tight">
                   Bundles cover your catalog, customers, orders, buyer menu, chats, and outbox —
-                  not your Signal login. Re-link Signal on a new computer.
+                  not your Signal login. Re-link Signal on a new computer. Leave the password blank
+                  for an unencrypted zip.
                 </p>
+                <label className="field-stack">
+                  <span className="field-label">Optional password</span>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={backupPassword}
+                    onChange={(e) => setBackupPassword(e.target.value)}
+                    placeholder="Blank = unencrypted"
+                    disabled={backupBusy || restartRequired}
+                  />
+                </label>
                 <div className="backup-actions">
                   <button
                     type="button"

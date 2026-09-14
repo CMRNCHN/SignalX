@@ -4392,7 +4392,7 @@ fn export_account(state: &AppState, format: String, from_ts: Option<i64>, to_ts:
   }))
 }
 
-fn export_data_bundle_cmd(state: &AppState) -> Value {
+fn export_data_bundle_cmd(state: &AppState, password: Option<String>) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return err("No active account".to_string()),
@@ -4404,6 +4404,7 @@ fn export_data_bundle_cmd(state: &AppState) -> Value {
     &account,
     now_ms(),
     version,
+    password.as_deref(),
   ) {
     Ok((path, bytes, counts)) => ok(json!({
       "path": path.to_string_lossy(),
@@ -4422,6 +4423,7 @@ fn import_data_bundle_cmd(
   path: Option<String>,
   bytes_base64: Option<String>,
   mode: String,
+  password: Option<String>,
 ) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
@@ -4464,6 +4466,7 @@ fn import_data_bundle_cmd(
     &account,
     mode,
     now_ms(),
+    password.as_deref(),
   ) {
     Ok(v) => {
       reload_all_stores(state, &account);
@@ -6448,8 +6451,8 @@ fn cmd_export_account(
   export_account(&state, format, from_ts, to_ts)
 }
 #[tauri::command]
-fn cmd_export_data_bundle(state: State<'_, AppState>) -> Value {
-  export_data_bundle_cmd(&state)
+fn cmd_export_data_bundle(state: State<'_, AppState>, password: Option<String>) -> Value {
+  export_data_bundle_cmd(&state, password)
 }
 #[tauri::command]
 fn cmd_import_data_bundle(
@@ -6457,8 +6460,9 @@ fn cmd_import_data_bundle(
   path: Option<String>,
   bytes_base64: Option<String>,
   mode: String,
+  password: Option<String>,
 ) -> Value {
-  import_data_bundle_cmd(&state, path, bytes_base64, mode)
+  import_data_bundle_cmd(&state, path, bytes_base64, mode, password)
 }
 #[tauri::command]
 fn cmd_get_auto_reply_settings(state: State<'_, AppState>) -> Value {
