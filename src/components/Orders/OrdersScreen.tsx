@@ -12,6 +12,7 @@ import {
   IconX,
 } from "../../navIcons";
 import { WhyTip } from "../WhyTip";
+import { useEscapeLayer } from "../../overlayEscape";
 
 /* The order lifecycle, in the order it actually happens. A quote is a draft
    that has been sent; it is not a separate status, so the track shows where an
@@ -159,6 +160,8 @@ export function OrdersScreen(props: OrdersScreenProps) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
   const [menu, setMenu] = useState<null | "status" | "date" | "payment">(null);
+  useEscapeLayer(!!menu, () => setMenu(null));
+  useEscapeLayer(composing, () => setComposing(false));
   const didAutoOpen = useRef(false);
 
   // The list re-sorts and re-filters constantly, so hold the id and look the

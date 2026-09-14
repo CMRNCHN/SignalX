@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   api,
   errMsg,
@@ -61,6 +61,9 @@ import { PanelResizer } from "./components/PanelResizer";
 import { formatPhone, formatQty, isGroupThread, stockQtyFromMilli, threadTitle } from "./format";
 import { canInvoke, isTauriRuntime } from "./runtime";
 import { usePanelWidths, type PanelLayout } from "./usePanelWidths";
+import { useEscapeLayer } from "./overlayEscape";
+import { useGlobalShortcuts } from "./useGlobalShortcuts";
+import { ShortcutsHelp } from "./components/ShortcutsHelp";
 import {
   IconAudit,
   IconBolt,
@@ -403,6 +406,7 @@ export default function App() {
   const [focusOrderId, setFocusOrderId] = useState<string | null>(null);
   const [newDmError, setNewDmError] = useState<string | null>(null);
   const [newDmOpen, setNewDmOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [productImagesReal, setProductImages] = useState<Record<string, string>>({});
 
   // Dev-only design data. Real state always wins; fixtures fill in only while a
@@ -712,17 +716,39 @@ export default function App() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, outbox]);
 
-  useEffect(() => {
-    const handleKeydown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        searchInputRef.current?.focus();
-        searchInputRef.current?.select();
-      }
-    };
-    window.addEventListener("keydown", handleKeydown);
-    return () => window.removeEventListener("keydown", handleKeydown);
+  const focusSearch = useCallback(() => {
+    setShortcutsOpen(false);
+    searchInputRef.current?.focus();
+    searchInputRef.current?.select();
   }, []);
+  const goShortcutPanel = useCallback(
+    (id: "threads" | "people" | "catalog" | "orders" | "sales" | "settings") => {
+      setShortcutsOpen(false);
+      setPanel(id);
+    },
+    [],
+  );
+  const toggleShortcutsHelp = useCallback(() => {
+    setShortcutsOpen((v) => !v);
+  }, []);
+  useGlobalShortcuts({
+    onSearch: focusSearch,
+    onNav: goShortcutPanel,
+    onToggleHelp: toggleShortcutsHelp,
+  });
+  useEscapeLayer(accountMenuOpen, () => setAccountMenuOpen(false));
+  useEscapeLayer(newDmOpen, () => {
+    setNewDmOpen(false);
+    setNewDmError(null);
+  });
+  useEscapeLayer(catalogFormOpen, () => {
+    setProductForm(emptyProductForm());
+    setSellPacks([]);
+    setProductImageFile(null);
+    setProductImagePreview(null);
+    setClearProductImageFlag(false);
+    setCatalogFormOpen(false);
+  });
 
   const onSend = async () => {
     if (!selectedId || sending || restartRequired) return;
@@ -3826,6 +3852,7 @@ export default function App() {
             </div>
           </aside>
         ))}
+      <ShortcutsHelp open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );
 }

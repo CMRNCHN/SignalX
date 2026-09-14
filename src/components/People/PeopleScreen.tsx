@@ -30,6 +30,7 @@ import {
 } from "../../navIcons";
 import { USE_FIXTURES, fxMessages } from "../../devFixtures";
 import { WhyTip } from "../WhyTip";
+import { useEscapeLayer } from "../../overlayEscape";
 import { actionsFor, buildDirectory, insightsFor, type Person, type PersonStatus, type PersonType } from "./people";
 
 const TYPES: PersonType[] = ["Consumer", "Supplier", "Team"];
@@ -152,6 +153,9 @@ export function PeopleScreen({
   const [recent, setRecent] = useState<Message[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  useEscapeLayer(!!menu, () => setMenu(null));
+  useEscapeLayer(!!composer, () => setComposer(null));
+  useEscapeLayer(!!confirmDelete, () => setConfirmDelete(null));
   // The backend has no archive column, so this is a local hide-list. Swap it
   // for a real field once one exists — nothing else depends on the shape.
   const [archived, setArchived] = useState<Set<string>>(() => {

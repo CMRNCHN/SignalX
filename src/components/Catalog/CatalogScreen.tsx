@@ -11,6 +11,7 @@ import {
 } from "../../navIcons";
 import type { Person } from "../People/people";
 import { matchingProducts } from "../../globalSearch";
+import { useEscapeLayer } from "../../overlayEscape";
 import {
   CATALOG_STATUSES,
   STOCK_STATUSES,
@@ -75,6 +76,7 @@ export function CatalogScreen({
   const [stocks, setStocks] = useState<StockStatus[]>([]);
   const [sortAsc, setSortAsc] = useState(true);
   const [menu, setMenu] = useState<null | "status" | "category" | "stock" | "more">(null);
+  useEscapeLayer(!!menu, () => setMenu(null));
 
   useEffect(() => {
     setQ(catalogSearchQuery);
