@@ -24,11 +24,6 @@ function needle(q: string): string {
   return q.trim().toLowerCase();
 }
 
-function escapeSpecialChars(str: string): string {
-  // Escape regex special characters so they're treated literally
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 function has(hay: string, q: string): boolean {
   const n = needle(q);
   if (!n) return false;
