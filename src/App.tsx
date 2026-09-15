@@ -22,7 +22,7 @@ import {
   type Message,
   type Order,
   type OutboxItem,
-  type OutboxSummary,
+  type PendingReply,
   type Product,
   type ReceiveLoopState,
   type SalesSummary,
@@ -78,7 +78,6 @@ import {
   IconImage,
   IconMessages,
   IconOrders,
-  IconOutbox,
   IconSearch,
   IconX,
   IconExport,
@@ -99,7 +98,6 @@ export type Panel =
   | "customers"
   | "orders"
   | "sales"
-  | "outbox"
   | "audit"
   | "settings";
 type SettingsTab = "account" | "ivr" | "auto" | "backup";
@@ -136,10 +134,7 @@ const NAV_GROUPS: NavItem[][] = [
     { id: "orders", label: "Orders", ico: <IconOrders /> },
     { id: "sales", label: "Sales", ico: <IconAudit /> },
   ],
-  [
-    { id: "outbox", label: "Outbox", ico: <IconOutbox /> },
-    { id: "audit", label: "Audit", ico: <IconAudit /> },
-  ],
+  [{ id: "audit", label: "Audit", ico: <IconAudit /> }],
   [{ id: "settings", label: "Settings", ico: <IconSettings /> }],
 ];
 
@@ -339,7 +334,8 @@ export default function App() {
   const [messagesReal, setMessages] = useState<Message[]>([]);
   const [outbox, setOutbox] = useState<OutboxItem[]>([]);
   const [globalOutboxReal, setGlobalOutbox] = useState<OutboxItem[]>([]);
-  const [outboxSummary, setOutboxSummary] = useState<OutboxSummary | null>(null);
+  const [pendingDraftsByThread, setPendingDraftsByThread] = useState<Record<string, PendingReply[]>>({});
+  const [needsReviewMode, setNeedsReviewMode] = useState(false);
   const [composer, setComposer] = useState("");
   const [attachFile, setAttachFile] = useState<File | null>(null);
   const [attachPreview, setAttachPreview] = useState<string | null>(null);
@@ -435,6 +431,11 @@ export default function App() {
   })();
   const globalOutbox =
     USE_FIXTURES && !globalOutboxReal.length ? fxOutbox : globalOutboxReal;
+  const allPendingDrafts = useMemo(
+    () => Object.values(pendingDraftsByThread).flat(),
+    [pendingDraftsByThread],
+  );
+  const needsReviewCount = globalOutbox.length + allPendingDrafts.length;
   const searchHits = searchHitsReal.length
     ? searchHitsReal
     : USE_FIXTURES
@@ -577,6 +578,7 @@ export default function App() {
       await refreshThreads();
       await refreshMeta();
       await refreshGlobalOutbox();
+      await refreshPendingDrafts();
     }
   };
 
@@ -630,8 +632,8 @@ export default function App() {
       );
       unsubs.push(
         await onEvent<{ pending?: { draft: string; thread_id: string } }>("agent://draft", (p) => {
+          void refreshPendingDrafts();
           if (p.pending && p.pending.thread_id === selectedRef.current) {
-            setComposer((c) => c || p.pending!.draft);
             setStatus("AI draft ready — review before sending");
           }
         }),
@@ -1576,7 +1578,7 @@ export default function App() {
   };
 
   const refreshGlobalOutbox = async () => {
-    const [list, sum] = await Promise.all([api.listOutbox(), api.getOutboxSummary()]);
+    const list = await api.listOutbox();
     if (list.success) {
       setGlobalOutbox(
         list.data
@@ -1584,7 +1586,41 @@ export default function App() {
           .sort((a, b) => b.created_at - a.created_at),
       );
     }
-    if (sum.success) setOutboxSummary(sum.data);
+  };
+
+  const refreshPendingDrafts = async () => {
+    const res = await api.getAllPendingReplies();
+    if (!res.success) return;
+    const byThread: Record<string, PendingReply[]> = {};
+    for (const p of res.data) {
+      (byThread[p.thread_id] ??= []).push(p);
+    }
+    setPendingDraftsByThread(byThread);
+  };
+
+  const approveDraft = async (p: PendingReply) => {
+    const res = await api.queueMessage(p.thread_id, p.draft);
+    if (!res.success) {
+      setStatus(res.error);
+      return;
+    }
+    await api.markPendingReplyConsumed(p.thread_id, p.message_id);
+    await refreshPendingDrafts();
+    await refreshGlobalOutbox();
+    if (selectedId === p.thread_id) await refreshMessages(p.thread_id);
+  };
+
+  const editDraft = async (p: PendingReply) => {
+    setSelectedId(p.thread_id);
+    setPanel("threads");
+    setComposer(p.draft);
+    await api.markPendingReplyConsumed(p.thread_id, p.message_id);
+    await refreshPendingDrafts();
+  };
+
+  const discardDraft = async (p: PendingReply) => {
+    await api.markPendingReplyConsumed(p.thread_id, p.message_id);
+    await refreshPendingDrafts();
   };
 
   const setOrderLifecycle = async (id: string, status: string) => {
@@ -1662,7 +1698,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (panel === "outbox") void refreshGlobalOutbox();
+    if (panel === "threads") {
+      void refreshGlobalOutbox();
+      void refreshPendingDrafts();
+    }
     if (panel === "audit") {
       void api.listAutoReplyAudit(80).then((r) => {
         if (r.success) setAudit(r.data);
@@ -1844,8 +1883,10 @@ export default function App() {
       setStatus("No roster account to unlock");
       return;
     }
+    const selected = session?.accounts.find((a) => a.id === id);
+    const pin = selected && !selected.has_pin ? "" : sessionPin;
     setRosterBusy(true);
-    const res = await api.unlockAccount(id, sessionPin);
+    const res = await api.unlockAccount(id, pin);
     setRosterBusy(false);
     if (!res.success) {
       setStatus(res.error);
@@ -1965,7 +2006,10 @@ export default function App() {
                   key={a.id}
                   type="button"
                   className={unlockId === a.id ? "lock-account active" : "lock-account"}
-                  onClick={() => setUnlockId(a.id)}
+                  onClick={() => {
+                    setUnlockId(a.id);
+                    setSessionPin("");
+                  }}
                 >
                   <span className="lock-account-label">{a.label || a.e164 || `…${a.last4}`}</span>
                   <span className="lock-account-meta">
@@ -1975,18 +2019,28 @@ export default function App() {
                 </button>
               ))}
             </div>
-            <label className="field-label" htmlFor="session-pin">
-              PIN
-            </label>
-            <input
-              id="session-pin"
-              type="password"
-              autoComplete="off"
-              placeholder="4–8 digits"
-              value={sessionPin}
-              onChange={(e) => setSessionPin(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && void onUnlock()}
-            />
+            {(() => {
+              const selected = session.accounts.find((a) => a.id === unlockId) ?? session.accounts[0];
+              if (selected && !selected.has_pin) {
+                return <p className="hint tight">No PIN set for this account — just press Unlock.</p>;
+              }
+              return (
+                <>
+                  <label className="field-label" htmlFor="session-pin">
+                    PIN
+                  </label>
+                  <input
+                    id="session-pin"
+                    type="password"
+                    autoComplete="off"
+                    placeholder="4–8 digits"
+                    value={sessionPin}
+                    onChange={(e) => setSessionPin(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && void onUnlock()}
+                  />
+                </>
+              );
+            })()}
             <button
               type="button"
               className="action-btn primary"
@@ -2143,15 +2197,9 @@ export default function App() {
                   {id === "orders" && orders.length > 0 && (
                     <span className="nav-count">{orders.length}</span>
                   )}
-                  {id === "outbox" &&
-                    outboxSummary &&
-                    outboxSummary.queued + outboxSummary.sending + outboxSummary.failed > 0 && (
-                      <span className="nav-count">
-                        {outboxSummary.failed > 0
-                          ? outboxSummary.failed
-                          : outboxSummary.queued + outboxSummary.sending}
-                      </span>
-                    )}
+                  {id === "threads" && needsReviewCount > 0 && (
+                    <span className="nav-count">{needsReviewCount}</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -2240,11 +2288,103 @@ export default function App() {
               >
                 Pending
               </button>
+              <span className="chip-sep" aria-hidden />
+              <button
+                type="button"
+                className={needsReviewMode ? "chip active" : "chip"}
+                aria-pressed={needsReviewMode}
+                onClick={() => setNeedsReviewMode((v) => !v)}
+              >
+                Needs review
+                {needsReviewCount > 0 && <span className="chip-badge">{needsReviewCount}</span>}
+              </button>
               <span className="chip-count">
-                {filteredThreads.length}/{threads.length}
+                {needsReviewMode
+                  ? `${needsReviewCount} open`
+                  : `${filteredThreads.length}/${threads.length}`}
               </span>
             </div>
           </div>
+          {needsReviewMode ? (
+          <div className="thread-list outbox-table">
+            {needsReviewCount === 0 && (
+              <p className="empty">Nothing needs your attention.</p>
+            )}
+            {allPendingDrafts.map((p) => (
+              <div key={p.message_id} className="outbox-row state-queued">
+                <div className="outbox-to">
+                  <strong>{threadTitle(p.thread_id, contacts, groups, customers)}</strong>
+                  <span className="convo-sub">AI draft</span>
+                </div>
+                <div className="outbox-preview">
+                  {p.draft.slice(0, 120)}
+                  {p.draft.length > 120 ? "…" : ""}
+                </div>
+                <span className="status-pill status-warn">awaiting review</span>
+                <span className="outbox-age">{fmtTime(p.created_at)}</span>
+                <div className="row-actions">
+                  <button type="button" className="action-btn primary" onClick={() => void approveDraft(p)}>
+                    Send
+                  </button>
+                  <button type="button" className="ghost-btn" onClick={() => void editDraft(p)}>
+                    Edit
+                  </button>
+                  <button type="button" className="ghost-btn" onClick={() => void discardDraft(p)}>
+                    Discard
+                  </button>
+                </div>
+              </div>
+            ))}
+            {globalOutbox.map((o) => (
+              <div key={o.id} className={`outbox-row state-${o.state}`}>
+                <div className="outbox-to">
+                  <strong>{threadTitle(o.thread_id, contacts, groups, customers)}</strong>
+                  {o.attachment_path ? <span className="convo-sub">Attachment</span> : null}
+                </div>
+                <div className="outbox-preview">
+                  {o.content.slice(0, 120) || (o.attachment_path ? "(attachment)" : "(empty)")}
+                  {o.content.length > 120 ? "…" : ""}
+                  {o.last_error && <div className="bubble-err">{o.last_error}</div>}
+                </div>
+                <span
+                  className={`status-pill status-${
+                    o.state === "failed" ? "danger" : o.state === "sending" ? "warn" : "muted"
+                  }`}
+                >
+                  {o.state}
+                </span>
+                <span className="outbox-age">
+                  {fmtTime(o.created_at)}
+                  {o.attempt_count > 0 ? ` · ${o.attempt_count}` : ""}
+                </span>
+                <div className="row-actions">
+                  {o.state === "failed" && (
+                    <button type="button" className="action-btn primary" onClick={() => void onRetry(o.id).then(() => refreshGlobalOutbox())}>
+                      Retry
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="ghost-btn"
+                    onClick={() => void onDeleteOutbox(o.id).then(() => refreshGlobalOutbox())}
+                  >
+                    Discard
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost-btn"
+                    onClick={() => {
+                      setSelectedId(o.thread_id);
+                      setPanel("threads");
+                    }}
+                  >
+                    Open
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          ) : (
           <div className="thread-list">
             {threads.length === 0 && (
               <p className="empty">No threads yet — open a chat above or wait for Signal traffic.</p>
@@ -2283,6 +2423,7 @@ export default function App() {
               </button>
             ))}
           </div>
+          )}
         </section>
       )}
 
@@ -2350,8 +2491,16 @@ export default function App() {
               const group = groups.find((g) => g.group_id === peopleKey);
               setSelectedId(person?.contact_id ?? group?.group_id ?? peopleKey);
               setOrderFilter((f) => ({ ...f, thisThread: true }));
+              setPanel("orders");
+              return;
             }
-            setPanel(target);
+            if (target === "outbox") {
+              const person = contacts.find((c) => c.contact_id === peopleKey);
+              const group = groups.find((g) => g.group_id === peopleKey);
+              setSelectedId(person?.contact_id ?? group?.group_id ?? peopleKey);
+              setPanel("threads");
+              return;
+            }
           }}
           onRefresh={() => void refreshMeta()}
           setStatus={setStatus}
@@ -2741,93 +2890,6 @@ export default function App() {
           fmtTime={fmtTime}
           orderStatusTone={orderStatusTone}
         />
-      )}
-
-      {panel === "outbox" && (
-        <section className="thread-col wide">
-          <header className="col-head">
-            Outbox
-            <span className="col-meta">
-              {(() => {
-                const queued = globalOutbox.filter((o) => o.state === "queued").length;
-                const sending = globalOutbox.filter((o) => o.state === "sending").length;
-                const failed = globalOutbox.filter((o) => o.state === "failed").length;
-                if (queued + sending + failed === 0 && outboxSummary) {
-                  return `${outboxSummary.queued} queued · ${outboxSummary.sending} sending · ${outboxSummary.failed} failed`;
-                }
-                return `${queued} queued · ${sending} sending · ${failed} failed`;
-              })()}
-            </span>
-          </header>
-          <div className="filter-strip">
-            <button type="button" className="ghost-btn" onClick={() => void refreshGlobalOutbox()}>
-              Refresh
-            </button>
-            <span className="col-meta">{globalOutbox.length} open</span>
-          </div>
-          <div className="outbox-table">
-            {globalOutbox.length === 0 && (
-              <p className="empty">Outbox clear — nothing queued or failed.</p>
-            )}
-            {globalOutbox.length > 0 && (
-              <div className="outbox-head" aria-hidden>
-                <span>To</span>
-                <span>Preview</span>
-                <span>Status</span>
-                <span>Age</span>
-                <span />
-              </div>
-            )}
-            {globalOutbox.map((o) => (
-              <div key={o.id} className={`outbox-row state-${o.state}`}>
-                <div className="outbox-to">
-                  <strong>{threadTitle(o.thread_id, contacts, groups, customers)}</strong>
-                  {o.attachment_path ? <span className="convo-sub">Attachment</span> : null}
-                </div>
-                <div className="outbox-preview">
-                  {o.content.slice(0, 120) || (o.attachment_path ? "(attachment)" : "(empty)")}
-                  {o.content.length > 120 ? "…" : ""}
-                  {o.last_error && <div className="bubble-err">{o.last_error}</div>}
-                </div>
-                <span
-                  className={`status-pill status-${
-                    o.state === "failed" ? "danger" : o.state === "sending" ? "warn" : "muted"
-                  }`}
-                >
-                  {o.state}
-                </span>
-                <span className="outbox-age">
-                  {fmtTime(o.created_at)}
-                  {o.attempt_count > 0 ? ` · ${o.attempt_count}` : ""}
-                </span>
-                <div className="row-actions">
-                  {o.state === "failed" && (
-                    <button type="button" className="action-btn primary" onClick={() => void onRetry(o.id).then(() => refreshGlobalOutbox())}>
-                      Retry
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="ghost-btn"
-                    onClick={() => void onDeleteOutbox(o.id).then(() => refreshGlobalOutbox())}
-                  >
-                    Discard
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-btn"
-                    onClick={() => {
-                      setSelectedId(o.thread_id);
-                      setPanel("threads");
-                    }}
-                  >
-                    Open
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
       )}
 
       {panel === "audit" && (
@@ -3506,8 +3568,7 @@ export default function App() {
         panel === "catalog" ||
         panel === "orders" ||
         panel === "sales" ||
-        panel === "search" ||
-        panel === "outbox") ? null : (
+        panel === "search") ? null : (
       <main className="convo">
         {!selectedId ? (
           <div className="convo-empty">
@@ -3691,6 +3752,26 @@ export default function App() {
               ))}
               <div ref={bottomRef} />
             </div>
+
+            {(pendingDraftsByThread[selectedId] ?? []).map((p) => (
+              <div key={p.message_id} className="summary-box">
+                <div className="summary-head">
+                  <strong>AI drafted a reply — review before sending</strong>
+                </div>
+                <p>{p.draft}</p>
+                <div className="row-actions">
+                  <button type="button" className="action-btn primary" onClick={() => void approveDraft(p)}>
+                    Send
+                  </button>
+                  <button type="button" className="ghost-btn" onClick={() => void editDraft(p)}>
+                    Edit
+                  </button>
+                  <button type="button" className="ghost-btn" onClick={() => void discardDraft(p)}>
+                    Discard
+                  </button>
+                </div>
+              </div>
+            ))}
 
             <div className="composer">
               {attachPreview && (

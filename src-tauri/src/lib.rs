@@ -808,6 +808,14 @@ impl ThreadState {
     d.pending_replies.get(thread_id).cloned().unwrap_or_else(Vec::new)
   }
 
+  /// All unconsumed AI drafts across every thread, newest first.
+  fn get_all_pending_replies(&self) -> Vec<PendingReply> {
+    let d = self.data.lock().unwrap();
+    let mut all: Vec<PendingReply> = d.pending_replies.values().flatten().cloned().collect();
+    all.sort_by_key(|p| std::cmp::Reverse(p.created_at));
+    all
+  }
+
   fn consume_pending_reply(&self, thread_id: &str, message_id: &str) -> bool {
     let (changed, removed, should_remove) = {
       let mut d = self.data.lock().unwrap();
@@ -3030,6 +3038,15 @@ fn get_pending_replies(state: &AppState, thread_id: String) -> Value {
   };
   let ts = state.account_manager.get_or_create(&account);
   ok_t(ts.get_pending_replies(thread_id.trim()))
+}
+
+fn get_all_pending_replies(state: &AppState) -> Value {
+  let account = match state.account_manager.get_active() {
+    Some(a) => a,
+    None => return ok_t(Vec::<PendingReply>::new()),
+  };
+  let ts = state.account_manager.get_or_create(&account);
+  ok_t(ts.get_all_pending_replies())
 }
 
 fn get_draft_history(state: &AppState, thread_id: String) -> Value {
@@ -6244,6 +6261,10 @@ fn cmd_get_pending_replies(state: State<'_, AppState>, thread_id: String) -> Val
   get_pending_replies(&state, thread_id)
 }
 #[tauri::command]
+fn cmd_get_all_pending_replies(state: State<'_, AppState>) -> Value {
+  get_all_pending_replies(&state)
+}
+#[tauri::command]
 fn cmd_get_draft_history(state: State<'_, AppState>, thread_id: String) -> Value {
   get_draft_history(&state, thread_id)
 }
@@ -6984,6 +7005,7 @@ pub fn run() {
       cmd_get_threads,
       cmd_get_thread_messages,
       cmd_get_pending_replies,
+      cmd_get_all_pending_replies,
       cmd_get_draft_history,
       cmd_list_outbox,
       cmd_get_outbox_state_summary,
@@ -7228,6 +7250,41 @@ mod foundation_tests {
     let parsed = parse_thread_actions_json(raw).expect("parse");
     assert_eq!(parsed.len(), 1);
     assert_eq!(parsed[0].kind, "summarize");
+  }
+
+  #[test]
+  fn get_all_pending_replies_flattens_and_sorts_newest_first() {
+    let path = std::env::temp_dir().join(format!("signalx-pending-{}.json", Uuid::new_v4()));
+    let ts = ThreadState::new("test-account".to_string(), path.clone());
+    ts.add_pending_reply(
+      "thread-a",
+      PendingReply {
+        message_id: "m1".into(),
+        thread_id: "thread-a".into(),
+        draft: "older draft".into(),
+        intent: "helpful".into(),
+        created_at: 100,
+      },
+    );
+    ts.add_pending_reply(
+      "thread-b",
+      PendingReply {
+        message_id: "m2".into(),
+        thread_id: "thread-b".into(),
+        draft: "newer draft".into(),
+        intent: "helpful".into(),
+        created_at: 200,
+      },
+    );
+    let all = ts.get_all_pending_replies();
+    assert_eq!(all.len(), 2);
+    assert_eq!(all[0].message_id, "m2");
+    assert_eq!(all[1].message_id, "m1");
+
+    assert!(ts.consume_pending_reply("thread-b", "m2"));
+    assert_eq!(ts.get_all_pending_replies().len(), 1);
+
+    let _ = std::fs::remove_file(&path);
   }
 
   #[test]
