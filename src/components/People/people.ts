@@ -342,7 +342,7 @@ export function actionsFor(p: Person, money: (c: number) => string): PersonActio
     out.push({
       id: "queued",
       label: `${p.pendingCount} message${p.pendingCount === 1 ? "" : "s"} queued to send`,
-      cta: "Open outbox",
+      cta: "Open chat",
       target: "outbox",
       urgent: false,
       why: "Queued or failed sends for this chat, taken from the thread's outbox count.",
