@@ -348,6 +348,80 @@ input[type="radio"] {
   font-weight: 600;
 }
 
+.shortcuts-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(9, 9, 11, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.shortcuts-card {
+  width: min(380px, 100%);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px 16px;
+  box-shadow: var(--shadow-float);
+}
+
+.shortcuts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.shortcuts-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.shortcuts-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shortcuts-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.shortcuts-row:last-child {
+  border-bottom: 0;
+}
+
+.shortcuts-row dt {
+  margin: 0;
+}
+
+.shortcuts-row dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.shortcuts-row kbd {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
 .lock-card input {
   width: 100%;
   background: var(--surface-2);
@@ -1593,6 +1667,19 @@ input[type="radio"] {
   color: var(--text-dim);
 }
 
+button.attach-chip {
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.bubble .attach-chip img {
+  width: 160px;
+  height: auto;
+  max-height: 200px;
+  object-fit: cover;
+}
+
 .attach-chip img {
   width: 40px;
   height: 40px;
@@ -1659,6 +1746,27 @@ input[type="radio"] {
 .audit-thread {
   font-size: 12px;
   margin-top: 4px;
+}
+
+button.audit-thread.linkish {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+button.audit-thread.linkish:hover {
+  text-decoration: underline;
+}
+
+.outcome-ivr,
+.outcome-commerce,
+.outcome-outbox,
+.outcome-auto-reply {
+  text-transform: capitalize;
 }
 
 .settings-body {

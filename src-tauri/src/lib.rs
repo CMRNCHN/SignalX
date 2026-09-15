@@ -20,6 +20,7 @@ mod link;
 mod uom;
 mod backup;
 mod session;
+mod simple_audit;
 use ivr::{thread_allowed, IvrMenus, IvrSettings, IvrStore};
 use commerce::{format_catalog_list, CommerceStore, Customer, Product};
 use commerce_audit::CommerceAuditStore;
@@ -27,6 +28,7 @@ use orders::{format_invoice, format_order_status, format_quote, Order, OrderLine
 use link::{DeviceLinkManager, DeviceLinkStatus};
 use backup::{export_data_bundle, import_data_bundle, ImportMode};
 use session::SessionControl;
+use simple_audit::SimpleAuditStore;
 
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
@@ -232,6 +234,9 @@ struct Message {
   content: String,
   direction: Direction,
   raw_json: Option<Value>,
+  /// Absolute path under `{app_data}/attachments/` when present. Old JSON omits this.
+  #[serde(default)]
+  attachment_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -2288,6 +2293,64 @@ fn envelope_source_name(v: &Value) -> Option<String> {
     .filter(|s| !s.is_empty())
 }
 
+fn first_data_attachment(data_msg: &Value) -> Option<&Value> {
+  data_msg
+    .get("attachments")
+    .and_then(|a| a.as_array())
+    .and_then(|a| a.first())
+}
+
+fn attachment_str<'a>(att: &'a Value, keys: &[&str]) -> Option<&'a str> {
+  for k in keys {
+    if let Some(s) = att.get(*k).and_then(|x| x.as_str()).map(|s| s.trim()).filter(|s| !s.is_empty()) {
+      return Some(s);
+    }
+  }
+  None
+}
+
+fn attachment_display_name(att: &Value) -> Option<String> {
+  attachment_str(att, &["filename", "fileName", "name"]).map(|s| s.to_string())
+}
+
+fn attachment_source_path(att: &Value) -> Option<PathBuf> {
+  let raw = attachment_str(att, &["file", "storedFilename", "path", "localPath"])?;
+  let p = PathBuf::from(raw);
+  if p.is_file() {
+    Some(p)
+  } else {
+    None
+  }
+}
+
+fn ext_from_attachment(att: &Value) -> String {
+  if let Some(name) = attachment_display_name(att) {
+    if let Some(ext) = Path::new(&name).extension().and_then(|e| e.to_str()) {
+      if normalize_attachment_ext(ext).is_ok() {
+        return ext.to_lowercase();
+      }
+    }
+  }
+  match attachment_str(att, &["contentType", "content_type"]).unwrap_or("") {
+    "image/jpeg" | "image/jpg" => "jpg".into(),
+    "image/png" => "png".into(),
+    "image/gif" => "gif".into(),
+    "image/webp" => "webp".into(),
+    "application/pdf" => "pdf".into(),
+    _ => "bin".into(),
+  }
+}
+
+fn persist_inbound_attachment(app_data_dir: &Path, msg_id: &str, att: &Value) -> Option<String> {
+  let src = attachment_source_path(att)?;
+  let ext = normalize_attachment_ext(&ext_from_attachment(att)).unwrap_or_else(|_| "bin".into());
+  let dir = app_data_dir.join("attachments");
+  std::fs::create_dir_all(&dir).ok()?;
+  let dest = dir.join(format!("{}.{}", sanitize_filename(msg_id), ext));
+  std::fs::copy(&src, &dest).ok()?;
+  Some(dest.to_string_lossy().to_string())
+}
+
 /// Prefer E.164 sourceNumber over UUID `source` for stable thread ids.
 fn envelope_peer_id(env: &Value) -> String {
   if let Some(num) = env
@@ -2306,7 +2369,11 @@ fn envelope_peer_id(env: &Value) -> String {
     .to_string()
 }
 
-fn normalize_incoming_message(my_number: &str, v: &Value) -> Option<(Message, Vec<String>)> {
+fn normalize_incoming_message(
+  my_number: &str,
+  v: &Value,
+  app_data_dir: Option<&Path>,
+) -> Option<(Message, Vec<String>)> {
   let env = v.get("envelope")?;
   let ts = env.get("timestamp").and_then(|x| x.as_i64()).unwrap_or_else(now_ms);
   let source = envelope_peer_id(env);
@@ -2318,14 +2385,12 @@ fn normalize_incoming_message(my_number: &str, v: &Value) -> Option<(Message, Ve
     .get("message")
     .and_then(|x| x.as_str())
     .map(|s| s.to_string());
-  let has_attachments = data_msg
-    .get("attachments")
-    .and_then(|a| a.as_array())
-    .map(|a| !a.is_empty())
-    .unwrap_or(false);
+  let att = first_data_attachment(data_msg);
   let content = match text {
     Some(s) if !s.trim().is_empty() => s,
-    _ if has_attachments => "[attachment]".to_string(),
+    _ if att.is_some() => att
+      .and_then(attachment_display_name)
+      .unwrap_or_else(|| "[attachment]".to_string()),
     _ => return None,
   };
 
@@ -2340,6 +2405,9 @@ fn normalize_incoming_message(my_number: &str, v: &Value) -> Option<(Message, Ve
   }
 
   let id = format!("incoming-{}-{}-{}", source, ts, source_device);
+  let attachment_path = att.and_then(|a| {
+    app_data_dir.and_then(|root| persist_inbound_attachment(root, &id, a))
+  });
 
   let msg = Message {
     id,
@@ -2350,6 +2418,7 @@ fn normalize_incoming_message(my_number: &str, v: &Value) -> Option<(Message, Ve
     content,
     direction: Direction::Incoming,
     raw_json: Some(v.clone()),
+    attachment_path,
   };
 
   let mut participants: Vec<String> = vec![];
@@ -2385,6 +2454,7 @@ fn normalize_outgoing_message(my_number: &str, thread_id: &str, recipient: &str,
     content: content.to_string(),
     direction: Direction::Outgoing,
     raw_json: None,
+    attachment_path: None,
   };
   (msg, vec![my_number.to_string(), recipient.to_string()])
 }
@@ -2683,6 +2753,8 @@ struct AppState {
   commerce: CommerceStore,
   orders: OrderStore,
   commerce_audit: CommerceAuditStore,
+  ivr_audit: SimpleAuditStore,
+  outbox_audit: SimpleAuditStore,
   device_link: DeviceLinkManager,
   /// After a backup import, memory may still be stale until restart.
   /// Writes fail closed so they cannot overwrite imported files.
@@ -2766,6 +2838,8 @@ fn reload_shop_stores(state: &AppState, account_id: &str) {
   state.commerce_audit.reload_from(&dir);
   state.ivr.reload_from(&dir);
   state.auto_reply.reload_from(&dir);
+  state.ivr_audit.reload_from(&dir, "ivr/audit.json");
+  state.outbox_audit.reload_from(&dir, "outbox/audit.json");
 }
 
 fn reload_all_stores(state: &AppState, account_id: &str) {
@@ -4318,7 +4392,7 @@ fn export_account(state: &AppState, format: String, from_ts: Option<i64>, to_ts:
   }))
 }
 
-fn export_data_bundle_cmd(state: &AppState) -> Value {
+fn export_data_bundle_cmd(state: &AppState, password: Option<String>) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
     None => return err("No active account".to_string()),
@@ -4330,6 +4404,7 @@ fn export_data_bundle_cmd(state: &AppState) -> Value {
     &account,
     now_ms(),
     version,
+    password.as_deref(),
   ) {
     Ok((path, bytes, counts)) => ok(json!({
       "path": path.to_string_lossy(),
@@ -4348,6 +4423,7 @@ fn import_data_bundle_cmd(
   path: Option<String>,
   bytes_base64: Option<String>,
   mode: String,
+  password: Option<String>,
 ) -> Value {
   let account = match state.account_manager.get_active() {
     Some(a) => a,
@@ -4390,6 +4466,7 @@ fn import_data_bundle_cmd(
     &account,
     mode,
     now_ms(),
+    password.as_deref(),
   ) {
     Ok(v) => {
       reload_all_stores(state, &account);
@@ -4601,7 +4678,9 @@ async fn receive_loop(state: AppState, agent_mode: Option<AgentModeConfig>) {
           let ts = state.account_manager.get_or_create(&account);
 
           for v in list.iter() {
-            if let Some((msg, participants)) = normalize_incoming_message(&my_number, v) {
+            if let Some((msg, participants)) =
+              normalize_incoming_message(&my_number, v, Some(&state.app_data_dir))
+            {
               let thread_id = msg.thread_id.clone();
               let msg_id = msg.id.clone();
               if let Some(name) = envelope_source_name(v) {
@@ -4707,6 +4786,7 @@ fn ensure_outbox_worker(state: AppState, account_id: String) {
             emit_outbox_updated(&account_id, Some(&item.thread_id), summary);
           }
           emit_outbox_item_updated(&item);
+          note_outbox_failure(&state, &item);
           tokio::time::sleep(std::time::Duration::from_millis(600)).await;
           continue;
         }
@@ -4721,6 +4801,7 @@ fn ensure_outbox_worker(state: AppState, account_id: String) {
             emit_outbox_updated(&account_id, Some(&item.thread_id), summary);
           }
           emit_outbox_item_updated(&item);
+          note_outbox_failure(&state, &item);
           tokio::time::sleep(std::time::Duration::from_millis(600)).await;
           continue;
         }
@@ -4755,6 +4836,7 @@ fn ensure_outbox_worker(state: AppState, account_id: String) {
           emit_outbox_updated(&account_id, Some(&item.thread_id), summary);
         }
         emit_outbox_item_updated(&item);
+        note_outbox_failure(&state, &item);
         continue;
       }
 
@@ -4823,6 +4905,7 @@ fn ensure_outbox_worker(state: AppState, account_id: String) {
             emit_outbox_updated(&account_id, Some(&item.thread_id), summary);
           }
           emit_outbox_item_updated(&item);
+          note_outbox_failure(&state, &item);
           tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
       }
@@ -4910,6 +4993,26 @@ fn set_auto_reply_settings(state: &AppState, settings: AutoReplySettings) -> Val
     }
     Err(e) => err(e),
   }
+}
+
+fn list_ivr_audit(state: &AppState, limit: Option<u32>) -> Value {
+  let n = limit.unwrap_or(100).min(500) as usize;
+  ok_t(state.ivr_audit.list(n))
+}
+
+fn list_outbox_audit(state: &AppState, limit: Option<u32>) -> Value {
+  let n = limit.unwrap_or(100).min(500) as usize;
+  ok_t(state.outbox_audit.list(n))
+}
+
+fn note_outbox_failure(state: &AppState, item: &OutboxItem) {
+  let err = item.last_error.as_deref().unwrap_or("send failed");
+  state.outbox_audit.record(
+    &item.thread_id,
+    &format!("Outbox send failed: {err}"),
+    "failed",
+    now_ms(),
+  );
 }
 
 fn list_auto_reply_audit(state: &AppState, limit: Option<u32>) -> Value {
@@ -5043,6 +5146,8 @@ fn build_app_state() -> AppState {
     commerce: CommerceStore::new(&app_data_dir),
     orders: OrderStore::new(&app_data_dir),
     commerce_audit: CommerceAuditStore::new(&app_data_dir),
+    ivr_audit: SimpleAuditStore::at_account(&app_data_dir, "ivr/audit.json"),
+    outbox_audit: SimpleAuditStore::at_account(&app_data_dir, "outbox/audit.json"),
     device_link: DeviceLinkManager::new(),
     import_locked: Arc::new(AtomicBool::new(false)),
   }
@@ -5099,7 +5204,25 @@ fn maybe_handle_ivr(state: &AppState, thread_id: &str, content: &str) -> bool {
   }
 
   let menus = state.ivr.menus();
+  let prev_node = session.node_id.clone();
   let result = ivr::step(session, content, &menus, now);
+  if result.handled {
+    let input = content.trim();
+    if prev_node == menus.entry || input.eq_ignore_ascii_case("menu") || input == "0" {
+      state.ivr_audit.record(thread_id, "Entered buyer menu", "ok", now);
+    }
+    if !input.is_empty() {
+      state.ivr_audit.record(
+        thread_id,
+        &format!("Digit '{}' (node {})", input, result.session.node_id),
+        "ok",
+        now,
+      );
+    }
+    if result.action.as_deref() == Some("place_order") {
+      state.ivr_audit.record(thread_id, "Order placed via IVR", "ok", now);
+    }
+  }
   let _ = state.ivr.save_session(&account, result.session.clone());
   emit_event(
     "ivr://session",
@@ -6328,8 +6451,8 @@ fn cmd_export_account(
   export_account(&state, format, from_ts, to_ts)
 }
 #[tauri::command]
-fn cmd_export_data_bundle(state: State<'_, AppState>) -> Value {
-  export_data_bundle_cmd(&state)
+fn cmd_export_data_bundle(state: State<'_, AppState>, password: Option<String>) -> Value {
+  export_data_bundle_cmd(&state, password)
 }
 #[tauri::command]
 fn cmd_import_data_bundle(
@@ -6337,8 +6460,9 @@ fn cmd_import_data_bundle(
   path: Option<String>,
   bytes_base64: Option<String>,
   mode: String,
+  password: Option<String>,
 ) -> Value {
-  import_data_bundle_cmd(&state, path, bytes_base64, mode)
+  import_data_bundle_cmd(&state, path, bytes_base64, mode, password)
 }
 #[tauri::command]
 fn cmd_get_auto_reply_settings(state: State<'_, AppState>) -> Value {
@@ -6351,6 +6475,14 @@ fn cmd_set_auto_reply_settings(state: State<'_, AppState>, settings: AutoReplySe
 #[tauri::command]
 fn cmd_list_auto_reply_audit(state: State<'_, AppState>, limit: Option<u32>) -> Value {
   list_auto_reply_audit(&state, limit)
+}
+#[tauri::command]
+fn cmd_list_ivr_audit(state: State<'_, AppState>, limit: Option<u32>) -> Value {
+  list_ivr_audit(&state, limit)
+}
+#[tauri::command]
+fn cmd_list_outbox_audit(state: State<'_, AppState>, limit: Option<u32>) -> Value {
+  list_outbox_audit(&state, limit)
 }
 #[tauri::command]
 fn cmd_set_thread_auto_reply(
@@ -6888,6 +7020,8 @@ pub fn run() {
       cmd_get_auto_reply_settings,
       cmd_set_auto_reply_settings,
       cmd_list_auto_reply_audit,
+      cmd_list_ivr_audit,
+      cmd_list_outbox_audit,
       cmd_set_thread_auto_reply,
       cmd_get_thread_auto_reply,
       cmd_get_ivr_settings,
@@ -7022,7 +7156,7 @@ mod foundation_tests {
         "receiptMessage": { "isDelivery": true, "timestamps": [1], "when": 1 }
       }
     });
-    assert!(normalize_incoming_message("+16172990756", &receipt).is_none());
+    assert!(normalize_incoming_message("+16172990756", &receipt, None).is_none());
 
     let text = json!({
       "envelope": {
@@ -7034,7 +7168,7 @@ mod foundation_tests {
         "dataMessage": { "message": "hello from Keelan" }
       }
     });
-    let (msg, _) = normalize_incoming_message("+16172990756", &text).expect("text msg");
+    let (msg, _) = normalize_incoming_message("+16172990756", &text, None).expect("text msg");
     assert_eq!(msg.content, "hello from Keelan");
     assert_eq!(msg.thread_id, "+17028575560");
     assert_eq!(envelope_source_name(&text).as_deref(), Some("Keelan Miskel"));
@@ -7042,6 +7176,37 @@ mod foundation_tests {
       r#"{"envelope":{"receiptMessage":{"isDelivery":true},"source":"+17028575560"}}"#
     ));
     assert!(!is_envelope_noise_content("if you can do tomorrow night"));
+  }
+
+  #[test]
+  fn inbound_attachment_copied_into_app_data() {
+    let root = std::env::temp_dir().join(format!("signalx-att-{}", Uuid::new_v4()));
+    let src = std::env::temp_dir().join(format!("signalx-src-{}.jpg", Uuid::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(&src, b"fake-jpeg").unwrap();
+    let env = json!({
+      "envelope": {
+        "sourceNumber": "+17028575560",
+        "sourceDevice": 1,
+        "timestamp": 9,
+        "dataMessage": {
+          "message": "",
+          "attachments": [{
+            "filename": "patio.jpg",
+            "contentType": "image/jpeg",
+            "file": src.to_string_lossy(),
+          }]
+        }
+      }
+    });
+    let (msg, _) = normalize_incoming_message("+16172990756", &env, Some(&root)).expect("att");
+    assert_eq!(msg.content, "patio.jpg");
+    let path = msg.attachment_path.expect("path");
+    assert!(path.contains("attachments"));
+    assert!(path.ends_with(".jpg"));
+    assert_eq!(std::fs::read(&path).unwrap(), b"fake-jpeg");
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_file(&src);
   }
 
   #[test]

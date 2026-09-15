@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   api,
   errMsg,
@@ -9,6 +9,7 @@ import {
   type AutoReplyAuditEntry,
   type AutoReplySettings,
   type CommerceAuditEvent,
+  type SimpleAuditEntry,
   type ContactMeta,
   type Customer,
   type Diagnostics,
@@ -34,6 +35,8 @@ import {
 import {
   USE_FIXTURES,
   fxAudit,
+  fxIvrAudit,
+  fxOutboxAudit,
   fxCommerceAudit,
   fxContacts,
   fxCustomers,
@@ -61,6 +64,11 @@ import { PanelResizer } from "./components/PanelResizer";
 import { formatPhone, formatQty, isGroupThread, stockQtyFromMilli, threadTitle } from "./format";
 import { canInvoke, isTauriRuntime } from "./runtime";
 import { usePanelWidths, type PanelLayout } from "./usePanelWidths";
+import { useEscapeLayer } from "./overlayEscape";
+import { useGlobalShortcuts } from "./useGlobalShortcuts";
+import { ShortcutsHelp } from "./components/ShortcutsHelp";
+import { AuditScreen } from "./components/Audit/AuditScreen";
+import { AttachmentPreview } from "./attachmentPreview";
 import {
   IconAudit,
   IconBolt,
@@ -130,7 +138,7 @@ const NAV_GROUPS: NavItem[][] = [
   ],
   [
     { id: "outbox", label: "Outbox", ico: <IconOutbox /> },
-    { id: "audit", label: "Auto-reply log", ico: <IconAudit /> },
+    { id: "audit", label: "Audit", ico: <IconAudit /> },
   ],
   [{ id: "settings", label: "Settings", ico: <IconSettings /> }],
 ];
@@ -394,6 +402,8 @@ export default function App() {
   const [auditReal, setAudit] = useState<AutoReplyAuditEntry[]>([]);
   const [salesSummaryReal, setSalesSummary] = useState<SalesSummary | null>(null);
   const [commerceAuditReal, setCommerceAudit] = useState<CommerceAuditEvent[]>([]);
+  const [ivrAuditReal, setIvrAudit] = useState<SimpleAuditEntry[]>([]);
+  const [outboxAuditReal, setOutboxAudit] = useState<SimpleAuditEntry[]>([]);
   const [salesRange, setSalesRange] = useState<"7" | "30" | "all">("30");
   const [salesStatus, setSalesStatus] = useState("all");
   const [peopleKey, setPeopleKey] = useState<string | null>(null);
@@ -403,6 +413,7 @@ export default function App() {
   const [focusOrderId, setFocusOrderId] = useState<string | null>(null);
   const [newDmError, setNewDmError] = useState<string | null>(null);
   const [newDmOpen, setNewDmOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [productImagesReal, setProductImages] = useState<Record<string, string>>({});
 
   // Dev-only design data. Real state always wins; fixtures fill in only while a
@@ -441,6 +452,8 @@ export default function App() {
   const audit = USE_FIXTURES && !auditReal.length ? fxAudit : auditReal;
   const commerceAudit =
     USE_FIXTURES && !commerceAuditReal.length ? fxCommerceAudit : commerceAuditReal;
+  const ivrAudit = USE_FIXTURES && !ivrAuditReal.length ? fxIvrAudit : ivrAuditReal;
+  const outboxAudit = USE_FIXTURES && !outboxAuditReal.length ? fxOutboxAudit : outboxAuditReal;
   // The sales API answers with a valid but zeroed summary when no account is
   // configured, so treat "no orders" as empty rather than only null.
   const salesSummary =
@@ -458,6 +471,7 @@ export default function App() {
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("account");
   const [importMode, setImportMode] = useState<"replace" | "merge">("replace");
   const [backupBusy, setBackupBusy] = useState(false);
+  const [backupPassword, setBackupPassword] = useState("");
   const [restartRequired, setRestartRequired] = useState(false);
   const [threadFilter, setThreadFilter] = useState({
     kind: "all" as "all" | "dm" | "group",
@@ -465,10 +479,6 @@ export default function App() {
     pending: false,
   });
   const [orderFilter, setOrderFilter] = useState<OrderFilterState>(EMPTY_ORDER_FILTER);
-  const [auditFilter, setAuditFilter] = useState({
-    q: "",
-    outcome: "all",
-  });
   const bottomRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<string | null>(null);
   selectedRef.current = selectedId;
@@ -712,17 +722,39 @@ export default function App() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, outbox]);
 
-  useEffect(() => {
-    const handleKeydown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        searchInputRef.current?.focus();
-        searchInputRef.current?.select();
-      }
-    };
-    window.addEventListener("keydown", handleKeydown);
-    return () => window.removeEventListener("keydown", handleKeydown);
+  const focusSearch = useCallback(() => {
+    setShortcutsOpen(false);
+    searchInputRef.current?.focus();
+    searchInputRef.current?.select();
   }, []);
+  const goShortcutPanel = useCallback(
+    (id: "threads" | "people" | "catalog" | "orders" | "sales" | "settings") => {
+      setShortcutsOpen(false);
+      setPanel(id);
+    },
+    [],
+  );
+  const toggleShortcutsHelp = useCallback(() => {
+    setShortcutsOpen((v) => !v);
+  }, []);
+  useGlobalShortcuts({
+    onSearch: focusSearch,
+    onNav: goShortcutPanel,
+    onToggleHelp: toggleShortcutsHelp,
+  });
+  useEscapeLayer(accountMenuOpen, () => setAccountMenuOpen(false));
+  useEscapeLayer(newDmOpen, () => {
+    setNewDmOpen(false);
+    setNewDmError(null);
+  });
+  useEscapeLayer(catalogFormOpen, () => {
+    setProductForm(emptyProductForm());
+    setSellPacks([]);
+    setProductImageFile(null);
+    setProductImagePreview(null);
+    setClearProductImageFlag(false);
+    setCatalogFormOpen(false);
+  });
 
   const onSend = async () => {
     if (!selectedId || sending || restartRequired) return;
@@ -1571,7 +1603,7 @@ export default function App() {
 
   const onExportDataBundle = async () => {
     setBackupBusy(true);
-    const res = await api.exportDataBundle();
+    const res = await api.exportDataBundle(backupPassword);
     setBackupBusy(false);
     if (!res.success) {
       setStatus(res.error);
@@ -1600,7 +1632,11 @@ export default function App() {
     setBackupBusy(true);
     try {
       const { b64 } = await fileToBase64(file);
-      const res = await api.importDataBundle({ bytesBase64: b64, mode: importMode });
+      const res = await api.importDataBundle({
+        bytesBase64: b64,
+        mode: importMode,
+        password: backupPassword,
+      });
       if (!res.success) {
         setStatus(res.error);
         return;
@@ -1627,6 +1663,20 @@ export default function App() {
 
   useEffect(() => {
     if (panel === "outbox") void refreshGlobalOutbox();
+    if (panel === "audit") {
+      void api.listAutoReplyAudit(80).then((r) => {
+        if (r.success) setAudit(r.data);
+      });
+      void api.listCommerceAudit(80).then((r) => {
+        if (r.success) setCommerceAudit(r.data);
+      });
+      void api.listIvrAudit(80).then((r) => {
+        if (r.success) setIvrAudit(r.data);
+      });
+      void api.listOutboxAudit(80).then((r) => {
+        if (r.success) setOutboxAudit(r.data);
+      });
+    }
   }, [panel]);
 
   useEffect(() => {
@@ -1777,21 +1827,6 @@ export default function App() {
     () => matchingMessages(searchLiveQ, directory, messageCorpus, searchHits, partyOf),
     [searchLiveQ, directory, messageCorpus, searchHits, contacts, groups, customers],
   );
-
-  const filteredAudit = useMemo(() => {
-    return audit.filter((e) => {
-      if (auditFilter.outcome !== "all" && e.outcome !== auditFilter.outcome) return false;
-      return includesQ(
-        `${e.thread_id} ${threadTitle(e.thread_id, contacts, groups, customers)} ${e.outcome} ${e.draft} ${e.reason || ""}`,
-        auditFilter.q,
-      );
-    });
-  }, [audit, auditFilter, contacts, groups, customers]);
-
-  const auditOutcomes = useMemo(() => {
-    const set = new Set(audit.map((e) => e.outcome).filter(Boolean));
-    return ["all", ...Array.from(set).sort()];
-  }, [audit]);
 
   const setupNeeded = useMemo(
     () => needsDeviceSetup(diagnostics, health, linkStatus),
@@ -2796,49 +2831,18 @@ export default function App() {
       )}
 
       {panel === "audit" && (
-        <section className="thread-col wide">
-          <header className="col-head">
-            Auto-reply audit
-            <span className="col-meta">
-              {filteredAudit.length}/{audit.length}
-            </span>
-          </header>
-          <div className="filter-strip">
-            <input
-              placeholder="Filter audit…"
-              value={auditFilter.q}
-              onChange={(e) => setAuditFilter((f) => ({ ...f, q: e.target.value }))}
-            />
-            <select
-              aria-label="Audit outcome"
-              value={auditFilter.outcome}
-              onChange={(e) => setAuditFilter((f) => ({ ...f, outcome: e.target.value }))}
-            >
-              {auditOutcomes.map((o) => (
-                <option key={o} value={o}>
-                  {o === "all" ? "All outcomes" : o}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="audit-list">
-            {audit.length === 0 && <p className="empty">No auto-reply activity yet.</p>}
-            {audit.length > 0 && filteredAudit.length === 0 && (
-              <p className="empty">No audit rows match these filters.</p>
-            )}
-            {filteredAudit.map((e) => (
-              <div key={e.id} className="audit-row">
-                <div className="audit-top">
-                    <span className={`outcome outcome-${e.outcome.toLowerCase().replace(/\s+/g, "_")}`}>{e.outcome}</span>
-                    <span className="thread-time">{fmtTime(e.created_at)}</span>
-                  </div>
-                  <div className="audit-thread">{threadTitle(e.thread_id, contacts, groups, customers)}</div>
-                <div className="snippet">{e.draft}</div>
-                {e.reason && <div className="reason">{e.reason}</div>}
-              </div>
-            ))}
-          </div>
-        </section>
+        <AuditScreen
+          autoReply={audit}
+          commerce={commerceAudit}
+          ivr={ivrAudit}
+          outbox={outboxAudit}
+          threadTitle={(id) => threadTitle(id, contacts, groups, customers)}
+          fmtTime={fmtTime}
+          onOpenThread={(threadId) => {
+            setSelectedId(threadId);
+            setPanel("threads");
+          }}
+        />
       )}
 
       {panel === "settings" && (
@@ -3142,8 +3146,20 @@ export default function App() {
                 </div>
                 <p className="hint tight">
                   Bundles cover your catalog, customers, orders, buyer menu, chats, and outbox —
-                  not your Signal login. Re-link Signal on a new computer.
+                  not your Signal login. Re-link Signal on a new computer. Leave the password blank
+                  for an unencrypted zip.
                 </p>
+                <label className="field-stack">
+                  <span className="field-label">Optional password</span>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={backupPassword}
+                    onChange={(e) => setBackupPassword(e.target.value)}
+                    placeholder="Blank = unencrypted"
+                    disabled={backupBusy || restartRequired}
+                  />
+                </label>
                 <div className="backup-actions">
                   <button
                     type="button"
@@ -3644,6 +3660,7 @@ export default function App() {
                     <span>{fmtTime(m.timestamp)}</span>
                   </div>
                   <div className="bubble-body">{m.content}</div>
+                  {m.attachment_path && <AttachmentPreview path={m.attachment_path} />}
                 </div>
               ))}
               {(outbox.length
@@ -3658,11 +3675,7 @@ export default function App() {
                     <span>{fmtTime(o.created_at)}</span>
                   </div>
                   <div className="bubble-body">{o.content}</div>
-                  {o.attachment_path && (
-                    <div className="attach-chip">
-                      <span>{o.attachment_path.split("/").pop() || "Attachment"}</span>
-                    </div>
-                  )}
+                  {o.attachment_path && <AttachmentPreview path={o.attachment_path} />}
                   {o.last_error && <div className="bubble-err">{o.last_error}</div>}
                   <div className="bubble-actions">
                     {o.state === "failed" && (
@@ -3749,6 +3762,7 @@ export default function App() {
             customer={profileCustomer}
             orders={orders}
             products={products}
+            messages={messages}
             ai={ai}
             aiBusy={aiBusy}
             onStatus={setStatus}
@@ -3826,6 +3840,7 @@ export default function App() {
             </div>
           </aside>
         ))}
+      <ShortcutsHelp open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );
 }

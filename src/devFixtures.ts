@@ -9,6 +9,7 @@
 import type {
   AutoReplyAuditEntry,
   CommerceAuditEvent,
+  SimpleAuditEntry,
   ContactMeta,
   Customer,
   GroupMeta,
@@ -146,6 +147,15 @@ export const fxMessages: Message[] = [
     sender: "+15555550142",
     content: "yes please. same address as last time",
     direction: "Incoming",
+  },
+  {
+    id: "m5b",
+    thread_id: "+15555550142",
+    timestamp: mins(7),
+    sender: "+15555550142",
+    content: "storefront.jpg",
+    direction: "Incoming",
+    attachment_path: "/tmp/storefront.jpg",
   },
   {
     id: "m6",
@@ -705,6 +715,40 @@ export const fxAudit: AutoReplyAuditEntry[] = [
     created_at: days(2),
     outcome: "draft_only",
     reason: "hourly cap reached",
+  },
+];
+
+export const fxIvrAudit: SimpleAuditEntry[] = [
+  {
+    id: "ivr_01",
+    thread_id: "+15555550142",
+    created_at: mins(20),
+    summary: "Entered buyer menu",
+    outcome: "ok",
+  },
+  {
+    id: "ivr_02",
+    thread_id: "+15555550142",
+    created_at: mins(19),
+    summary: "Digit '2' (node order_pick)",
+    outcome: "ok",
+  },
+  {
+    id: "ivr_03",
+    thread_id: "+15555550142",
+    created_at: mins(18),
+    summary: "Order placed via IVR",
+    outcome: "ok",
+  },
+];
+
+export const fxOutboxAudit: SimpleAuditEntry[] = [
+  {
+    id: "oxa_01",
+    thread_id: "+15555550188",
+    created_at: hours(3),
+    summary: "Outbox send failed: SIGNALX_SIGNALCLI_CONFIG not set",
+    outcome: "failed",
   },
 ];
 

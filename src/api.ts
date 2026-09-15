@@ -28,6 +28,7 @@ export interface Message {
   content: string;
   direction: "Incoming" | "Outgoing" | string;
   raw_json?: unknown;
+  attachment_path?: string | null;
 }
 
 export interface ThreadSummary {
@@ -191,6 +192,14 @@ export interface AutoReplyAuditEntry {
   created_at: number;
   outcome: string;
   reason?: string | null;
+}
+
+export interface SimpleAuditEntry {
+  id: string;
+  thread_id: string;
+  created_at: number;
+  summary: string;
+  outcome: string;
 }
 
 export interface ThreadAutoReplyStatus {
@@ -482,14 +491,16 @@ export const api = {
     }),
   exportAccount: (format = "json") =>
     call<unknown>("cmd_export_account", { format, fromTs: null, toTs: null }),
-  exportDataBundle: () =>
+  exportDataBundle: (password?: string) =>
     call<{
       path: string;
       bytes: number;
       counts: { files: number; attachments: number };
-    }>("cmd_export_data_bundle"),
+    }>("cmd_export_data_bundle", {
+      password: password?.trim() ? password.trim() : null,
+    }),
   importDataBundle: (
-    opts: { path?: string; bytesBase64?: string; mode: "replace" | "merge" },
+    opts: { path?: string; bytesBase64?: string; mode: "replace" | "merge"; password?: string },
   ) =>
     call<{
       restart_required: boolean;
@@ -500,6 +511,7 @@ export const api = {
       path: opts.path ?? null,
       bytesBase64: opts.bytesBase64 ?? null,
       mode: opts.mode,
+      password: opts.password?.trim() ? opts.password.trim() : null,
     }),
   openPath: (path: string) => call<boolean>("cmd_open_path", { path }),
   getAutoReplySettings: () => call<AutoReplySettings>("cmd_get_auto_reply_settings"),
@@ -507,6 +519,10 @@ export const api = {
     call<AutoReplySettings>("cmd_set_auto_reply_settings", { settings }),
   listAutoReplyAudit: (limit = 100) =>
     call<AutoReplyAuditEntry[]>("cmd_list_auto_reply_audit", { limit }),
+  listIvrAudit: (limit = 100) =>
+    call<SimpleAuditEntry[]>("cmd_list_ivr_audit", { limit }),
+  listOutboxAudit: (limit = 100) =>
+    call<SimpleAuditEntry[]>("cmd_list_outbox_audit", { limit }),
   setThreadAutoReply: (threadId: string, enabled: boolean) =>
     call<unknown>("cmd_set_thread_auto_reply", { threadId, enabled }),
   getThreadAutoReply: (threadId: string) =>

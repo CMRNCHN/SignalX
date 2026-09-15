@@ -7,7 +7,7 @@ use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use zip::write::SimpleFileOptions;
-use zip::{CompressionMethod, ZipArchive, ZipWriter};
+use zip::{AesMode, CompressionMethod, ZipArchive, ZipWriter};
 
 use crate::session::{account_data_dir, shop_root};
 
@@ -265,12 +265,20 @@ fn zip_entry_name(rel: &Path) -> String {
   rel.to_string_lossy().replace('\\', "/")
 }
 
+fn zip_err(ctx: &str, e: zip::result::ZipError) -> String {
+  match e {
+    zip::result::ZipError::InvalidPassword => "wrong backup password".into(),
+    other => format!("{ctx}: {other}"),
+  }
+}
+
 pub fn export_data_bundle(
   app_data_dir: &Path,
   export_dir: &Path,
   account_id: &str,
   exported_at: i64,
   app_version: &str,
+  password: Option<&str>,
 ) -> Result<(PathBuf, u64, ExportCounts), String> {
   let acct = sanitize_filename(account_id);
   if acct.is_empty() {
@@ -323,7 +331,13 @@ pub fn export_data_bundle(
 
   let file = File::create(&zip_path).map_err(|e| format!("create zip: {e}"))?;
   let mut zip = ZipWriter::new(file);
-  let opts = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+  let opts = {
+    let base = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    match password.map(str::trim).filter(|s| !s.is_empty()) {
+      Some(pw) => base.with_aes_encryption(AesMode::Aes256, pw),
+      None => base,
+    }
+  };
 
   let manifest_bytes =
     serde_json::to_vec_pretty(&manifest).map_err(|e| format!("manifest serialize: {e}"))?;
@@ -374,10 +388,19 @@ pub fn export_data_bundle(
   ))
 }
 
-fn read_zip_entry(archive: &mut ZipArchive<File>, name: &str) -> Result<Vec<u8>, String> {
-  let mut entry = archive
-    .by_name(name)
-    .map_err(|e| format!("zip missing '{name}': {e}"))?;
+fn read_zip_entry(
+  archive: &mut ZipArchive<File>,
+  name: &str,
+  password: Option<&str>,
+) -> Result<Vec<u8>, String> {
+  let mut entry = match password.map(str::trim).filter(|s| !s.is_empty()) {
+    Some(pw) => archive
+      .by_name_decrypt(name, pw.as_bytes())
+      .map_err(|e| zip_err(&format!("zip missing '{name}'"), e))?,
+    None => archive
+      .by_name(name)
+      .map_err(|e| format!("zip missing '{name}': {e}"))?,
+  };
   let mut buf = Vec::new();
   entry
     .read_to_end(&mut buf)
@@ -706,6 +729,7 @@ pub fn import_data_bundle(
   active_account: &str,
   mode: ImportMode,
   now_ms: i64,
+  password: Option<&str>,
 ) -> Result<Value, String> {
   if !zip_path.is_file() {
     return Err("bundle zip not found".into());
@@ -719,7 +743,7 @@ pub fn import_data_bundle(
   let file = File::open(zip_path).map_err(|e| format!("open zip: {e}"))?;
   let mut archive = ZipArchive::new(file).map_err(|e| format!("invalid zip: {e}"))?;
 
-  let manifest_bytes = read_zip_entry(&mut archive, "manifest.json")?;
+  let manifest_bytes = read_zip_entry(&mut archive, "manifest.json", password)?;
   let manifest: BundleManifest = serde_json::from_slice(&manifest_bytes)
     .map_err(|e| format!("invalid manifest.json: {e}"))?;
   if manifest.schema_version != SCHEMA_VERSION {
@@ -740,9 +764,14 @@ pub fn import_data_bundle(
   // Extract all entries into memory first (avoid holding borrow across writes)
   let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
   for i in 0..archive.len() {
-    let mut file = archive
-      .by_index(i)
-      .map_err(|e| format!("zip entry {i}: {e}"))?;
+    let mut file = match password.map(str::trim).filter(|s| !s.is_empty()) {
+      Some(pw) => archive
+        .by_index_decrypt(i, pw.as_bytes())
+        .map_err(|e| zip_err(&format!("zip entry {i}"), e))?,
+      None => archive
+        .by_index(i)
+        .map_err(|e| format!("zip entry {i}: {e}"))?,
+    };
     let name = file.name().to_string();
     if name.ends_with('/') || name == "manifest.json" {
       continue;
@@ -920,7 +949,7 @@ mod tests {
     .unwrap();
 
     let (zip_path, _bytes, counts) =
-      export_data_bundle(&root, &root.join("exports"), acct, 12345, "0.1.0").unwrap();
+      export_data_bundle(&root, &root.join("exports"), acct, 12345, "0.1.0", None).unwrap();
     assert!(zip_path.exists());
     assert!(counts.files >= 2);
 
@@ -937,6 +966,7 @@ mod tests {
       acct,
       ImportMode::Replace,
       999,
+      None,
     )
     .unwrap();
     assert_eq!(res["restart_required"], true);
@@ -965,7 +995,7 @@ mod tests {
     )
     .unwrap();
     let (zip_path, _, _) =
-      export_data_bundle(&root, &root.join("exports"), a, 1, "0.1.0").unwrap();
+      export_data_bundle(&root, &root.join("exports"), a, 1, "0.1.0", None).unwrap();
     let bytes = fs::read(&zip_path).unwrap();
     let text = String::from_utf8_lossy(&bytes);
     // zip is compressed; search include list instead
@@ -990,7 +1020,7 @@ mod tests {
     fs::create_dir_all(root.join("threads")).unwrap();
     fs::write(root.join("threads/_111.json"), r#"{"version":2,"threads":{}}"#).unwrap();
     let (zip_path, _, _) =
-      export_data_bundle(&root, &root.join("exports"), acct, 1, "0.1.0").unwrap();
+      export_data_bundle(&root, &root.join("exports"), acct, 1, "0.1.0", None).unwrap();
     let err = import_data_bundle(
       &root,
       &root.join("exports"),
@@ -998,6 +1028,7 @@ mod tests {
       "_222",
       ImportMode::Replace,
       2,
+      None,
     )
     .unwrap_err();
     assert!(err.contains("does not match"));
@@ -1012,6 +1043,59 @@ mod tests {
     assert!(merged.contains("local"));
     assert!(!merged.contains("remote"));
     assert!(merged.contains("new"));
+  }
+
+  #[test]
+  fn password_roundtrip_and_wrong_password() {
+    let root = tmp_root("enc");
+    let acct = "_12025551212";
+    fs::create_dir_all(root.join("threads")).unwrap();
+    fs::create_dir_all(root.join("exports")).unwrap();
+    fs::write(
+      root.join(format!("threads/{acct}.json")),
+      r#"{"version":2,"threads":{}}"#,
+    )
+    .unwrap();
+    let (zip_path, _, _) = export_data_bundle(
+      &root,
+      &root.join("exports"),
+      acct,
+      1,
+      "0.1.0",
+      Some("s3cret"),
+    )
+    .unwrap();
+    let file = File::open(&zip_path).unwrap();
+    let mut archive = ZipArchive::new(file).unwrap();
+    assert!(archive.by_name("manifest.json").is_err());
+    drop(archive);
+
+    let err = import_data_bundle(
+      &root,
+      &root.join("exports"),
+      &zip_path,
+      acct,
+      ImportMode::Replace,
+      2,
+      Some("nope"),
+    )
+    .unwrap_err();
+    assert!(
+      err.to_lowercase().contains("password") || err.to_lowercase().contains("encrypt"),
+      "unexpected error: {err}"
+    );
+
+    import_data_bundle(
+      &root,
+      &root.join("exports"),
+      &zip_path,
+      acct,
+      ImportMode::Replace,
+      3,
+      Some("s3cret"),
+    )
+    .unwrap();
+    let _ = fs::remove_dir_all(&root);
   }
 
   #[test]

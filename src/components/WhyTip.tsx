@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { IconInfo } from "../navIcons";
+import { useEscapeLayer } from "../overlayEscape";
 
 /** Explains a derived value in place. These rows come from heuristics rather
  *  than something the operator typed, so the rule that produced them should be
@@ -14,14 +15,10 @@ export function WhyTip({ why, label = "Why this appears" }: { why: string; label
     const onDown = (e: MouseEvent) => {
       if (!wrap.current?.contains(e.target as Node)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
+    return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
+  useEscapeLayer(open, () => setOpen(false));
 
   return (
     <span className="whytip" ref={wrap}>
