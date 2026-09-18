@@ -324,6 +324,7 @@ export default function App() {
   const [session, setSession] = useState<SessionStatus | null>(null);
   const [sessionPin, setSessionPin] = useState("");
   const [unlockId, setUnlockId] = useState<string | null>(null);
+  const [unlockError, setUnlockError] = useState<string | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [addNumber, setAddNumber] = useState("");
   const [addPin, setAddPin] = useState("");
@@ -1849,9 +1850,11 @@ export default function App() {
     setRosterBusy(false);
     if (!res.success) {
       setStatus(res.error);
+      setUnlockError(res.error);
       return;
     }
     setSessionPin("");
+    setUnlockError(null);
     applySession(res.data);
     setStatus("Unlocked");
     await bootstrap();
@@ -1965,7 +1968,10 @@ export default function App() {
                   key={a.id}
                   type="button"
                   className={unlockId === a.id ? "lock-account active" : "lock-account"}
-                  onClick={() => setUnlockId(a.id)}
+                  onClick={() => {
+                    setUnlockId(a.id);
+                    setUnlockError(null);
+                  }}
                 >
                   <span className="lock-account-label">{a.label || a.e164 || `…${a.last4}`}</span>
                   <span className="lock-account-meta">
@@ -1995,6 +2001,7 @@ export default function App() {
             >
               {rosterBusy ? "Unlocking…" : "Unlock"}
             </button>
+            {unlockError && <p className="hint tight warn-text">{unlockError}</p>}
             {session.linked_unseen.length > 0 && (
               <p className="hint tight">
                 Linked but not in roster: {session.linked_unseen.join(", ")}. Add them in Settings
