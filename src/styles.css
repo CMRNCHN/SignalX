@@ -4377,7 +4377,7 @@ button.audit-thread.linkish:hover {
 
 .people-detail-empty h2 {
   margin: 0 0 6px;
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--text);
@@ -4394,10 +4394,10 @@ button.audit-thread.linkish:hover {
 .people-rollup > div,
 .people-stats > div {
   padding: 10px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: var(--card);
-  box-shadow: var(--edge-hi), var(--shadow-sm);
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
 }
 
 .people-rollup dt,
