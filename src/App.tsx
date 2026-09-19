@@ -3772,11 +3772,9 @@ export default function App() {
                   {m.attachment_path && <AttachmentPreview path={m.attachment_path} />}
                 </div>
               ))}
-              {(outbox.length
-                ? outbox
-                : USE_FIXTURES && selectedId
-                  ? fxOutbox.filter((o) => o.thread_id === selectedId && o.state !== "sent")
-                  : []
+              {(selectedId
+                ? globalOutbox.filter((o) => o.thread_id === selectedId)
+                : []
               ).map((o) => (
                 <div key={o.id} className={`bubble out pending state-${o.state}`}>
                   <div className="bubble-meta">
