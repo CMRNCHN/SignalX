@@ -358,6 +358,7 @@ export default function App() {
   const [globalOutboxReal, setGlobalOutbox] = useState<OutboxItem[]>([]);
   const [outboxSummary, setOutboxSummary] = useState<OutboxSummary | null>(null);
   const [selectedOutboxIds, setSelectedOutboxIds] = useState<Set<string>>(new Set());
+  const [outboxSort, setOutboxSort] = useState<{ column: string; asc: boolean }>({ column: "created_at", asc: false });
   const [composer, setComposer] = useState("");
   const [attachFile, setAttachFile] = useState<File | null>(null);
   const [attachPreview, setAttachPreview] = useState<string | null>(null);
@@ -2957,15 +2958,56 @@ export default function App() {
               <p className="empty">Outbox clear — nothing queued or failed.</p>
             )}
             {globalOutbox.length > 0 && (
-              <div className="outbox-head" aria-hidden>
-                <span>To</span>
+              <div className="outbox-head">
+                <span
+                  onClick={() => {
+                    setOutboxSort(s => ({ column: "thread_id", asc: s.column === "thread_id" ? !s.asc : false }));
+                  }}
+                  title="Click to sort"
+                >
+                  To {outboxSort.column === "thread_id" && (outboxSort.asc ? "▲" : "▼")}
+                </span>
                 <span>Preview</span>
-                <span>Status</span>
-                <span>Attempts</span>
+                <span
+                  onClick={() => {
+                    setOutboxSort(s => ({ column: "state", asc: s.column === "state" ? !s.asc : false }));
+                  }}
+                  title="Click to sort"
+                >
+                  Status {outboxSort.column === "state" && (outboxSort.asc ? "▲" : "▼")}
+                </span>
+                <span
+                  onClick={() => {
+                    setOutboxSort(s => ({ column: "attempt_count", asc: s.column === "attempt_count" ? !s.asc : false }));
+                  }}
+                  title="Click to sort"
+                >
+                  Attempts {outboxSort.column === "attempt_count" && (outboxSort.asc ? "▲" : "▼")}
+                </span>
                 <span>Actions</span>
               </div>
             )}
-            {globalOutbox.map((o) => (
+            {(() => {
+              const sorted = [...globalOutbox].sort((a, b) => {
+                let cmp = 0;
+                switch (outboxSort.column) {
+                  case "thread_id":
+                    cmp = threadTitle(a.thread_id, contacts, groups, customers).localeCompare(
+                      threadTitle(b.thread_id, contacts, groups, customers)
+                    );
+                    break;
+                  case "state":
+                    cmp = a.state.localeCompare(b.state);
+                    break;
+                  case "attempt_count":
+                    cmp = (a.attempt_count || 0) - (b.attempt_count || 0);
+                    break;
+                  default:
+                    cmp = b.created_at - a.created_at;
+                }
+                return outboxSort.asc ? cmp : -cmp;
+              });
+              return sorted.map((o) => (
               <div key={o.id}>
                 <div
                   className={`outbox-row state-${o.state} ${selectedOutboxIds.has(o.id) ? "selected" : ""}`}
@@ -3036,7 +3078,7 @@ export default function App() {
                   </div>
                 )}
               </div>
-            ))}
+              ));})()}
           </div>
         </section>
       )}
