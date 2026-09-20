@@ -5531,6 +5531,14 @@ fn set_ivr_menus(state: &AppState, menus: IvrMenus) -> Value {
   }
   match state.ivr.set_menus(menus) {
     Ok(m) => {
+      state.commerce_audit.record(
+        "ivr_menus_updated",
+        &format!("IVR menus updated ({} nodes)", m.nodes.len()),
+        None,
+        None,
+        None,
+        now_ms(),
+      );
       emit_event("ivr://menus", m.clone());
       ok_t(m)
     }
@@ -5671,8 +5679,22 @@ fn upsert_product(state: &AppState, product: Product) -> Value {
   if let Some(v) = reject_if_import_locked(state) {
     return v;
   }
-  match state.commerce.upsert_product(product, now_ms()) {
+  match state.commerce.upsert_product(product.clone(), now_ms()) {
     Ok(p) => {
+      let is_new = product.id.is_empty();
+      state.commerce_audit.record(
+        if is_new { "product_created" } else { "product_updated" },
+        &format!(
+          "{} · {}{}",
+          p.name,
+          if is_new { "created" } else { "updated" },
+          if !p.sku.is_empty() { format!(" ({})", p.sku) } else { String::new() }
+        ),
+        None,
+        Some(p.id.clone()),
+        None,
+        now_ms(),
+      );
       emit_event("commerce://products", state.commerce.list_products());
       ok_t(p)
     }
@@ -5896,8 +5918,17 @@ fn upsert_customer(state: &AppState, customer: Customer) -> Value {
   if let Some(v) = reject_if_import_locked(state) {
     return v;
   }
-  match state.commerce.upsert_customer(customer, now_ms()) {
+  match state.commerce.upsert_customer(customer.clone(), now_ms()) {
     Ok(c) => {
+      let is_new = customer.id.is_empty();
+      state.commerce_audit.record(
+        if is_new { "customer_created" } else { "customer_updated" },
+        &format!("{} {}", c.display_name, if is_new { "created" } else { "updated" }),
+        None,
+        None,
+        Some(c.thread_id.clone()),
+        now_ms(),
+      );
       emit_event("commerce://customers", state.commerce.list_customers());
       ok_t(c)
     }
@@ -5908,6 +5939,16 @@ fn upsert_customer(state: &AppState, customer: Customer) -> Value {
 fn delete_customer(state: &AppState, id: String) -> Value {
   match state.commerce.delete_customer(id.trim()) {
     Ok(deleted) => {
+      if deleted {
+        state.commerce_audit.record(
+          "customer_deleted",
+          &format!("Customer {} deleted", id),
+          None,
+          None,
+          None,
+          now_ms(),
+        );
+      }
       emit_event("commerce://customers", state.commerce.list_customers());
       ok(json!({ "deleted": deleted }))
     }
