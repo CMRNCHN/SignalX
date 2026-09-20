@@ -143,6 +143,9 @@ export interface ContactMeta {
   favorite: boolean;
   muted: boolean;
   auto_reply_enabled?: boolean;
+  notes?: string | null;
+  /** Contact lifecycle: active (default) or archived (soft-deleted) */
+  lifecycle?: "active" | "archived";
   updated_at: number;
 }
 
@@ -154,6 +157,8 @@ export interface GroupMeta {
   muted: boolean;
   auto_reply_enabled?: boolean;
   notes?: string | null;
+  /** Group lifecycle: active (default) or archived (soft-deleted) */
+  lifecycle?: "active" | "archived";
   updated_at: number;
 }
 
@@ -293,6 +298,8 @@ export interface Product {
   sell_options: SellOption[];
   /** Alert when quantity_base_milli ≤ this (0 = no threshold). */
   low_stock_threshold_milli: number;
+  /** Product lifecycle: active (default) or archived (soft-deleted) */
+  lifecycle?: "active" | "archived";
   updated_at: number;
 }
 

@@ -1534,6 +1534,12 @@ struct ContactMeta {
   /// Per-thread opt-in for auto-reply. Off by default.
   #[serde(default)]
   auto_reply_enabled: bool,
+  /// Operator notes.
+  #[serde(default)]
+  notes: String,
+  /// Contact lifecycle: "active" (default) or "archived" (soft-deleted).
+  #[serde(default = "default_lifecycle")]
+  lifecycle: String,
   updated_at: i64,
 }
 
@@ -2512,6 +2518,7 @@ struct AutoReplySettings {
 
 fn default_max_per_thread() -> u32 { 3 }
 fn default_max_per_window() -> u32 { 20 }
+fn default_lifecycle() -> String { "active".to_string() }
 fn default_window_secs() -> u64 { 3600 }
 
 impl Default for AutoReplySettings {

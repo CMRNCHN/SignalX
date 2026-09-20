@@ -79,6 +79,9 @@ pub struct Product {
   /// Alert when `quantity_base_milli` is at or below this (0 = no threshold).
   #[serde(default)]
   pub low_stock_threshold_milli: i64,
+  /// Product lifecycle: "active" (default) or "archived" (soft-deleted).
+  #[serde(default = "default_lifecycle")]
+  pub lifecycle: String,
   pub updated_at: i64,
 }
 
