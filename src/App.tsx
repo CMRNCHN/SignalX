@@ -2891,24 +2891,28 @@ export default function App() {
       {panel === "outbox" && (
         <section className="thread-col wide">
           <header className="col-head">
-            Outbox
-            <span className="col-meta">
-              {(() => {
-                const queued = globalOutbox.filter((o) => o.state === "queued").length;
-                const sending = globalOutbox.filter((o) => o.state === "sending").length;
-                const failed = globalOutbox.filter((o) => o.state === "failed").length;
-                if (queued + sending + failed === 0 && outboxSummary) {
-                  return `${outboxSummary.queued} queued · ${outboxSummary.sending} sending · ${outboxSummary.failed} failed`;
-                }
-                return `${queued} queued · ${sending} sending · ${failed} failed`;
-              })()}
-            </span>
+            <div>
+              <div>Outbox</div>
+              <div className="col-head-sub">
+                {(() => {
+                  const queued = globalOutbox.filter((o) => o.state === "queued").length;
+                  const sending = globalOutbox.filter((o) => o.state === "sending").length;
+                  const failed = globalOutbox.filter((o) => o.state === "failed").length;
+                  if (queued + sending + failed === 0 && outboxSummary) {
+                    return `${outboxSummary.queued} queued · ${outboxSummary.sending} sending · ${outboxSummary.failed} failed`;
+                  }
+                  return `${queued} queued · ${sending} sending · ${failed} failed`;
+                })()}
+              </div>
+            </div>
           </header>
           <div className="filter-strip">
-            <button type="button" className="ghost-btn" onClick={() => void refreshGlobalOutbox()}>
+            <button type="button" className="action-btn" onClick={() => void refreshGlobalOutbox()}>
               Refresh
             </button>
-            <span className="col-meta">{globalOutbox.length} open</span>
+            {globalOutbox.length > 0 && (
+              <span className="col-meta">Last refreshed just now</span>
+            )}
           </div>
           <div className="outbox-table">
             {globalOutbox.length === 0 && (
@@ -2919,56 +2923,69 @@ export default function App() {
                 <span>To</span>
                 <span>Preview</span>
                 <span>Status</span>
-                <span>Age</span>
-                <span />
+                <span>Attempts</span>
+                <span>Actions</span>
               </div>
             )}
             {globalOutbox.map((o) => (
-              <div key={o.id} className={`outbox-row state-${o.state}`}>
-                <div className="outbox-to">
-                  <strong>{threadTitle(o.thread_id, contacts, groups, customers)}</strong>
-                  {o.attachment_path ? <span className="convo-sub">Attachment</span> : null}
-                </div>
-                <div className="outbox-preview">
-                  {o.content.slice(0, 120) || (o.attachment_path ? "(attachment)" : "(empty)")}
-                  {o.content.length > 120 ? "…" : ""}
-                  {o.last_error && <div className="bubble-err">{o.last_error}</div>}
-                </div>
-                <span
-                  className={`status-pill status-${
-                    o.state === "failed" ? "danger" : o.state === "sending" ? "warn" : "muted"
-                  }`}
-                >
-                  {o.state}
-                </span>
-                <span className="outbox-age">
-                  {fmtTime(o.created_at)}
-                  {o.attempt_count > 0 ? ` · ${o.attempt_count}` : ""}
-                </span>
-                <div className="row-actions">
-                  {o.state === "failed" && (
-                    <button type="button" className="action-btn primary" onClick={() => void onRetry(o.id).then(() => refreshGlobalOutbox())}>
-                      Retry
+              <div key={o.id}>
+                <div className={`outbox-row state-${o.state}`}>
+                  <div className="outbox-to">
+                    <strong>{threadTitle(o.thread_id, contacts, groups, customers)}</strong>
+                  </div>
+                  <div className="outbox-preview">
+                    {o.attachment_path && <span className="attach-chip">📎</span>}
+                    {o.content.slice(0, 100) || (o.attachment_path ? "(attachment)" : "(empty)")}
+                    {o.content.length > 100 ? "…" : ""}
+                  </div>
+                  <span
+                    className={`status-pill status-${
+                      o.state === "failed" ? "danger" : o.state === "sending" ? "warn" : "muted"
+                    }`}
+                  >
+                    {o.state}
+                  </span>
+                  <span className="outbox-attempts">
+                    {o.attempt_count > 0 ? `${o.attempt_count} attempt${o.attempt_count === 1 ? "" : "s"}` : "—"}
+                  </span>
+                  <div className="row-actions">
+                    {o.state === "failed" && (
+                      <button type="button" className="action-btn primary" onClick={() => void onRetry(o.id).then(() => refreshGlobalOutbox())}>
+                        Retry
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      onClick={() => {
+                        if (confirm("Delete this message from the outbox?")) {
+                          void onDeleteOutbox(o.id).then(() => refreshGlobalOutbox());
+                        }
+                      }}
+                    >
+                      Discard
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    className="ghost-btn"
-                    onClick={() => void onDeleteOutbox(o.id).then(() => refreshGlobalOutbox())}
-                  >
-                    Discard
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-btn"
-                    onClick={() => {
-                      setSelectedId(o.thread_id);
-                      setPanel("threads");
-                    }}
-                  >
-                    Open
-                  </button>
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      onClick={() => {
+                        setSelectedId(o.thread_id);
+                        setPanel("threads");
+                      }}
+                    >
+                      Open
+                    </button>
+                  </div>
                 </div>
+                {o.last_error && (
+                  <div className="outbox-error">
+                    <span className="error-icon">⚠️</span>
+                    <div>
+                      <div className="error-message">This number isn't on Signal</div>
+                      <div className="error-detail">{o.last_error}</div>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

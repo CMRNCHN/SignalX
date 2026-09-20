@@ -755,7 +755,7 @@ input[type="radio"] {
 .outbox-head,
 .outbox-row {
   display: grid;
-  grid-template-columns: minmax(120px, 0.9fr) minmax(0, 1.6fr) 90px 80px 240px;
+  grid-template-columns: 200px 1fr 100px 120px 180px;
   gap: 12px;
   align-items: start;
 }
@@ -769,9 +769,31 @@ input[type="radio"] {
   color: var(--text-dim);
 }
 
+.outbox-head span {
+  cursor: pointer;
+  user-select: none;
+  padding: 4px;
+  border-radius: var(--radius-xs);
+  transition: background 120ms ease;
+}
+
+.outbox-head span:hover {
+  background: var(--surface-2);
+}
+
 .outbox-row {
   padding: 10px 4px;
   border-top: 1px solid var(--border);
+  transition: background 120ms ease;
+}
+
+.outbox-row:hover {
+  background: var(--surface-1);
+}
+
+.outbox-row.selected {
+  background: var(--surface-2);
+  border-left: 3px solid var(--accent);
 }
 
 .outbox-row.state-failed {
@@ -794,6 +816,44 @@ input[type="radio"] {
 .outbox-age {
   font-size: 12px;
   color: var(--text-dim);
+}
+
+.outbox-attempts {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.attach-chip {
+  display: inline-block;
+  margin-right: 4px;
+  font-size: 14px;
+}
+
+.outbox-error {
+  display: flex;
+  gap: 8px;
+  padding: 8px 4px;
+  border-top: 1px solid var(--border);
+  background: rgba(220, 38, 38, 0.05);
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.error-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.error-message {
+  font-weight: 500;
+  color: var(--danger);
+}
+
+.error-detail {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  font-family: monospace;
 }
 
 .settings-log {
