@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use base64::Engine;
 use uuid::Uuid;
+use sha2::{Sha256, Digest};
 
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Mutex as AsyncMutex;
@@ -2551,6 +2552,19 @@ struct AutoReplyAuditEntry {
   reason: Option<String>,
 }
 
+fn redact_draft(full_draft: &str) -> String {
+  let mut hasher = Sha256::new();
+  hasher.update(full_draft.as_bytes());
+  let hash = format!("{:x}", hasher.finalize());
+  let hash_short = &hash[..16.min(hash.len())];
+  let summary = if full_draft.len() > 50 {
+    format!("{}... [#{}]", &full_draft[..50], hash_short)
+  } else {
+    format!("{} [#{}]", full_draft, hash_short)
+  };
+  summary
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 struct AutoReplyAuditLog {
   entries: Vec<AutoReplyAuditEntry>,
@@ -4579,7 +4593,7 @@ fn trigger_agent_draft(state: AppState, agent: AgentModeConfig, ts: ThreadState,
               account_id: account_id.clone(),
               thread_id: tid.clone(),
               message_id: mid.clone(),
-              draft: draft.clone(),
+              draft: redact_draft(&draft),
               created_at: now_ms(),
               outcome: outcome.to_string(),
               reason,
@@ -4593,7 +4607,7 @@ fn trigger_agent_draft(state: AppState, agent: AgentModeConfig, ts: ThreadState,
               account_id: account_id.clone(),
               thread_id: tid.clone(),
               message_id: mid.clone(),
-              draft: draft.clone(),
+              draft: redact_draft(&draft),
               created_at: now_ms(),
               outcome: "draft_only".to_string(),
               reason: Some(reason),
