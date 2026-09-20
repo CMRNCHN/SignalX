@@ -485,6 +485,7 @@ export function OrdersScreen(props: OrdersScreenProps) {
                       onDuplicate: () => void duplicateAsDraft(o.id),
                       onSendInvoice: () => void sendInvoice(o.id),
                       onDelete: () => {
+                        void setOrderLifecycle(o.id, "cancelled");
                         if (openId === o.id) setOpenId(null);
                       },
                     }, (msg) => {

@@ -15,6 +15,7 @@ export interface MenuConfig {
 }
 
 const STORAGE_KEY = "signalx-menus";
+const HIDDEN_MENUS_KEY = "signalx-hidden-menus";
 
 const DEFAULT_MENUS: MenuConfig[] = [
   {
@@ -78,17 +79,20 @@ const DEFAULT_MENUS: MenuConfig[] = [
 export function loadMenus(): MenuConfig[] {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
+    const hiddenStr = localStorage.getItem(HIDDEN_MENUS_KEY);
+    const hidden = new Set(hiddenStr ? JSON.parse(hiddenStr) as string[] : []);
+
     if (stored) {
       const customMenus = JSON.parse(stored) as MenuConfig[];
       // Merge custom menus with defaults, preferring custom
       const customMap = new Map(customMenus.map((m) => [m.id, m]));
       const defaultMap = new Map(DEFAULT_MENUS.map((m) => [m.id, m]));
       defaultMap.forEach((menu, id) => {
-        if (!customMap.has(id)) {
+        if (!customMap.has(id) && !hidden.has(id)) {
           customMap.set(id, menu);
         }
       });
-      return Array.from(customMap.values());
+      return Array.from(customMap.values()).filter((m) => !hidden.has(m.id));
     }
   } catch {
     // Ignore storage errors
@@ -124,11 +128,22 @@ export function deleteMenu(menuId: string): void {
   const menus = loadMenus();
   const filtered = menus.filter((m) => m.id !== menuId);
   saveMenus(filtered);
+
+  // Mark this menu as hidden so it doesn't get restored from defaults
+  try {
+    const hiddenStr = localStorage.getItem(HIDDEN_MENUS_KEY);
+    const hidden = new Set(hiddenStr ? JSON.parse(hiddenStr) as string[] : []);
+    hidden.add(menuId);
+    localStorage.setItem(HIDDEN_MENUS_KEY, JSON.stringify(Array.from(hidden)));
+  } catch {
+    // Ignore storage errors
+  }
 }
 
 export function resetMenus(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(HIDDEN_MENUS_KEY);
   } catch {
     // Ignore storage errors
   }
