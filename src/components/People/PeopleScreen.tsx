@@ -31,6 +31,8 @@ import {
 import { USE_FIXTURES, fxMessages } from "../../devFixtures";
 import { WhyTip } from "../WhyTip";
 import { useEscapeLayer } from "../../overlayEscape";
+import { useContextMenu, ContextMenu, MenuEditor, getMenuByObjectType, updateMenu } from "../ContextMenu";
+import { getContactContextMenuItems } from "../../contextMenuHelpers";
 import { actionsFor, buildDirectory, insightsFor, type Person, type PersonStatus, type PersonType } from "./people";
 
 const TYPES: PersonType[] = ["Consumer", "Supplier", "Team"];
@@ -115,6 +117,7 @@ type Props = {
   createGroup: () => void | Promise<void>;
   searchQuery?: string;
   searchQueryTick?: number;
+  topNotice?: ReactNode;
 };
 
 export function PeopleScreen({
@@ -141,6 +144,7 @@ export function PeopleScreen({
   createGroup,
   searchQuery = "",
   searchQueryTick = 0,
+  topNotice,
 }: Props) {
   const [q, setQ] = useState(searchQuery);
   const [activeTypes, setActiveTypes] = useState<PersonType[]>([]);
@@ -153,6 +157,8 @@ export function PeopleScreen({
   const [recent, setRecent] = useState<Message[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const contextMenu = useContextMenu();
+  const [menuEditorOpen, setMenuEditorOpen] = useState(false);
   useEscapeLayer(!!menu, () => setMenu(null));
   useEscapeLayer(!!composer, () => setComposer(null));
   useEscapeLayer(!!confirmDelete, () => setConfirmDelete(null));
@@ -589,7 +595,36 @@ export function PeopleScreen({
               .filter(Boolean)
               .join(" ");
             return (
-              <button key={p.key} type="button" className={cls} onClick={() => onSelectKey(p.key)}>
+              <button
+                key={p.key}
+                type="button"
+                className={cls}
+                onClick={() => onSelectKey(p.key)}
+                onContextMenu={(e) => {
+                  // Find the contact for this person
+                  const contact = contacts.find((c) => c.contact_id === p.key);
+                  if (contact) {
+                    const items = getContactContextMenuItems(contact, {
+                      onEdit: () => {
+                        setContactForm({
+                          phone: contact.contact_id.replace(/^dm:/, ""),
+                          name: contact.display_name || "",
+                        });
+                        setComposer("contact");
+                      },
+                      onMessage: () => {
+                        onOpenChat(contact.contact_id);
+                      },
+                      onDelete: () => {
+                        setConfirmDelete(contact.contact_id);
+                      },
+                    }, (msg) => {
+                      setStatus(msg);
+                    });
+                    contextMenu.openContextMenu(e, items, p.key);
+                  }
+                }}
+              >
                 <div className="person-card-head">
                   <span className="person-avatar" style={avatarTint(p.key)} aria-hidden>
                     {initials(p.name)}
@@ -649,6 +684,7 @@ export function PeopleScreen({
       </section>
 
       <section className="convo people-detail">
+        {topNotice}
         {!selected ? (
           <div className="people-detail-empty">
             <h2>{directory.length} people</h2>
@@ -951,6 +987,24 @@ export function PeopleScreen({
           </div>
         )}
       </section>
+
+      <ContextMenu
+        position={contextMenu.position}
+        items={contextMenu.items}
+        onClose={contextMenu.closeContextMenu}
+        onEditMenu={() => setMenuEditorOpen(true)}
+      />
+
+      {menuEditorOpen && (
+        <MenuEditor
+          menu={getMenuByObjectType("contact") || { id: "", name: "", objectType: "", items: [] }}
+          onSave={(menu) => {
+            updateMenu(menu);
+            setMenuEditorOpen(false);
+          }}
+          onClose={() => setMenuEditorOpen(false)}
+        />
+      )}
     </>
   );
 }

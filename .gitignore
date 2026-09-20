@@ -49,3 +49,6 @@ SignalX-Cursor-Bundle.zip
 *.tsbuildinfo
 .claude/
 .claude/
+
+# Brainstorming mockup scratch files
+.superpowers/

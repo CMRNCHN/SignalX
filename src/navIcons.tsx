@@ -22,6 +22,43 @@ function IconShell({ children, className }: SvgProps & { children: ReactNode }) 
   );
 }
 
+/** Brand icon treatment for "hero" moments (dashboard stat tiles and pattern
+ *  cards): the same glyph drawn three times at a fanned rotation/offset and
+ *  fading opacity, plus two loose fragment shards. Deliberately not used in
+ *  the nav rail — at that small, constantly-visible size the extra layers
+ *  read as noise rather than detail; plain glyphs (IconShell) read cleaner
+ *  there. Coordinates below assume a 24x24 viewBox. */
+export function EchoIcon({ children, className }: SvgProps & { children: ReactNode }) {
+  return (
+    <svg
+      className={className}
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      style={{ overflow: "visible" }}
+    >
+      <g transform="rotate(-14 12 12) translate(-1.875 -1.3125)" opacity="0.16" strokeWidth="1.6">
+        {children}
+      </g>
+      <g transform="rotate(-6 12 12) translate(-0.8625 -0.6)" opacity="0.32" strokeWidth="1.75">
+        {children}
+      </g>
+      <g transform="rotate(8 12 12) translate(0.975 0.675)" opacity="0.58" strokeWidth="1.85">
+        {children}
+      </g>
+      <g strokeWidth="1.9">{children}</g>
+      <path d="M18.75 5.25 l1.5 1.125" strokeWidth="0.4875" opacity="0.35" />
+      <polygon points="3.375,18.75 4.5,18.75 3.75,20.25" opacity="0.3" fill="currentColor" stroke="none" />
+      <path d="M3 5.625 l1.875 .375" strokeWidth="0.4125" opacity="0.28" />
+    </svg>
+  );
+}
+
 export function IconMessages(p: SvgProps) {
   return (
     <IconShell {...p}>
@@ -35,6 +72,25 @@ export function IconSearch(p: SvgProps) {
     <IconShell {...p}>
       <circle cx="11" cy="11" r="7" />
       <path d="M21 21l-4.3-4.3" />
+    </IconShell>
+  );
+}
+
+export function IconAccount(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <rect x="7" y="2" width="10" height="20" rx="2" />
+      <path d="M11 18h2" />
+    </IconShell>
+  );
+}
+
+export function IconLink(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <path d="M8 8.5A3.5 3.5 0 0 1 12.5 4l1 1a3.5 3.5 0 0 1 0 5l-1 1" />
+      <path d="M16 15.5A3.5 3.5 0 0 1 11.5 20l-1-1a3.5 3.5 0 0 1 0-5l1-1" />
+      <path d="M9 15l6-6" />
     </IconShell>
   );
 }
@@ -62,9 +118,8 @@ export function IconGroups(p: SvgProps) {
 export function IconCatalog(p: SvgProps) {
   return (
     <IconShell {...p}>
-      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-      <path d="M3.3 7L12 12l8.7-5" />
-      <path d="M12 22V12" />
+      <path d="M5 9.5 L12 6 L19 9.5 L19 16.5 L12 20 L5 16.5 Z" />
+      <path d="M5 9.5 L12 13 L19 9.5 M12 13 v7" />
     </IconShell>
   );
 }
@@ -82,9 +137,16 @@ export function IconCustomers(p: SvgProps) {
 export function IconOrders(p: SvgProps) {
   return (
     <IconShell {...p}>
-      <circle cx="9" cy="20" r="1.5" />
-      <circle cx="18" cy="20" r="1.5" />
-      <path d="M3 4h2l2.4 10.4a2 2 0 0 0 2 1.6h7.8a2 2 0 0 0 2-1.5L21 8H7" />
+      <path d="M6 3h12v13l-2,-2 l-2,2 l-2,-2 l-2,2 l-2,-2 l-2,2 z" />
+      <path d="M9 8h6M9 11.5h6" />
+    </IconShell>
+  );
+}
+
+export function IconSales(p: SvgProps) {
+  return (
+    <IconShell {...p}>
+      <path d="M5 19v-4 M10 19v-7 M15 19v-9 M20 19v-12" />
     </IconShell>
   );
 }
@@ -92,9 +154,11 @@ export function IconOrders(p: SvgProps) {
 export function IconAudit(p: SvgProps) {
   return (
     <IconShell {...p}>
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <path d="M14 2v6h6" />
-      <path d="M8 13h8M8 17h6" />
+      <path d="M6 4h9l4 4v12H6z" />
+      <path d="M15 4v4h4" />
+      <path d="M9 13h6M9 16.5h4" />
+      <circle cx="17.5" cy="17.5" r="3.2" />
+      <path d="M16.3 17.5l.9.9 1.7-1.9" strokeWidth={1.5} />
     </IconShell>
   );
 }
@@ -103,7 +167,9 @@ export function IconSettings(p: SvgProps) {
   return (
     <IconShell {...p}>
       <circle cx="12" cy="12" r="3" />
-      <path d="M19.07 4.93l-2.12 2.12M6.93 19.07l-2.12 2.12M19.07 19.07l-2.12-2.12M6.93 4.93l-2.12-2.12M12 2.5v2.5M12 19v2.5M21.5 12h-2.5M5.5 12h-2.5" />
+      <path
+        d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.6 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"
+      />
     </IconShell>
   );
 }
@@ -111,10 +177,9 @@ export function IconSettings(p: SvgProps) {
 export function IconOutbox(p: SvgProps) {
   return (
     <IconShell {...p}>
-      <path d="M22 12H2" />
-      <path d="M5 12l1.5 7h11L19 12" />
-      <path d="M12 12V3" />
-      <path d="M8 7l4-4 4 4" />
+      <path d="M4 9h9 M4 13h9 M4 17h5" />
+      <path d="M18 19 V8" />
+      <path d="M14.5 11.5 L18 8 L21.5 11.5" />
     </IconShell>
   );
 }

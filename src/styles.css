@@ -637,17 +637,23 @@ input[type="radio"] {
 }
 
 .rail-status {
-  padding: 8px 10px;
+  padding: 6px 8px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong);
   background: var(--surface-2);
   color: var(--text);
-  font-size: 12px;
+  font-size: 11px;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  line-height: 1.4;
+  gap: 6px;
+  line-height: 1.3;
+}
+
+.rail-status .ghost-btn {
+  padding: 4px 6px;
+  font-size: 10px;
+  flex-shrink: 0;
 }
 
 .thread-col {

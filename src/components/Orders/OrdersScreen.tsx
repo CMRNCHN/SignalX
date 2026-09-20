@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import type { ContactMeta, Customer, GroupMeta, Order, Product } from "../../api";
 import type { Panel } from "../../App";
 import { isGroupThread } from "../../format";
@@ -13,6 +13,8 @@ import {
 } from "../../navIcons";
 import { WhyTip } from "../WhyTip";
 import { useEscapeLayer } from "../../overlayEscape";
+import { useContextMenu, ContextMenu, MenuEditor, getMenuByObjectType, updateMenu } from "../ContextMenu";
+import { getOrderContextMenuItems } from "../../contextMenuHelpers";
 
 /* The order lifecycle, in the order it actually happens. A quote is a draft
    that has been sent; it is not a separate status, so the track shows where an
@@ -115,6 +117,7 @@ type OrdersScreenProps = {
   formatPhone: (id: string) => string;
   initials: (name: string) => string;
   avatarTint: (seed: string) => CSSProperties;
+  topNotice?: ReactNode;
 };
 
 export function OrdersScreen(props: OrdersScreenProps) {
@@ -155,11 +158,14 @@ export function OrdersScreen(props: OrdersScreenProps) {
     formatPhone,
     initials,
     avatarTint,
+    topNotice,
   } = props;
 
   const [openId, setOpenId] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
   const [menu, setMenu] = useState<null | "status" | "date" | "payment">(null);
+  const contextMenu = useContextMenu();
+  const [menuEditorOpen, setMenuEditorOpen] = useState(false);
   useEscapeLayer(!!menu, () => setMenu(null));
   useEscapeLayer(composing, () => setComposing(false));
   const didAutoOpen = useRef(false);
@@ -260,6 +266,7 @@ export function OrdersScreen(props: OrdersScreenProps) {
   return (
     <section className="thread-col wide">
       {menu && <div className="menu-scrim" onClick={() => setMenu(null)} />}
+      {topNotice}
       <header className="col-head">
         Orders
         <span className="col-meta">
@@ -472,6 +479,20 @@ export function OrdersScreen(props: OrdersScreenProps) {
                     setOpenId(o.id);
                     setComposing(false);
                   }}
+                  onContextMenu={(e) => {
+                    const items = getOrderContextMenuItems(o.id, o, {
+                      onEdit: () => setOpenId(o.id),
+                      onDuplicate: () => void duplicateAsDraft(o.id),
+                      onSendInvoice: () => void sendInvoice(o.id),
+                      onDelete: () => {
+                        if (openId === o.id) setOpenId(null);
+                      },
+                    }, (msg) => {
+                      // Status would come from parent component's setStatus
+                      console.log(msg);
+                    });
+                    contextMenu.openContextMenu(e, items, o.id);
+                  }}
                 >
                   <span className="avatar-dot" style={avatarTint(o.thread_id)}>
                     {initials(party)}
@@ -604,6 +625,24 @@ export function OrdersScreen(props: OrdersScreenProps) {
           )}
         </div>
       </div>
+
+      <ContextMenu
+        position={contextMenu.position}
+        items={contextMenu.items}
+        onClose={contextMenu.closeContextMenu}
+        onEditMenu={() => setMenuEditorOpen(true)}
+      />
+
+      {menuEditorOpen && (
+        <MenuEditor
+          menu={getMenuByObjectType("order") || { id: "", name: "", objectType: "", items: [] }}
+          onSave={(menu) => {
+            updateMenu(menu);
+            setMenuEditorOpen(false);
+          }}
+          onClose={() => setMenuEditorOpen(false)}
+        />
+      )}
     </section>
   );
 }

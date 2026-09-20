@@ -71,6 +71,7 @@ import { useGlobalShortcuts } from "./useGlobalShortcuts";
 import { ShortcutsHelp } from "./components/ShortcutsHelp";
 import { AuditScreen } from "./components/Audit/AuditScreen";
 import { AttachmentPreview } from "./attachmentPreview";
+import { InvoiceExport } from "./components/InvoiceExport";
 import {
   IconAccount,
   IconAudit,
@@ -92,6 +93,14 @@ import {
   IconSettings,
   IconSparkle,
 } from "./navIcons";
+import {
+  ContextMenu,
+  useContextMenu,
+  MenuEditor,
+  getMenuByObjectType,
+  updateMenu,
+  type MenuItem as ContextMenuItem,
+} from "./components/ContextMenu";
 
 export type Panel =
   | "threads"
@@ -106,6 +115,7 @@ export type Panel =
   | "sales"
   | "outbox"
   | "audit"
+  | "invoice-export"
   | "settings";
 type SettingsTab = "account" | "ivr" | "auto" | "backup";
 
@@ -140,6 +150,7 @@ const NAV_GROUPS: NavItem[][] = [
     { id: "catalog", label: "Catalog", ico: <IconCatalog /> },
     { id: "orders", label: "Orders", ico: <IconOrders /> },
     { id: "sales", label: "Sales", ico: <IconSales /> },
+    { id: "invoice-export", label: "Export", ico: <IconExport /> },
   ],
   [
     { id: "outbox", label: "Outbox", ico: <IconOutbox /> },
@@ -422,6 +433,9 @@ export default function App() {
   const [newDmOpen, setNewDmOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [productImagesReal, setProductImages] = useState<Record<string, string>>({});
+  const contextMenu = useContextMenu();
+  const [menuEditorOpen, setMenuEditorOpen] = useState(false);
+  const [editingMenu, setEditingMenu] = useState<string | null>(null);
 
   // Dev-only design data. Real state always wins; fixtures fill in only while a
   // list is genuinely empty, and USE_FIXTURES is false in any release build.
@@ -1848,6 +1862,36 @@ export default function App() {
     setSettingsTab("account");
   };
 
+  const getThreadContextMenu = (threadId: string): ContextMenuItem[] => {
+    const menu = getMenuByObjectType("thread");
+    if (!menu) return [];
+    return menu.items.map((item) => ({
+      id: item.id,
+      label: item.label,
+      danger: item.danger,
+      action: () => {
+        switch (item.actionType) {
+          case "exportThread":
+            void onExportThread();
+            break;
+          case "copyId":
+            navigator.clipboard.writeText(threadId);
+            setStatus("Copied thread ID");
+            break;
+          case "deleteThread":
+            if (window.confirm("Delete this thread?")) {
+              setSelectedId(null);
+              setStatus("Thread deleted (local only)");
+            }
+            break;
+          case "divider":
+            break;
+        }
+      },
+    }));
+  };
+
+
   const onUnlock = async () => {
     const id = unlockId || session?.accounts[0]?.id;
     if (!id) {
@@ -2309,6 +2353,21 @@ export default function App() {
                 onClick={() => {
                   setSelectedId(t.id);
                   setPanel("threads");
+                }}
+                onContextMenu={(e) => {
+                  const items = getThreadContextMenu(t.id);
+                  const menu = getMenuByObjectType("thread");
+                  contextMenu.openContextMenu(
+                    e,
+                    [
+                      ...items,
+                      { id: "divider", label: "", action: () => {}, divider: true },
+                    ],
+                    t.id,
+                  );
+                  if (menu) {
+                    setEditingMenu(menu.id);
+                  }
                 }}
               >
                 <span className="avatar-dot" style={avatarTint(t.id)} aria-hidden>
@@ -2929,6 +2988,18 @@ export default function App() {
             setPanel("threads");
           }}
         />
+      )}
+
+      {panel === "invoice-export" && (
+        <section className="thread-col wide">
+          <header className="col-head">
+            <div>
+              <div>Export</div>
+              <div className="col-head-sub">Generate formatted invoices for Signal</div>
+            </div>
+          </header>
+          <InvoiceExport />
+        </section>
       )}
 
       {panel === "settings" && (
@@ -3778,7 +3849,7 @@ export default function App() {
               ).map((o) => (
                 <div key={o.id} className={`bubble out pending state-${o.state}`}>
                   <div className="bubble-meta">
-                    <span>{o.state}</span>
+                    <span>{o.state}{o.attempt_count > 0 ? ` (attempt ${o.attempt_count})` : ""}</span>
                     <span>{fmtTime(o.created_at)}</span>
                   </div>
                   <div className="bubble-body">{o.content}</div>
@@ -3836,7 +3907,7 @@ export default function App() {
                   value={composer}
                   onChange={(e) => setComposer(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
+                    if (e.key === "Enter" && !e.shiftKey && !(e as any).isComposing) {
                       e.preventDefault();
                       void onSend();
                     }
@@ -3948,6 +4019,51 @@ export default function App() {
           </aside>
         ))}
       <ShortcutsHelp open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+      <ContextMenu
+        position={contextMenu.position}
+        items={contextMenu.items}
+        onClose={contextMenu.closeContextMenu}
+        onEditMenu={() => {
+          if (editingMenu) {
+            const menu = getMenuByObjectType(
+              editingMenu.includes("thread")
+                ? "thread"
+                : editingMenu.includes("order")
+                  ? "order"
+                  : editingMenu.includes("product")
+                    ? "product"
+                    : "contact",
+            );
+            if (menu) {
+              setMenuEditorOpen(true);
+            }
+          }
+        }}
+      />
+
+      {menuEditorOpen && editingMenu && (
+        <MenuEditor
+          menu={getMenuByObjectType(
+            editingMenu.includes("thread")
+              ? "thread"
+              : editingMenu.includes("order")
+                ? "order"
+                : editingMenu.includes("product")
+                  ? "product"
+                  : "contact",
+          ) || { id: "", name: "", objectType: "", items: [] }}
+          onSave={(menu) => {
+            updateMenu(menu);
+            setMenuEditorOpen(false);
+            setStatus("Menu updated");
+          }}
+          onClose={() => {
+            setMenuEditorOpen(false);
+            setEditingMenu(null);
+          }}
+        />
+      )}
     </div>
   );
 }

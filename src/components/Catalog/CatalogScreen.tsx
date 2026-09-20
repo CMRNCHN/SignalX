@@ -12,6 +12,8 @@ import {
 import type { Person } from "../People/people";
 import { matchingProducts } from "../../globalSearch";
 import { useEscapeLayer } from "../../overlayEscape";
+import { useContextMenu, ContextMenu, MenuEditor, getMenuByObjectType, updateMenu } from "../ContextMenu";
+import { getProductContextMenuItems } from "../../contextMenuHelpers";
 import {
   CATALOG_STATUSES,
   STOCK_STATUSES,
@@ -45,6 +47,7 @@ type Props = {
   onAdjustStock: (p: Product, delta: number) => void;
   onExportCsv: () => void;
   onImportCsv: (file: File | null) => void;
+  topNotice?: ReactNode;
 };
 
 export function CatalogScreen({
@@ -69,6 +72,7 @@ export function CatalogScreen({
   onAdjustStock,
   onExportCsv,
   onImportCsv,
+  topNotice,
 }: Props) {
   const [q, setQ] = useState(catalogSearchQuery);
   const [statuses, setStatuses] = useState<CatalogStatus[]>([]);
@@ -76,6 +80,8 @@ export function CatalogScreen({
   const [stocks, setStocks] = useState<StockStatus[]>([]);
   const [sortAsc, setSortAsc] = useState(true);
   const [menu, setMenu] = useState<null | "status" | "category" | "stock" | "more">(null);
+  const contextMenu = useContextMenu();
+  const [menuEditorOpen, setMenuEditorOpen] = useState(false);
   useEscapeLayer(!!menu, () => setMenu(null));
 
   useEffect(() => {
@@ -357,6 +363,16 @@ export function CatalogScreen({
                   type="button"
                   className={selectedId === p.id ? "catalog-card active" : "catalog-card"}
                   onClick={() => onSelectId(p.id)}
+                  onContextMenu={(e) => {
+                    const items = getProductContextMenuItems(p, {
+                      onEdit: (product) => onEdit(product),
+                      onAdjustStock: (product) => onSelectId(product.id),
+                      onDelete: (id) => onDelete(id),
+                    }, (msg) => {
+                      console.log(msg);
+                    });
+                    contextMenu.openContextMenu(e, items, p.id);
+                  }}
                 >
                   <div className="catalog-card-head">
                     <span className="person-avatar" aria-hidden>
@@ -391,6 +407,7 @@ export function CatalogScreen({
       </section>
 
       <section className="convo catalog-detail">
+        {topNotice}
         {formOpen ? (
           <div className="catalog-detail-body catalog-form-wrap">{form}</div>
         ) : !selected ? (
@@ -483,6 +500,24 @@ export function CatalogScreen({
           </div>
         )}
       </section>
+
+      <ContextMenu
+        position={contextMenu.position}
+        items={contextMenu.items}
+        onClose={contextMenu.closeContextMenu}
+        onEditMenu={() => setMenuEditorOpen(true)}
+      />
+
+      {menuEditorOpen && (
+        <MenuEditor
+          menu={getMenuByObjectType("product") || { id: "", name: "", objectType: "", items: [] }}
+          onSave={(menu) => {
+            updateMenu(menu);
+            setMenuEditorOpen(false);
+          }}
+          onClose={() => setMenuEditorOpen(false)}
+        />
+      )}
     </>
   );
 }
