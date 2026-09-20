@@ -1,0 +1,281 @@
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b0b0e; --bg-lift:#131317; --bg-2:#18181b; --bg-3:#27272a;
+    --border:hsl(240 5% 19%); --border-strong:hsl(240 5% 34%);
+    --fg:#fafafa; --fg-dim:#a1a1aa; --fg-dimmer:#71717a;
+    --sans: Inter, ui-sans-serif, system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, monospace;
+  }
+  body{ font-family:var(--sans); }
+  .options .option{ padding:0; }
+  .style-row{ background:var(--bg); border:1px solid var(--border); border-radius:14px; padding:20px 22px 22px; }
+  .style-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:14px; }
+  .style-name{ font:700 15px/1.2 var(--sans); color:var(--fg); }
+  .style-desc{ font:400 12px/1.4 var(--sans); color:var(--fg-dim); max-width:420px; }
+
+  .icon-strip{ display:flex; gap:14px; margin-bottom:16px; }
+  .icon-swatch{ width:88px; height:88px; background:var(--bg-2); border:1px solid var(--border); border-radius:12px; display:flex; align-items:center; justify-content:center; flex:none; }
+  .icon-swatch svg{ width:64px; height:64px; }
+  .icon-cap{ font:600 9px/1.2 var(--mono); text-transform:uppercase; letter-spacing:.04em; color:var(--fg-dimmer); text-align:center; margin-top:6px; }
+  .icon-col{ display:flex; flex-direction:column; align-items:center; }
+
+  .applied{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  .tile{ background:var(--bg-2); border:1px solid var(--border); border-radius:10px; padding:11px 12px; }
+  .tile .top{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .tile .top svg{ width:20px; height:20px; flex:none; }
+  .tile .k{ font:600 9.5px/1.2 var(--mono); text-transform:uppercase; letter-spacing:.04em; color:var(--fg-dimmer); }
+  .tile .v{ font:700 21px/1 var(--sans); color:var(--fg); }
+
+  path,line,circle,polygon,rect{ stroke:var(--fg); }
+</style>
+
+<h2>Icon brand — 4 directions (People page concepts)</h2>
+<p class="subtitle">Same 4 concepts drawn 4 ways: New customer, Haven't heard from, Due to reorder, Needs follow-up. Monochrome only (no bright colors, per your note), set in Inter/JetBrains Mono — your app's real fonts. Each row also shows the icons dropped into the actual stat tiles so you can judge them at real size, not just as big swatches. Click a row to pick a direction, or mix pieces from a few.</p>
+
+<div class="options" style="grid-template-columns:1fr; gap:24px;">
+
+  <!-- STYLE A: Blueprint / schematic -->
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="style-row">
+      <div class="style-head">
+        <span class="style-name">A — Technical schematic</span>
+        <span class="style-desc">Registration corners, dashed guide ring, center crosshair, ruler ticks — reads like an engineering annotation, not an app icon.</span>
+      </div>
+      <div class="icon-strip">
+        <div class="icon-col"><div class="icon-swatch">
+          <svg viewBox="0 0 64 64" fill="none" stroke-width="1.25">
+            <path d="M4 4 h8 M4 4 v8" opacity=".5"/><path d="M60 4 h-8 M60 4 v8" opacity=".5"/>
+            <path d="M4 60 h8 M4 60 v-8" opacity=".5"/><path d="M60 60 h-8 M60 60 v-8" opacity=".5"/>
+            <circle cx="32" cy="32" r="24" stroke-dasharray="1.5 4" opacity=".3"/>
+            <path d="M28 42 M20 44 C20 34 44 34 44 44" stroke-width="1.6"/>
+            <circle cx="32" cy="22" r="7" stroke-width="1.6"/>
+            <path d="M44 15 l4 -4 M46 11 l0 6 M43 14 l6 0" stroke-width="1.1" opacity=".7"/>
+            <path d="M29 32 h6 M32 29 v6" opacity=".4"/>
+            <path d="M10 56 v3 M16 56 v2 M22 56 v3 M28 56 v2 M36 56 v3 M42 56 v2 M48 56 v3 M54 56 v2" opacity=".35" stroke-width="1"/>
+          </svg>
+        </div><div class="icon-cap">New customer</div></div>
+
+        <div class="icon-col"><div class="icon-swatch">
+          <svg viewBox="0 0 64 64" fill="none" stroke-width="1.25">
+            <path d="M4 4 h8 M4 4 v8" opacity=".5"/><path d="M60 4 h-8 M60 4 v8" opacity=".5"/>
+            <path d="M4 60 h8 M4 60 v-8" opacity=".5"/><path d="M60 60 h-8 M60 60 v-8" opacity=".5"/>
+            <circle cx="32" cy="32" r="24" stroke-dasharray="1.5 4" opacity=".3"/>
+            <path d="M18 20 h24 a6 6 0 0 1 6 6 v10 a6 6 0 0 1 -6 6 h-10 l-6 6 v-6 h-8 a6 6 0 0 1 -6 -6 v-10 a6 6 0 0 1 6 -6 z" stroke-width="1.6"/>
+            <path d="M14 18 L50 42" stroke-width="1.6"/>
+            <circle cx="8" cy="30" r="2" opacity=".5"/><circle cx="4" cy="36" r="1.3" opacity=".3"/>
+            <path d="M29 32 h6 M32 29 v6" opacity=".4"/>
+          </svg>
+        </div><div class="icon-cap">Haven't heard</div></div>
+
+        <div class="icon-col"><div class="icon-swatch">
+          <svg viewBox="0 0 64 64" fill="none" stroke-width="1.25">
+            <path d="M4 4 h8 M4 4 v8" opacity=".5"/><path d="M60 4 h-8 M60 4 v8" opacity=".5"/>
+            <path d="M4 60 h8 M4 60 v-8" opacity=".5"/><path d="M60 60 h-8 M60 60 v-8" opacity=".5"/>
+            <circle cx="32" cy="32" r="24" stroke-dasharray="1.5 4" opacity=".3"/>
+            <path d="M42 22 A14 14 0 1 0 44 34" stroke-width="1.8"/>
+            <path d="M40 16 L42 22 L36 24 Z" stroke-width="1" fill="var(--fg)" opacity=".9"/>
+            <path d="M29 32 h6 M32 29 v6" opacity=".4"/>
+          </svg>
+        </div><div class="icon-cap">Due to reorder</div></div>
+
+        <div class="icon-col"><div class="icon-swatch">
+          <svg viewBox="0 0 64 64" fill="none" stroke-width="1.25">
+            <path d="M4 4 h8 M4 4 v8" opacity=".5"/><path d="M60 4 h-8 M60 4 v8" opacity=".5"/>
+            <path d="M4 60 h8 M4 60 v-8" opacity=".5"/><path d="M60 60 h-8 M60 60 v-8" opacity=".5"/>
+            <circle cx="32" cy="32" r="24" stroke-dasharray="1.5 4" opacity=".3"/>
+            <path d="M24 14 v36" stroke-width="1.6"/>
+            <path d="M24 14 L42 20 L24 26 Z" stroke-width="1.6"/>
+            <circle cx="24" cy="50" r="2" fill="var(--fg)" opacity=".8"/>
+            <path d="M29 32 h6 M32 29 v6" opacity=".4"/>
+          </svg>
+        </div><div class="icon-cap">Follow-up</div></div>
+      </div>
+
+      <div class="applied">
+        <div class="tile"><div class="top"><svg viewBox="0 0 64 64" fill="none" stroke-width="2.4" opacity=".85"><path d="M20 44 C20 34 44 34 44 44" /><circle cx="32" cy="22" r="7"/></svg><div class="k">New this week</div></div><div class="v">2</div></div>
+        <div class="tile"><div class="top"><svg viewBox="0 0 64 64" fill="none" stroke-width="2.4" opacity=".85"><path d="M18 20 h24 a6 6 0 0 1 6 6 v10 a6 6 0 0 1 -6 6 h-10 l-6 6 v-6 h-8 a6 6 0 0 1 -6 -6 v-10 a6 6 0 0 1 6 -6 z"/><path d="M14 18 L50 42"/></svg><div class="k">Haven't heard</div></div><div class="v">3</div></div>
+        <div class="tile"><div class="top"><svg viewBox="0 0 64 64" fill="none" stroke-width="2.4" opacity=".85"><path d="M42 22 A14 14 0 1 0 44 34"/><path d="M40 16 L42 22 L36 24 Z" fill="var(--fg)"/></svg><div class="k">Due to reorder</div></div><div class="v">2</div></div>
+        <div class="tile"><div class="top"><svg viewBox="0 0 64 64" fill="none" stroke-width="2.4" opacity=".85"><path d="M24 14 v36"/><path d="M24 14 L42 20 L24 26 Z"/></svg><div class="k">Follow-up</div></div><div class="v">1</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STYLE B: Sunburst badge -->
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="style-row">
+      <div class="style-head">
+        <span class="style-name">B — Sunburst badge</span>
+        <span class="style-desc">Bold core glyph inside a dial of radiating ticks and a dotted outer ring — dense, emblem-like, "ours" via the tick rhythm.</span>
+      </div>
+      <div class="icon-strip">
+        <div class="icon-col"><div class="icon-swatch"><svg viewBox="0 0 64 64" fill="none" class="burst" data-cx="32" data-cy="32" data-r1="24" data-r2="27" data-len1="4" data-len2="2.5" data-n1="16" data-n2="32">
+          <path d="M20 44 C20 34 44 34 44 44" stroke-width="2.4"/><circle cx="32" cy="22" r="7" stroke-width="2.4"/>
+        </svg></div><div class="icon-cap">New customer</div></div>
+
+        <div class="icon-col"><div class="icon-swatch"><svg viewBox="0 0 64 64" fill="none" class="burst" data-cx="32" data-cy="32" data-r1="24" data-r2="27" data-len1="4" data-len2="2.5" data-n1="16" data-n2="32">
+          <path d="M18 20 h24 a6 6 0 0 1 6 6 v10 a6 6 0 0 1 -6 6 h-10 l-6 6 v-6 h-8 a6 6 0 0 1 -6 -6 v-10 a6 6 0 0 1 6 -6 z" stroke-width="2.2"/><path d="M14 18 L50 42" stroke-width="2.2"/>
+        </svg></div><div class="icon-cap">Haven't heard</div></div>
+
+        <div class="icon-col"><div class="icon-swatch"><svg viewBox="0 0 64 64" fill="none" class="burst" data-cx="32" data-cy="32" data-r1="24" data-r2="27" data-len1="4" data-len2="2.5" data-n1="16" data-n2="32">
+          <path d="M42 22 A14 14 0 1 0 44 34" stroke-width="2.6"/><path d="M40 16 L42 22 L36 24 Z" fill="var(--fg)"/>
+        </svg></div><div class="icon-cap">Due to reorder</div></div>
+
+        <div class="icon-col"><div class="icon-swatch"><svg viewBox="0 0 64 64" fill="none" class="burst" data-cx="32" data-cy="32" data-r1="24" data-r2="27" data-len1="4" data-len2="2.5" data-n1="16" data-n2="32">
+          <path d="M24 14 v36" stroke-width="2.4"/><path d="M24 14 L42 20 L24 26 Z" stroke-width="2.4"/><circle cx="24" cy="50" r="2" fill="var(--fg)"/>
+        </svg></div><div class="icon-cap">Follow-up</div></div>
+      </div>
+
+      <div class="applied">
+        <div class="tile"><div class="top"><svg viewBox="0 0 64 64" fill="none" class="burst-mini" data-cx="32" data-cy="32" data-r1="27" data-len1="4" data-n1="14"><path d="M20 44 C20 34 44 34 44 44" stroke-width="3"/><circle cx="32" cy="22" r="7" stroke-width="3"/></svg><div class="k">New this week</div></div><div class="v">2</div></div>
+        <div class="tile"><div class="top"><svg viewBox="0 0 64 64" fill="none" class="burst-mini" data-cx="32" data-cy="32" data-r1="27" data-len1="4" data-n1="14"><path d="M18 20 h24 a6 6 0 0 1 6 6 v10 a6 6 0 0 1 -6 6 h-10 l-6 6 v-6 h-8 a6 6 0 0 1 -6 -6 v-10 a6 6 0 0 1 6 -6 z" stroke-width="2.6"/><path d="M14 18 L50 42" stroke-width="2.6"/></svg><div class="k">Haven't heard</div></div><div class="v">3</div></div>
+        <div class="tile"><div class="top"><svg viewBox="0 0 64 64" fill="none" class="burst-mini" data-cx="32" data-cy="32" data-r1="27" data-len1="4" data-n1="14"><path d="M42 22 A14 14 0 1 0 44 34" stroke-width="3"/><path d="M40 16 L42 22 L36 24 Z" fill="var(--fg)"/></svg><div class="k">Due to reorder</div></div><div class="v">2</div></div>
+        <div class="tile"><div class="top"><svg viewBox="0 0 64 64" fill="none" class="burst-mini" data-cx="32" data-cy="32" data-r1="27" data-len1="4" data-n1="14"><path d="M24 14 v36" stroke-width="3"/><path d="M24 14 L42 20 L24 26 Z" stroke-width="3"/></svg><div class="k">Follow-up</div></div><div class="v">1</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STYLE C: Exploded / echo -->
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="style-row">
+      <div class="style-head">
+        <span class="style-name">C — Exploded echo</span>
+        <span class="style-desc">The glyph repeats three times at fading opacity and slight rotation, like a motion trail, plus a few loose fragment shards — chaotic but still legible.</span>
+      </div>
+      <div class="icon-strip">
+        <div class="icon-col"><div class="icon-swatch"><svg viewBox="0 0 64 64" fill="none" stroke-width="2">
+          <g transform="rotate(-8 32 32) translate(-3,-2)" opacity=".3"><path d="M20 44 C20 34 44 34 44 44"/><circle cx="32" cy="22" r="7"/></g>
+          <g transform="rotate(6 32 32) translate(2,2)" opacity=".5"><path d="M20 44 C20 34 44 34 44 44"/><circle cx="32" cy="22" r="7"/></g>
+          <g><path d="M20 44 C20 34 44 34 44 44"/><circle cx="32" cy="22" r="7"/></g>
+          <path d="M50 14 l4 3" opacity=".4"/><polygon points="10,50 13,50 11,54" opacity=".35"/><path d="M8 16 l5 1" opacity=".3"/>
+        </svg></div><div class="icon-cap">New customer</div></div>
+
+        <div class="icon-col"><div class="icon-swatch"><svg viewBox="0 0 64 64" fill="none" stroke-width="1.8">
+          <g transform="rotate(-6 32 30) translate(-3,-1)" opacity=".3"><path d="M18 20 h24 a6 6 0 0 1 6 6 v10 a6 6 0 0 1 -6 6 h-10 l-6 6 v-6 h-8 a6 6 0 0 1 -6 -6 v-10 a6 6 0 0 1 6 -6 z"/></g>
+          <g transform="rotate(5 32 30) translate(2,1)" opacity=".5"><path d="M18 20 h24 a6 6 0 0 1 6 6 v10 a6 6 0 0 1 -6 6 h-10 l-6 6 v-6 h-8 a6 6 0 0 1 -6 -6 v-10 a6 6 0 0 1 6 -6 z"/></g>
+          <path d="M18 20 h24 a6 6 0 0 1 6 6 v10 a6 6 0 0 1 -6 6 h-10 l-6 6 v-6 h-8 a6 6 0 0 1 -6 -6 v-10 a6 6 0 0 1 6 -6 z" stroke-width="2.2"/>
+          <path d="M14 18 L50 42" stroke-width="2.2"/>
+          <circle cx="6" cy="34" r="1.5" opacity=".3"/><circle cx="2" cy="40" r="1" opacity=".2"/>
+        </svg></div><div class="icon-cap">Haven't heard</div></div>
+
+        <div class="icon-col"><div class="icon-swatch"><svg viewBox="0 0 64 64" fill="none" stroke-width="1.8">
+          <g transform="rotate(-10 32 28)" opacity=".3"><path d="M42 22 A14 14 0 1 0 44 34"/></g>
+          <g transform="rotate(8 32 28)" opacity=".5"><path d="M42 22 A14 14 0 1 0 44 34"/></g>
+          <path d="M42 22 A14 14 0 1 0 44 34" stroke-width="2.4"/><path d="M40 16 L42 22 L36 24 Z" fill="var(--fg)"/>
+          <path d="M52 46 l4 2" opacity=".3"/><path d="M10 12 l4 2" opacity=".3"/>
+        </svg></div><div class="icon-cap">Due to reorder</div></div>
+
+        <div class="icon-col"><div class="icon-swatch"><svg viewBox="0 0 64 64" fill="none" stroke-width="1.8">
+          <g transform="translate(-3,-2) rotate(-4 24 32)" opacity=".3"><path d="M24 14 v36"/><path d="M24 14 L42 20 L24 26 Z"/></g>
+          <g transform="translate(2,2) rotate(3 24 32)" opacity=".5"><path d="M24 14 v36"/><path d="M24 14 L42 20 L24 26 Z"/></g>
+          <path d="M24 14 v36" stroke-width="2.2"/><path d="M24 14 L42 20 L24 26 Z" stroke-width="2.2"/>
+          <polygon points="48,44 51,44 49,48" opacity=".35"/>
+        </svg></div><div class="icon-cap">Follow-up</div></div>
+      </div>
+
+      <div class="applied">
+        <div class="tile"><div class="top"><svg viewBox="0 0 64 64" fill="none" stroke-width="2.6"><g transform="rotate(6 32 32) translate(2,2)" opacity=".4"><path d="M20 44 C20 34 44 34 44 44"/><circle cx="32" cy="22" r="7"/></g><path d="M20 44 C20 34 44 34 44 44"/><circle cx="32" cy="22" r="7"/></svg><div class="k">New this week</div></div><div class="v">2</div></div>
+        <div class="tile"><div class="top"><svg viewBox="0 0 64 64" fill="none" stroke-width="2.4"><g transform="rotate(5 32 30) translate(2,1)" opacity=".4"><path d="M18 20 h24 a6 6 0 0 1 6 6 v10 a6 6 0 0 1 -6 6 h-10 l-6 6 v-6 h-8 a6 6 0 0 1 -6 -6 v-10 a6 6 0 0 1 6 -6 z"/></g><path d="M18 20 h24 a6 6 0 0 1 6 6 v10 a6 6 0 0 1 -6 6 h-10 l-6 6 v-6 h-8 a6 6 0 0 1 -6 -6 v-10 a6 6 0 0 1 6 -6 z"/><path d="M14 18 L50 42"/></svg><div class="k">Haven't heard</div></div><div class="v">3</div></div>
+        <div class="tile"><div class="top"><svg viewBox="0 0 64 64" fill="none" stroke-width="2.6"><g transform="rotate(8 32 28)" opacity=".4"><path d="M42 22 A14 14 0 1 0 44 34"/></g><path d="M42 22 A14 14 0 1 0 44 34"/><path d="M40 16 L42 22 L36 24 Z" fill="var(--fg)"/></svg><div class="k">Due to reorder</div></div><div class="v">2</div></div>
+        <div class="tile"><div class="top"><svg viewBox="0 0 64 64" fill="none" stroke-width="2.6"><g transform="translate(2,2) rotate(3 24 32)" opacity=".4"><path d="M24 14 v36"/><path d="M24 14 L42 20 L24 26 Z"/></g><path d="M24 14 v36"/><path d="M24 14 L42 20 L24 26 Z"/></svg><div class="k">Follow-up</div></div><div class="v">1</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STYLE D: Circuit / node network -->
+  <div class="option" data-choice="d" onclick="toggleSelect(this)">
+    <div class="style-row">
+      <div class="style-head">
+        <span class="style-name">D — Circuit node network</span>
+        <span class="style-desc">Core glyph wired to small satellite nodes over a faint dot grid — reads as data/signal, distinctly "SignalX" without needing color.</span>
+      </div>
+      <div class="icon-strip">
+        <div class="icon-col"><div class="icon-swatch"><svg viewBox="0 0 64 64" fill="none" class="grid-bg" data-n="8">
+          <path d="M20 44 C20 34 44 34 44 44" stroke-width="2.4"/><circle cx="32" cy="22" r="7" stroke-width="2.4"/>
+          <line x1="39" y1="19" x2="52" y2="12" stroke-width="1" opacity=".5"/><circle cx="52" cy="12" r="2" opacity=".8"/>
+          <line x1="25" y1="19" x2="12" y2="10" stroke-width="1" opacity=".5"/><circle cx="12" cy="10" r="2" opacity=".8"/>
+          <line x1="20" y1="44" x2="8" y2="50" stroke-width="1" opacity=".5"/><circle cx="8" cy="50" r="2" opacity=".8"/>
+          <line x1="44" y1="44" x2="56" y2="50" stroke-width="1" opacity=".5"/><circle cx="56" cy="50" r="2" opacity=".8"/>
+        </svg></div><div class="icon-cap">New customer</div></div>
+
+        <div class="icon-col"><div class="icon-swatch"><svg viewBox="0 0 64 64" fill="none" class="grid-bg" data-n="8">
+          <path d="M18 20 h24 a6 6 0 0 1 6 6 v10 a6 6 0 0 1 -6 6 h-10 l-6 6 v-6 h-8 a6 6 0 0 1 -6 -6 v-10 a6 6 0 0 1 6 -6 z" stroke-width="2.2"/><path d="M14 18 L50 42" stroke-width="2.2"/>
+          <line x1="50" y1="20" x2="58" y2="14" stroke-width="1" opacity=".5"/><circle cx="58" cy="14" r="2" opacity=".8"/>
+          <line x1="18" y1="20" x2="8" y2="12" stroke-width="1" opacity=".5"/><circle cx="8" cy="12" r="2" opacity=".8"/>
+          <line x1="12" y1="34" x2="4" y2="34" stroke-width="1" opacity=".5"/><circle cx="4" cy="34" r="1.6" opacity=".8"/>
+        </svg></div><div class="icon-cap">Haven't heard</div></div>
+
+        <div class="icon-col"><div class="icon-swatch"><svg viewBox="0 0 64 64" fill="none" class="grid-bg" data-n="8">
+          <path d="M42 22 A14 14 0 1 0 44 34" stroke-width="2.6"/><path d="M40 16 L42 22 L36 24 Z" fill="var(--fg)"/>
+          <line x1="46" y1="14" x2="56" y2="8" stroke-width="1" opacity=".5"/><circle cx="56" cy="8" r="2" opacity=".8"/>
+          <line x1="46" y1="42" x2="56" y2="48" stroke-width="1" opacity=".5"/><circle cx="56" cy="48" r="2" opacity=".8"/>
+          <line x1="18" y1="30" x2="8" y2="30" stroke-width="1" opacity=".5"/><circle cx="8" cy="30" r="2" opacity=".8"/>
+        </svg></div><div class="icon-cap">Due to reorder</div></div>
+
+        <div class="icon-col"><div class="icon-swatch"><svg viewBox="0 0 64 64" fill="none" class="grid-bg" data-n="8">
+          <path d="M24 14 v36" stroke-width="2.4"/><path d="M24 14 L42 20 L24 26 Z" stroke-width="2.4"/><circle cx="24" cy="50" r="2" fill="var(--fg)"/>
+          <line x1="42" y1="20" x2="54" y2="16" stroke-width="1" opacity=".5"/><circle cx="54" cy="16" r="2" opacity=".8"/>
+          <line x1="24" y1="50" x2="14" y2="56" stroke-width="1" opacity=".5"/><circle cx="14" cy="56" r="2" opacity=".8"/>
+          <line x1="14" y1="56" x2="54" y2="16" stroke-width=".75" opacity=".25"/>
+        </svg></div><div class="icon-cap">Follow-up</div></div>
+      </div>
+
+      <div class="applied">
+        <div class="tile"><div class="top"><svg viewBox="0 0 64 64" fill="none" stroke-width="3"><path d="M20 44 C20 34 44 34 44 44"/><circle cx="32" cy="22" r="7"/><line x1="39" y1="19" x2="50" y2="13" stroke-width="1.2" opacity=".5"/><circle cx="50" cy="13" r="2.4" opacity=".8"/></svg><div class="k">New this week</div></div><div class="v">2</div></div>
+        <div class="tile"><div class="top"><svg viewBox="0 0 64 64" fill="none" stroke-width="2.6"><path d="M18 20 h24 a6 6 0 0 1 6 6 v10 a6 6 0 0 1 -6 6 h-10 l-6 6 v-6 h-8 a6 6 0 0 1 -6 -6 v-10 a6 6 0 0 1 6 -6 z"/><path d="M14 18 L50 42"/><line x1="50" y1="20" x2="58" y2="14" stroke-width="1.2" opacity=".5"/><circle cx="58" cy="14" r="2.4" opacity=".8"/></svg><div class="k">Haven't heard</div></div><div class="v">3</div></div>
+        <div class="tile"><div class="top"><svg viewBox="0 0 64 64" fill="none" stroke-width="3"><path d="M42 22 A14 14 0 1 0 44 34"/><path d="M40 16 L42 22 L36 24 Z" fill="var(--fg)"/><line x1="46" y1="14" x2="56" y2="8" stroke-width="1.2" opacity=".5"/><circle cx="56" cy="8" r="2.4" opacity=".8"/></svg><div class="k">Due to reorder</div></div><div class="v">2</div></div>
+        <div class="tile"><div class="top"><svg viewBox="0 0 64 64" fill="none" stroke-width="3"><path d="M24 14 v36"/><path d="M24 14 L42 20 L24 26 Z"/><line x1="42" y1="20" x2="54" y2="16" stroke-width="1.2" opacity=".5"/><circle cx="54" cy="16" r="2.4" opacity=".8"/></svg><div class="k">Follow-up</div></div><div class="v">1</div></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  function polar(cx, cy, r, angleDeg){
+    const a = (angleDeg - 90) * Math.PI / 180;
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  }
+  function addTickRing(svg, cx, cy, r, len, count, opacity){
+    for (let i = 0; i < count; i++){
+      const angle = (360 / count) * i;
+      const [x1, y1] = polar(cx, cy, r, angle);
+      const [x2, y2] = polar(cx, cy, r + len, angle);
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', x1.toFixed(2)); line.setAttribute('y1', y1.toFixed(2));
+      line.setAttribute('x2', x2.toFixed(2)); line.setAttribute('y2', y2.toFixed(2));
+      line.setAttribute('stroke-width', '1');
+      line.setAttribute('opacity', opacity);
+      svg.appendChild(line);
+    }
+  }
+  document.querySelectorAll('svg.burst').forEach(svg => {
+    const d = svg.dataset;
+    const cx = +d.cx, cy = +d.cy;
+    addTickRing(svg, cx, cy, +d.r1, +d.len1, +d.n1, .55);
+    addTickRing(svg, cx, cy, +d.r2, +d.len2, +d.n2, .3);
+    const ring = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    ring.setAttribute('cx', cx); ring.setAttribute('cy', cy); ring.setAttribute('r', +d.r2 + 4);
+    ring.setAttribute('stroke-dasharray', '1 3'); ring.setAttribute('opacity', '.3'); ring.setAttribute('stroke-width','1');
+    svg.appendChild(ring);
+  });
+  document.querySelectorAll('svg.burst-mini').forEach(svg => {
+    const d = svg.dataset;
+    addTickRing(svg, +d.cx, +d.cy, +d.r1, +d.len1, +d.n1, .5);
+  });
+  document.querySelectorAll('svg.grid-bg').forEach(svg => {
+    const n = +svg.dataset.n;
+    for (let i = 0; i <= n; i++){
+      for (let j = 0; j <= n; j++){
+        const dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
+        dot.setAttribute('cx', (i * 64/n).toFixed(1));
+        dot.setAttribute('cy', (j * 64/n).toFixed(1));
+        dot.setAttribute('r', '0.6'); dot.setAttribute('opacity', '.12'); dot.setAttribute('fill','var(--fg)');
+        svg.insertBefore(dot, svg.firstChild);
+      }
+    }
+  });
+})();
+</script>

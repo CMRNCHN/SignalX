@@ -1,0 +1,94 @@
+### 1. swallowed persist errors (Outbox#2 + Audit#3)
+src-tauri/src/commerce_audit.rs:95:    let _ = self.persist();
+src-tauri/src/lib.rs:1229:      let _ = self.save_account_atomic(account_id);
+src-tauri/src/lib.rs:1635:      let _ = self.save_account_atomic(account_id);
+src-tauri/src/lib.rs:4775:        let _ = state.outbox_store.update_item_async(&account_id, item).await;
+src-tauri/src/lib.rs:4784:          let _ = state.outbox_store.update_item_async(&account_id, item.clone()).await;
+src-tauri/src/lib.rs:4799:          let _ = state.outbox_store.update_item_async(&account_id, item.clone()).await;
+src-tauri/src/lib.rs:4813:        let _ = state.outbox_store.update_item_async(&account_id, item).await;
+src-tauri/src/lib.rs:4834:        let _ = state.outbox_store.update_item_async(&account_id, item.clone()).await;
+src-tauri/src/lib.rs:4882:          let _ = state.outbox_store.update_item_async(&account_id, item.clone()).await;
+src-tauri/src/lib.rs:4903:          let _ = state.outbox_store.update_item_async(&account_id, item.clone()).await;
+src-tauri/src/lib.rs:5226:  let _ = state.ivr.save_session(&account, result.session.clone());
+src-tauri/src/lib.rs:5256:    let _ = state.ivr.save_session(&account, cleared);
+src-tauri/src/lib.rs:6737:  let _ = roster.save(&state.app_data_dir);
+src-tauri/src/commerce.rs:706:    let _ = self.persist_stock_ledger();
+src-tauri/src/simple_audit.rs:86:    let _ = self.persist();
+
+### 2. outbox message id format (Outbox#1 P0)
+src-tauri/src/lib.rs:2447:  let id = format!("outgoing-{}-{}", recipient, ts);
+
+### 3. does the claimed sales test file exist?
+NOT FOUND — sales tests were not executed
+
+### 4. test infrastructure actually configured?
+  "scripts": {
+    "dev": "bash scripts/free-vite-port.sh && vite",
+    "ui": "bash scripts/free-vite-port.sh && vite",
+    "build": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "bash scripts/free-vite-port.sh && tauri dev",
+    "tauri:build": "tauri build",
+    "desktop": "bash scripts/free-vite-port.sh && tauri dev",
+    "desktop:build": "tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+(eval):9: no matches found: vitest.config.*
+no frontend test config
+
+### 5. rust test count
+
+test result: ok. 60 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.87s
+
+
+### 6. does IVR actually reference product ids? (Catalog vs Relationships contradiction)
+src-tauri/src/ivr.rs:37:  "list_catalog",
+src-tauri/src/ivr.rs:165:            action: Some("list_catalog".into()),
+src-tauri/src/ivr.rs:170:            action: Some("list_catalog".into()),
+src-tauri/src/ivr.rs:199:            action: Some("list_catalog".into()),
+src-tauri/src/ivr.rs:302:  /// Side effect for the host (e.g. `list_catalog`).
+src-tauri/src/ivr.rs:470:    if action == "list_catalog" || action == "order_status" {
+src-tauri/src/ivr.rs:775:    assert_eq!(r.action.as_deref(), Some("list_catalog"));
+src-tauri/src/ivr.rs:819:    // after expiry, fresh session at main, then "1" -> browse + list_catalog
+src-tauri/src/ivr.rs:821:    assert_eq!(r.action.as_deref(), Some("list_catalog"));
+src-tauri/src/ivr.rs:830:    assert_eq!(r.action.as_deref(), Some("list_catalog"));
+
+### 7. IME guard present? (Messaging#2)
+ABSENT — confirmed bug
+
+### 8. unwrap/expect count on rust paths
+115
+
+### 9. dangerouslySetInnerHTML (Messaging#5 XSS claim)
+none — XSS finding is not P0
+
+### 10. light-mode dead code
+
+### 11. hardcoded px values in styles.css (spacing defect)
+ 179 1px
+ 147 8px
+ 138 12px
+ 131 10px
+  76 6px
+  64 4px
+  46 2px
+  46 13px
+  46 11px
+  38 16px
+  35 14px
+  33 3px
+  32 5px
+  20 7px
+  19 9px
+  19 18px
+  17 999px
+  16 28px
+  15 20px
+  14 15px
+
+### 12. line counts
+    3962 src/App.tsx
+    7246 src-tauri/src/lib.rs
+   11208 total

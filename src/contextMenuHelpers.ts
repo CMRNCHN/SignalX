@@ -114,11 +114,7 @@ export function getProductContextMenuItems(
       id: "delete",
       label: "Delete product",
       danger: true,
-      action: () => {
-        if (window.confirm("Delete this product?")) {
-          handlers.onDelete?.(product.id);
-        }
-      },
+      action: () => handlers.onDelete?.(product.id),
     },
   ];
 }
@@ -159,11 +155,7 @@ export function getContactContextMenuItems(
       id: "delete",
       label: "Delete contact",
       danger: true,
-      action: () => {
-        if (window.confirm("Delete this contact?")) {
-          handlers.onDelete?.(contact.contact_id);
-        }
-      },
+      action: () => handlers.onDelete?.(contact.contact_id),
     },
   ];
 }

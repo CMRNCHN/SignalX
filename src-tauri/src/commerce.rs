@@ -17,7 +17,11 @@ fn default_measure_unit() -> String {
   "ea".to_string()
 }
 
-/// Optional pack/size you sell (e.g. “Half oz”, “100 g”).
+fn default_lifecycle() -> String {
+  "active".to_string()
+}
+
+/// Optional pack/size you sell (e.g. "Half oz", "100 g").
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SellOption {
   #[serde(default)]
@@ -79,6 +83,9 @@ pub struct Product {
   /// Alert when `quantity_base_milli` is at or below this (0 = no threshold).
   #[serde(default)]
   pub low_stock_threshold_milli: i64,
+  /// Product lifecycle: "active" (default) or "archived" (soft-deleted).
+  #[serde(default = "default_lifecycle")]
+  pub lifecycle: String,
   pub updated_at: i64,
 }
 
@@ -846,6 +853,7 @@ impl CommerceStore {
             image_path: String::new(),
             sell_options: vec![],
             low_stock_threshold_milli: 0,
+            lifecycle: "active".to_string(),
             updated_at: now,
           }
         }

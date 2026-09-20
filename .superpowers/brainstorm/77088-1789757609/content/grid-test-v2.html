@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  html, body { margin: 0; background: #111; color: #eee; font-family: sans-serif; }
+  .shell {
+    --w-rail: 56px;
+    --w-list: 300px;
+    display: grid;
+    grid-template-columns: var(--w-rail) var(--w-list) 1fr;
+    gap: 0;
+    height: 100vh;
+    overflow: hidden;
+  }
+  .rail { background: #223; grid-row: 1 / -1; }
+  .page-notice { grid-column: 2 / -1; background: #552; padding: 8px; }
+  .thread-col { background: #244; }
+  .convo { background: #262; }
+  div { box-sizing: border-box; border: 1px solid rgba(255,255,255,0.2); padding: 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <div class="rail">RAIL</div>
+    <div class="page-notice">PAGE NOTICE (grid-column: 2/-1)</div>
+    <div class="thread-col">THREAD-COL (auto)</div>
+    <div class="convo">CONVO (auto)</div>
+  </div>
+</body>
+</html>

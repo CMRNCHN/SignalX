@@ -17,6 +17,9 @@ pub struct CommerceAuditEvent {
   #[serde(default)]
   pub thread_id: Option<String>,
   pub created_at: i64,
+  /// Actor that triggered this event: "manual", "ivr", "auto_reply", "automatic", etc.
+  #[serde(default)]
+  pub actor: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -74,6 +77,19 @@ impl CommerceAuditStore {
     thread_id: Option<String>,
     now: i64,
   ) {
+    self.record_with_actor(kind, summary, order_id, product_id, thread_id, now, None);
+  }
+
+  pub fn record_with_actor(
+    &self,
+    kind: &str,
+    summary: &str,
+    order_id: Option<String>,
+    product_id: Option<String>,
+    thread_id: Option<String>,
+    now: i64,
+    actor: Option<&str>,
+  ) {
     let ev = CommerceAuditEvent {
       id: Uuid::new_v4().to_string(),
       kind: kind.to_string(),
@@ -82,6 +98,7 @@ impl CommerceAuditStore {
       product_id,
       thread_id,
       created_at: now,
+      actor: actor.map(|s| s.to_string()),
     };
     {
       let mut list = self.events.lock().unwrap();
@@ -92,7 +109,9 @@ impl CommerceAuditStore {
         list.drain(0..drain);
       }
     }
-    let _ = self.persist();
+    if let Err(e) = self.persist() {
+      eprintln!("CommerceAuditStore: failed to persist: {}", e);
+    }
   }
 
   pub fn list(&self, limit: usize) -> Vec<CommerceAuditEvent> {

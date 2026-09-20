@@ -134,4 +134,42 @@ mod tests {
     assert!(units_compatible("oz", "g"));
     assert!(convert_to_base(1.0, "ea", "g").is_err());
   }
+
+  #[test]
+  fn stock_unit_round_trip_precision() {
+    // Test round-trip conversions with milli-unit storage to verify no precision loss
+    let test_cases = vec![
+      ("oz", "g", 2.5),
+      ("lb", "g", 1.25),
+      ("ml", "l", 500.0),
+      ("kg", "g", 2.75),
+      ("oz", "g", 0.1),
+    ];
+
+    for (from_unit, base_unit, original_amount) in test_cases {
+      // Step 1: Convert to base
+      let base_amount = convert_to_base(original_amount, from_unit, base_unit).unwrap();
+
+      // Step 2: Convert to milli and back (simulating storage)
+      let milli = to_milli(base_amount);
+      let restored_base = from_milli(milli);
+
+      // Step 3: Convert back to original unit
+      let round_trip_amount = convert_from_base(restored_base, from_unit, base_unit).unwrap();
+
+      // Verify precision: milli-unit storage introduces ~0.1% max error
+      let tolerance = (original_amount.abs() * 0.001).max(0.001);
+      let error = (round_trip_amount - original_amount).abs();
+      assert!(
+        error <= tolerance,
+        "{} {} -> {:.10} {} -> {} milli -> {:.10} {} -> {:.10} {} (error {:.10} > tolerance {:.10})",
+        original_amount, from_unit,
+        base_amount, base_unit,
+        milli,
+        restored_base, base_unit,
+        round_trip_amount, from_unit,
+        error, tolerance
+      );
+    }
+  }
 }

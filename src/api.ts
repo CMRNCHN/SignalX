@@ -143,6 +143,9 @@ export interface ContactMeta {
   favorite: boolean;
   muted: boolean;
   auto_reply_enabled?: boolean;
+  notes?: string | null;
+  /** Contact lifecycle: active (default) or archived (soft-deleted) */
+  lifecycle?: "active" | "archived";
   updated_at: number;
 }
 
@@ -154,6 +157,8 @@ export interface GroupMeta {
   muted: boolean;
   auto_reply_enabled?: boolean;
   notes?: string | null;
+  /** Group lifecycle: active (default) or archived (soft-deleted) */
+  lifecycle?: "active" | "archived";
   updated_at: number;
 }
 
@@ -192,6 +197,7 @@ export interface AutoReplyAuditEntry {
   created_at: number;
   outcome: string;
   reason?: string | null;
+  actor?: string | null;
 }
 
 export interface SimpleAuditEntry {
@@ -200,6 +206,7 @@ export interface SimpleAuditEntry {
   created_at: number;
   summary: string;
   outcome: string;
+  actor?: string | null;
 }
 
 export interface ThreadAutoReplyStatus {
@@ -293,6 +300,8 @@ export interface Product {
   sell_options: SellOption[];
   /** Alert when quantity_base_milli ≤ this (0 = no threshold). */
   low_stock_threshold_milli: number;
+  /** Product lifecycle: active (default) or archived (soft-deleted) */
+  lifecycle?: "active" | "archived";
   updated_at: number;
 }
 
@@ -317,6 +326,7 @@ export interface CommerceAuditEvent {
   product_id?: string | null;
   thread_id?: string | null;
   created_at: number;
+  actor?: string | null;
 }
 
 export interface SalesStatusRow {
