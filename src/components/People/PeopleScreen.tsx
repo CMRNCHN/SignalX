@@ -115,6 +115,7 @@ type Props = {
   createGroup: () => void | Promise<void>;
   searchQuery?: string;
   searchQueryTick?: number;
+  topNotice?: ReactNode;
 };
 
 export function PeopleScreen({
@@ -141,6 +142,7 @@ export function PeopleScreen({
   createGroup,
   searchQuery = "",
   searchQueryTick = 0,
+  topNotice,
 }: Props) {
   const [q, setQ] = useState(searchQuery);
   const [activeTypes, setActiveTypes] = useState<PersonType[]>([]);
@@ -649,6 +651,7 @@ export function PeopleScreen({
       </section>
 
       <section className="convo people-detail">
+        {topNotice}
         {!selected ? (
           <div className="people-detail-empty">
             <h2>{directory.length} people</h2>

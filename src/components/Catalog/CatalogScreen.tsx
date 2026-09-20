@@ -45,6 +45,7 @@ type Props = {
   onAdjustStock: (p: Product, delta: number) => void;
   onExportCsv: () => void;
   onImportCsv: (file: File | null) => void;
+  topNotice?: ReactNode;
 };
 
 export function CatalogScreen({
@@ -69,6 +70,7 @@ export function CatalogScreen({
   onAdjustStock,
   onExportCsv,
   onImportCsv,
+  topNotice,
 }: Props) {
   const [q, setQ] = useState(catalogSearchQuery);
   const [statuses, setStatuses] = useState<CatalogStatus[]>([]);
@@ -391,6 +393,7 @@ export function CatalogScreen({
       </section>
 
       <section className="convo catalog-detail">
+        {topNotice}
         {formOpen ? (
           <div className="catalog-detail-body catalog-form-wrap">{form}</div>
         ) : !selected ? (

@@ -6,8 +6,11 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
  * The shell's `grid-template-columns` reads `--w-*`, and each of those falls
  * back through a `--u-*` "user" variable (see `.shell` in styles.css). We only
  * ever write the `--u-*` layer, which is why the responsive breakpoints can
- * still clobber `--w-*` outright — a dragged rail must not survive the
- * collapse to the 72px icon rail below 900px. */
+ * still clobber `--w-*` outright.
+ *
+ * The rail is a fixed-width icon-only column — no drag handle renders for it
+ * — but it still occupies real width, so it stays in `DEFAULTS`/`LIMITS`
+ * purely so the budget math below still accounts for it. */
 
 export type PanelColumn = "rail" | "list" | "listPeople" | "aside";
 
@@ -32,7 +35,7 @@ const CSS_VAR: Record<PanelColumn, string> = {
 /** Mirrors the fallbacks in `.shell` / `.shell-people`. Keep the two in sync:
  *  CSS owns the unset case, this owns the arithmetic during a drag. */
 const DEFAULTS: Record<PanelColumn, number> = {
-  rail: 220,
+  rail: 56,
   list: 300,
   listPeople: 400,
   aside: 300,
@@ -41,7 +44,7 @@ const DEFAULTS: Record<PanelColumn, number> = {
 /** Per-column travel. The floor keeps a column legible; the ceiling stops one
  *  column from being dragged out to absurdity on a wide display. */
 const LIMITS: Record<PanelColumn, [number, number]> = {
-  rail: [180, 400],
+  rail: [56, 56],
   list: [240, 600],
   listPeople: [320, 700],
   aside: [240, 520],

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import type { ContactMeta, Customer, GroupMeta, Order, Product } from "../../api";
 import type { Panel } from "../../App";
 import { isGroupThread } from "../../format";
@@ -115,6 +115,7 @@ type OrdersScreenProps = {
   formatPhone: (id: string) => string;
   initials: (name: string) => string;
   avatarTint: (seed: string) => CSSProperties;
+  topNotice?: ReactNode;
 };
 
 export function OrdersScreen(props: OrdersScreenProps) {
@@ -155,6 +156,7 @@ export function OrdersScreen(props: OrdersScreenProps) {
     formatPhone,
     initials,
     avatarTint,
+    topNotice,
   } = props;
 
   const [openId, setOpenId] = useState<string | null>(null);
@@ -260,6 +262,7 @@ export function OrdersScreen(props: OrdersScreenProps) {
   return (
     <section className="thread-col wide">
       {menu && <div className="menu-scrim" onClick={() => setMenu(null)} />}
+      {topNotice}
       <header className="col-head">
         Orders
         <span className="col-meta">
