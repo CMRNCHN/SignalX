@@ -755,7 +755,7 @@ input[type="radio"] {
 .outbox-head,
 .outbox-row {
   display: grid;
-  grid-template-columns: minmax(120px, 0.9fr) minmax(0, 1.6fr) 90px 88px auto;
+  grid-template-columns: minmax(120px, 0.9fr) minmax(0, 1.6fr) 90px 80px 240px;
   gap: 12px;
   align-items: start;
 }
@@ -1376,17 +1376,16 @@ input[type="radio"] {
 }
 
 .status-pill.status-warn {
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
+  color: var(--warn);
+  background: rgba(217, 119, 6, 0.1);
+  border: 1px solid var(--warn);
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 .status-pill.status-danger {
-  color: var(--text);
-  background: transparent;
-  border: 1px solid var(--text-dim);
-  text-decoration: line-through;
-  text-decoration-color: var(--text-dim);
+  color: var(--danger);
+  background: rgba(220, 38, 38, 0.1);
+  border: 1px solid var(--danger);
 }
 
 .status-pill.status-muted {
@@ -1521,6 +1520,15 @@ input[type="radio"] {
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
   }
 }
 
