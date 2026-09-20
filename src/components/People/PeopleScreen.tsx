@@ -779,7 +779,7 @@ export function PeopleScreen({
                 ) : (
                   <button
                     type="button"
-                    className="act-btn"
+                    className="act-btn danger"
                     disabled={selected.kind !== "contact"}
                     onClick={() => setConfirmDelete(selected.key)}
                     title={

@@ -4485,6 +4485,10 @@ button.audit-thread.linkish:hover {
   outline: none;
 }
 
+.people-notes::placeholder {
+  color: var(--text-dim);
+}
+
 .people-notes:focus {
   border-color: var(--border-strong);
 }
