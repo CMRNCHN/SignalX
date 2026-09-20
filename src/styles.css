@@ -538,15 +538,16 @@ input[type="radio"] {
 .nav {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-top: 8px;
+  gap: 2px;
+  margin-top: 4px;
 }
 
 .nav-btn {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  justify-content: center;
+  gap: 0;
+  padding: 4px;
 }
 
 .nav-btn-label {
@@ -554,6 +555,10 @@ input[type="radio"] {
   align-items: center;
   gap: 10px;
   min-width: 0;
+}
+
+.nav-btn-label > span:not(.nav-ico) {
+  display: none;
 }
 
 .nav-ico {
@@ -582,14 +587,7 @@ input[type="radio"] {
 }
 
 .nav-count {
-  font-size: 11px;
-  font-weight: 500;
-  min-width: 1.4em;
-  text-align: center;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--surface-2);
-  color: var(--text);
+  display: none;
 }
 
 .nav-btn,
