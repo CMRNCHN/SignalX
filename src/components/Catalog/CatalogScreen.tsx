@@ -366,7 +366,7 @@ export function CatalogScreen({
                   onContextMenu={(e) => {
                     const items = getProductContextMenuItems(p, {
                       onEdit: (product) => onEdit(product),
-                      onAdjustStock: (product) => onAdjustStock(product, 0),
+                      onAdjustStock: (product) => onSelectId(product.id),
                       onDelete: (id) => onDelete(id),
                     }, (msg) => {
                       console.log(msg);

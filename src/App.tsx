@@ -57,6 +57,8 @@ import { CatalogScreen } from "./components/Catalog/CatalogScreen";
 import { SearchScreen } from "./components/Search/SearchScreen";
 import { PeopleScreen } from "./components/People/PeopleScreen";
 import { buildDirectory } from "./components/People/people";
+import { PageDashboard, PageNoticeBar } from "./components/Dashboard/PageDashboard";
+import { catalogDashboard, homeDashboard, messagesDashboard, ordersDashboard, peopleDashboard } from "./components/Dashboard/dashboards";
 import { matchingMessages, matchingOrders, matchingPeople, matchingProducts, type SearchScope } from "./globalSearch";
 import { OrdersScreen, EMPTY_ORDER_FILTER, type OrderFilterState } from "./components/Orders/OrdersScreen";
 import { SalesScreen } from "./components/Sales/SalesScreen";
@@ -71,15 +73,18 @@ import { AuditScreen } from "./components/Audit/AuditScreen";
 import { AttachmentPreview } from "./attachmentPreview";
 import { InvoiceExport } from "./components/InvoiceExport";
 import {
+  IconAccount,
   IconAudit,
   IconBolt,
   IconCatalog,
   IconCompose,
   IconContacts,
   IconImage,
+  IconLink,
   IconMessages,
   IconOrders,
   IconOutbox,
+  IconSales,
   IconSearch,
   IconX,
   IconExport,
@@ -144,7 +149,7 @@ const NAV_GROUPS: NavItem[][] = [
   [
     { id: "catalog", label: "Catalog", ico: <IconCatalog /> },
     { id: "orders", label: "Orders", ico: <IconOrders /> },
-    { id: "sales", label: "Sales", ico: <IconAudit /> },
+    { id: "sales", label: "Sales", ico: <IconSales /> },
     { id: "invoice-export", label: "Export", ico: <IconExport /> },
   ],
   [
@@ -335,6 +340,7 @@ export default function App() {
   const [session, setSession] = useState<SessionStatus | null>(null);
   const [sessionPin, setSessionPin] = useState("");
   const [unlockId, setUnlockId] = useState<string | null>(null);
+  const [unlockError, setUnlockError] = useState<string | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [addNumber, setAddNumber] = useState("");
   const [addPin, setAddPin] = useState("");
@@ -361,6 +367,7 @@ export default function App() {
     setStatusState(msg);
   };
   const [searchQ, setSearchQ] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [searchLiveQ, setSearchLiveQ] = useState("");
   const [searchScope, setSearchScope] = useState<SearchScope>("messages");
   const [peopleSearchQuery, setPeopleSearchQuery] = useState("");
@@ -738,8 +745,11 @@ export default function App() {
 
   const focusSearch = useCallback(() => {
     setShortcutsOpen(false);
-    searchInputRef.current?.focus();
-    searchInputRef.current?.select();
+    setSearchOpen(true);
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    });
   }, []);
   const goShortcutPanel = useCallback(
     (id: "threads" | "people" | "catalog" | "orders" | "sales" | "settings") => {
@@ -1893,9 +1903,11 @@ export default function App() {
     setRosterBusy(false);
     if (!res.success) {
       setStatus(res.error);
+      setUnlockError(res.error);
       return;
     }
     setSessionPin("");
+    setUnlockError(null);
     applySession(res.data);
     setStatus("Unlocked");
     await bootstrap();
@@ -1961,14 +1973,6 @@ export default function App() {
         .filter(Boolean)
         .join(" ")}
     >
-      <PanelResizer
-        column="rail"
-        seam="rail"
-        label="Resize sidebar"
-        onBegin={beginDrag}
-        onReset={resetColumn}
-        onNudge={nudge}
-      />
       {panelLayout.listKey && (
         <PanelResizer
           column={panelLayout.listKey}
@@ -2009,7 +2013,10 @@ export default function App() {
                   key={a.id}
                   type="button"
                   className={unlockId === a.id ? "lock-account active" : "lock-account"}
-                  onClick={() => setUnlockId(a.id)}
+                  onClick={() => {
+                    setUnlockId(a.id);
+                    setUnlockError(null);
+                  }}
                 >
                   <span className="lock-account-label">{a.label || a.e164 || `…${a.last4}`}</span>
                   <span className="lock-account-meta">
@@ -2039,6 +2046,7 @@ export default function App() {
             >
               {rosterBusy ? "Unlocking…" : "Unlock"}
             </button>
+            {unlockError && <p className="hint tight warn-text">{unlockError}</p>}
             {session.linked_unseen.length > 0 && (
               <p className="hint tight">
                 Linked but not in roster: {session.linked_unseen.join(", ")}. Add them in Settings
@@ -2049,27 +2057,23 @@ export default function App() {
         </div>
       )}
       <aside className="rail">
-        <div className="brand">
-          <span className="brand-mark">SignalX</span>
-          <span className={`health health-${tone}`} title={healthLabel(health)} />
+        <div className="brand" data-label={`SignalX — ${healthLabel(health)}`}>
+          <span className={`health health-${tone}`} aria-hidden />
         </div>
 
-        <label className="field-label">Account</label>
         <div className="account-switch">
           <button
             type="button"
-            className="account-label account-label-btn"
-            title={accountNumber ?? undefined}
+            className="nav-btn"
+            data-label={session?.locked ? "Locked — click to unlock" : accountNumber ?? "Not configured"}
+            aria-label="Account"
             aria-expanded={accountMenuOpen}
             onClick={() => setAccountMenuOpen((o) => !o)}
           >
-            <span className="account-label-text">
-              {session?.locked
-                ? "Locked"
-                : accountNumber ?? "Not configured"}
-            </span>
-            <span className="account-chevron" aria-hidden>
-              ▾
+            <span className="nav-btn-label">
+              <span className="nav-ico" aria-hidden>
+                <IconAccount />
+              </span>
             </span>
           </button>
           {accountMenuOpen && (
@@ -2100,71 +2104,101 @@ export default function App() {
         </div>
 
         {setupNeeded && (
-          <div className="setup-banner">
-            <p>Link this Mac to start receiving Signal messages.</p>
-            <button type="button" className="action-btn primary" onClick={openDeviceLinkSetup}>
-              Open device link
-            </button>
-          </div>
+          <button
+            type="button"
+            className="nav-btn"
+            data-label="Link this Mac to start receiving Signal messages"
+            aria-label="Link this Mac to start receiving Signal messages"
+            onClick={openDeviceLinkSetup}
+          >
+            <span className="nav-btn-label">
+              <span className="nav-ico" aria-hidden>
+                <IconLink />
+              </span>
+            </span>
+          </button>
         )}
 
-        <div className="rail-status" aria-label="System status">
+        <div className="rail-status-chips" aria-label="System status">
           <span
-            className={`rail-chip ${ai?.configured && ai.ollama_reachable ? "ok" : "warn"}`}
-            title={
+            className={`rail-chip-dot ${ai?.configured && ai.ollama_reachable ? "ok" : "warn"}`}
+            data-label={`AI: ${
               ai?.configured
                 ? ai.ollama_reachable
                   ? ai.ollama_model || "ollama"
                   : "unreachable"
                 : "not configured"
-            }
-          >
-            AI
-          </span>
+            }`}
+          />
           {autoSettings?.enabled && (
-            <span className="rail-chip danger" title="Auto-reply on">
-              Auto
-            </span>
+            <span className="rail-chip-dot danger" data-label="Auto-reply on" />
           )}
           {ivrSettings?.enabled && (
-            <span className="rail-chip ok" title="Buyer menu on">
-              IVR
-            </span>
+            <span className="rail-chip-dot ok" data-label="Buyer menu on" />
           )}
         </div>
 
-        <form
-          className={panel === "search" ? "rail-search active" : "rail-search"}
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!searchQ.trim()) return;
-            setPanel("search");
-            void onSearch();
-          }}
-        >
-          <IconSearch className="rail-search-ico" />
-          <input
-            ref={searchInputRef}
-            value={searchQ}
-            onChange={(e) => {
-              const v = e.target.value;
-              setSearchQ(v);
-              if (v.trim()) setPanel("search");
+        <div className="rail-search-wrap">
+          <button
+            type="button"
+            className={searchOpen || panel === "search" ? "nav-btn active" : "nav-btn"}
+            data-label="Search"
+            aria-label="Search"
+            onClick={() => {
+              setSearchOpen(true);
+              requestAnimationFrame(() => searchInputRef.current?.focus());
             }}
-            placeholder="Search"
-            aria-label="Search Messages, People, Catalog, and Orders"
-          />
-          {searchQ && (
-            <button
-              type="button"
-              className="icon-btn tiny"
-              onClick={() => setSearchQ("")}
-              aria-label="Clear search"
+          >
+            <span className="nav-btn-label">
+              <span className="nav-ico" aria-hidden>
+                <IconSearch />
+              </span>
+            </span>
+          </button>
+          {(searchOpen || panel === "search") && (
+            <form
+              className="rail-search-pop"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!searchQ.trim()) return;
+                setPanel("search");
+                void onSearch();
+              }}
             >
-              <IconX />
-            </button>
+              <IconSearch className="rail-search-ico" />
+              <input
+                ref={searchInputRef}
+                value={searchQ}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setSearchQ(v);
+                  if (v.trim()) setPanel("search");
+                }}
+                onBlur={() => {
+                  if (!searchQ.trim() && panel !== "search") setSearchOpen(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setSearchOpen(false);
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
+                placeholder="Search"
+                aria-label="Search Messages, People, Catalog, and Orders"
+              />
+              {searchQ && (
+                <button
+                  type="button"
+                  className="icon-btn tiny"
+                  onClick={() => setSearchQ("")}
+                  aria-label="Clear search"
+                >
+                  <IconX />
+                </button>
+              )}
+            </form>
           )}
-        </form>
+        </div>
 
         <nav className="nav">
           {NAV_GROUPS.map((group, gi) => (
@@ -2174,6 +2208,8 @@ export default function App() {
                   key={id}
                   type="button"
                   className={panel === id ? "nav-btn active" : "nav-btn"}
+                  data-label={label}
+                  aria-label={label}
                   onClick={() => {
                     setPanel(id);
                   }}
@@ -2182,7 +2218,6 @@ export default function App() {
                     <span className="nav-ico" aria-hidden>
                       {ico}
                     </span>
-                    <span>{label}</span>
                   </span>
                   {id === "orders" && orders.length > 0 && (
                     <span className="nav-count">{orders.length}</span>
@@ -2204,19 +2239,33 @@ export default function App() {
 
         <div className="rail-foot">
           {status && (
-            <div className="rail-status" role="status">
-              <span>{status}</span>
-              <button type="button" className="ghost-btn" onClick={() => setStatus(null)}>
-                Dismiss
-              </button>
-            </div>
+            <button
+              type="button"
+              className="nav-btn"
+              data-label="Dismiss"
+              aria-label="Dismiss message"
+              title={status}
+              onClick={() => setStatus(null)}
+            >
+              <span className="nav-btn-label">
+                <span className="nav-ico" aria-hidden>
+                  <IconX />
+                </span>
+              </span>
+            </button>
           )}
           <button
             type="button"
-            className="ghost-btn"
+            className="nav-btn"
+            data-label="Export chat"
+            aria-label="Export chat"
             onClick={() => void api.exportAccount("json").then((r) => setStatus(errMsg(r) || "Chat export complete"))}
           >
-            Export chat
+            <span className="nav-btn-label">
+              <span className="nav-ico" aria-hidden>
+                <IconExport />
+              </span>
+            </span>
           </button>
         </div>
       </aside>
@@ -2391,46 +2440,72 @@ export default function App() {
       )}
 
       {panel === "people" && (
-        <PeopleScreen
-          contacts={contacts}
-          groups={groups}
-          customers={customers}
-          threads={threads}
-          orders={orders}
-          selectedKey={peopleKey}
-          onSelectKey={setPeopleKey}
-          onOpenChat={(threadId) => {
-            setSelectedId(threadId);
-            setPanel("threads");
-          }}
-          onNavigate={(target) => {
-            if (target === "orders" && peopleKey) {
-              const person = contacts.find((c) => c.contact_id === peopleKey);
-              const group = groups.find((g) => g.group_id === peopleKey);
-              setSelectedId(person?.contact_id ?? group?.group_id ?? peopleKey);
-              setOrderFilter((f) => ({ ...f, thisThread: true }));
+          <PeopleScreen
+            topNotice={
+              <PageNoticeBar
+                card={
+                  peopleDashboard(directory, money, {
+                    openPerson: (key) => setPeopleKey(key),
+                    openChat: (threadId) => {
+                      setSelectedId(threadId);
+                      setPanel("threads");
+                    },
+                    goAddPerson: () => {},
+                    goHaventHeardList: () => {},
+                  }).cards[0]
+                }
+              />
             }
-            setPanel(target);
-          }}
-          onRefresh={() => void refreshMeta()}
-          setStatus={setStatus}
-          money={money}
-          fmtTime={fmtTime}
-          initials={initials}
-          avatarTint={avatarTint}
-          contactForm={contactForm}
-          setContactForm={setContactForm}
-          addContact={addContact}
-          groupForm={groupForm}
-          setGroupForm={setGroupForm}
-          createGroup={createGroup}
-          searchQuery={peopleSearchQuery}
-          searchQueryTick={peopleSearchTick}
-        />
+            contacts={contacts}
+            groups={groups}
+            customers={customers}
+            threads={threads}
+            orders={orders}
+            selectedKey={peopleKey}
+            onSelectKey={setPeopleKey}
+            onOpenChat={(threadId) => {
+              setSelectedId(threadId);
+              setPanel("threads");
+            }}
+            onNavigate={(target) => {
+              if (target === "orders" && peopleKey) {
+                const person = contacts.find((c) => c.contact_id === peopleKey);
+                const group = groups.find((g) => g.group_id === peopleKey);
+                setSelectedId(person?.contact_id ?? group?.group_id ?? peopleKey);
+                setOrderFilter((f) => ({ ...f, thisThread: true }));
+              }
+              setPanel(target);
+            }}
+            onRefresh={() => void refreshMeta()}
+            setStatus={setStatus}
+            money={money}
+            fmtTime={fmtTime}
+            initials={initials}
+            avatarTint={avatarTint}
+            contactForm={contactForm}
+            setContactForm={setContactForm}
+            addContact={addContact}
+            groupForm={groupForm}
+            setGroupForm={setGroupForm}
+            createGroup={createGroup}
+            searchQuery={peopleSearchQuery}
+            searchQueryTick={peopleSearchTick}
+          />
       )}
 
       {(panel === "catalog" || panel === "products") && (
         <CatalogScreen
+          topNotice={
+            <PageNoticeBar
+              card={
+                catalogDashboard(products, orders, {
+                  openProduct: (id) => setCatalogProductId(id),
+                  goAddProduct: () => {},
+                  goLowStockList: () => {},
+                }).cards[0]
+              }
+            />
+          }
           products={products}
           selectedId={catalogProductId}
           onSelectId={setCatalogProductId}
@@ -2739,6 +2814,17 @@ export default function App() {
 
       {panel === "orders" && (
         <OrdersScreen
+          topNotice={
+            <PageNoticeBar
+              card={
+                ordersDashboard(orders, money, {
+                  openOrder: (id) => setFocusOrderId(id),
+                  goNewOrder: () => {},
+                  goUnpaidList: () => {},
+                }).cards[0]
+              }
+            />
+          }
           orders={orders}
           filteredOrders={filteredOrders}
           orderFilter={orderFilter}
@@ -3581,28 +3667,51 @@ export default function App() {
         panel === "outbox") ? null : (
       <main className="convo">
         {!selectedId ? (
-          <div className="convo-empty">
-            <h1>SignalX</h1>
-            <p>Select a thread, or jump to a quick action.</p>
-            <div className="quick-actions">
-              <button type="button" className="quick-action" onClick={() => setPanel("threads")}>
-                <strong>Messages</strong>
-                <span>Open the thread list and reply over Signal.</span>
-              </button>
-              <button type="button" className="quick-action" onClick={() => setPanel("catalog")}>
-                <strong>Catalog</strong>
-                <span>Manage products, packs, and stock.</span>
-              </button>
-              <button type="button" className="quick-action" onClick={() => setPanel("orders")}>
-                <strong>Orders</strong>
-                <span>Place orders and queue invoices via outbox.</span>
-              </button>
-              <button type="button" className="quick-action" onClick={() => setPanel("people")}>
-                <strong>People</strong>
-                <span>Who they are — chats, orders, and notes.</span>
-              </button>
-            </div>
-          </div>
+          <PageDashboard
+            {...homeDashboard(
+              {
+                messages: messagesDashboard(threads, outboxSummary, contacts, groups, {
+                  openThread: (id) => setSelectedId(id),
+                  goOutbox: () => setPanel("outbox"),
+                  goNewMessage: () => setNewDmOpen(true),
+                }),
+                catalog: catalogDashboard(products, orders, {
+                  openProduct: (id) => {
+                    setPanel("catalog");
+                    setCatalogProductId(id);
+                  },
+                  goAddProduct: () => setPanel("catalog"),
+                  goLowStockList: () => setPanel("catalog"),
+                }),
+                orders: ordersDashboard(orders, money, {
+                  openOrder: (id) => {
+                    setPanel("orders");
+                    setFocusOrderId(id);
+                  },
+                  goNewOrder: () => setPanel("orders"),
+                  goUnpaidList: () => setPanel("orders"),
+                }),
+                people: peopleDashboard(directory, money, {
+                  openPerson: (key) => {
+                    setPanel("people");
+                    setPeopleKey(key);
+                  },
+                  openChat: (threadId) => {
+                    setSelectedId(threadId);
+                    setPanel("threads");
+                  },
+                  goAddPerson: () => setPanel("people"),
+                  goHaventHeardList: () => setPanel("people"),
+                }),
+              },
+              {
+                goMessages: () => setPanel("threads"),
+                goCatalog: () => setPanel("catalog"),
+                goOrders: () => setPanel("orders"),
+                goPeople: () => setPanel("people"),
+              },
+            )}
+          />
         ) : (
           <>
             <header className="convo-head">
@@ -3734,11 +3843,9 @@ export default function App() {
                   {m.attachment_path && <AttachmentPreview path={m.attachment_path} />}
                 </div>
               ))}
-              {(outbox.length
-                ? outbox
-                : USE_FIXTURES && selectedId
-                  ? fxOutbox.filter((o) => o.thread_id === selectedId && o.state !== "sent")
-                  : []
+              {(selectedId
+                ? globalOutbox.filter((o) => o.thread_id === selectedId)
+                : []
               ).map((o) => (
                 <div key={o.id} className={`bubble out pending state-${o.state}`}>
                   <div className="bubble-meta">
