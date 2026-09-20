@@ -3440,6 +3440,14 @@ fn delete_contact_meta(state: &AppState, contact_id: String) -> Value {
   match state.contact_store.delete(&account_id, cid) {
     Ok(changed) => {
       if changed {
+        state.commerce_audit.record(
+          "contact_deleted",
+          &format!("Contact {} deleted", contact_id),
+          None,
+          None,
+          None,
+          now_ms(),
+        );
       }
       ok(json!(changed))
     }
@@ -3591,6 +3599,14 @@ fn delete_group_meta(state: &AppState, group_id: String) -> Value {
   match state.group_store.delete(&account_id, gid) {
     Ok(changed) => {
       if changed {
+        state.commerce_audit.record(
+          "group_deleted",
+          &format!("Group {} deleted", group_id),
+          None,
+          None,
+          None,
+          now_ms(),
+        );
       }
       ok(json!(changed))
     }
@@ -5020,6 +5036,14 @@ fn set_auto_reply_settings(state: &AppState, settings: AutoReplySettings) -> Val
   match state.auto_reply.set_settings(settings) {
     Ok(s) => {
       emit_event("auto-reply://settings", s.clone());
+      state.commerce_audit.record(
+        "auto_reply_settings_updated",
+        "Auto-reply settings modified",
+        None,
+        None,
+        None,
+        now_ms(),
+      );
       ok_t(s)
     }
     Err(e) => err(e),
@@ -5414,6 +5438,14 @@ fn set_ivr_settings(state: &AppState, settings: IvrSettings) -> Value {
   match state.ivr.set_settings(settings) {
     Ok(s) => {
       emit_event("ivr://settings", s.clone());
+      state.commerce_audit.record(
+        "ivr_settings_updated",
+        "IVR settings modified",
+        None,
+        None,
+        None,
+        now_ms(),
+      );
       ok_t(s)
     }
     Err(e) => err(e),
@@ -5441,6 +5473,14 @@ fn reset_ivr_menus(state: &AppState) -> Value {
   match state.ivr.reset_menus_to_demo() {
     Ok(m) => {
       emit_event("ivr://menus", m.clone());
+      state.commerce_audit.record(
+        "ivr_menus_reset",
+        "IVR menus reset to default",
+        None,
+        None,
+        None,
+        now_ms(),
+      );
       ok_t(m)
     }
     Err(e) => err(e),
@@ -5578,6 +5618,16 @@ fn delete_product(state: &AppState, id: String) -> Value {
   match state.commerce.delete_product(id.trim()) {
     Ok(deleted) => {
       emit_event("commerce://products", state.commerce.list_products());
+      if deleted {
+        state.commerce_audit.record(
+          "product_deleted",
+          &format!("Product {} deleted", id),
+          None,
+          Some(id.clone()),
+          None,
+          now_ms(),
+        );
+      }
       ok(json!({ "deleted": deleted }))
     }
     Err(e) => err(e),
