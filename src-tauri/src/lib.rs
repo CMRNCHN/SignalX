@@ -1289,6 +1289,7 @@ impl GroupStore {
     let gid = Self::resolve_group_key(&m.groups, group_id);
     let entry = m.groups.entry(gid.clone()).or_insert_with(|| GroupMeta {
       group_id: gid.clone(),
+      lifecycle: "active".to_string(),
       ..Default::default()
     });
 
@@ -1691,6 +1692,7 @@ impl ContactStore {
     let m = d.entry(account_id.to_string()).or_insert_with(ContactMetaData::v1);
     let entry = m.contacts.entry(cid.clone()).or_insert_with(|| ContactMeta {
       contact_id: cid.clone(),
+      lifecycle: "active".to_string(),
       ..Default::default()
     });
 
@@ -1826,6 +1828,7 @@ impl ContactStore {
     let m = d.entry(account_id.to_string()).or_insert_with(ContactMetaData::v1);
     let entry = m.contacts.entry(cid.clone()).or_insert_with(|| ContactMeta {
       contact_id: cid.clone(),
+      lifecycle: "active".to_string(),
       ..Default::default()
     });
     let _ = patch; // keep patch struct for future expansion; currently unused
@@ -1844,6 +1847,7 @@ impl ContactStore {
     let m = d.entry(account_id.to_string()).or_insert_with(ContactMetaData::v1);
     let entry = m.contacts.entry(cid.clone()).or_insert_with(|| ContactMeta {
       contact_id: cid.clone(),
+      lifecycle: "active".to_string(),
       ..Default::default()
     });
 
@@ -4913,11 +4917,11 @@ fn ensure_outbox_worker(state: AppState, account_id: String) {
               emit_message_new(&account_id, &msg);
             }
             Err(e) => {
+              // Message was already sent to signal-cli successfully.
+              // Persist failure doesn't mean resend; just log it.
+              // Don't change state to "failed" or retry, since delivery succeeded.
               eprintln!("OUTBOX: failed to persist sent state for {}: {}", item.id, e);
-              item.state = "failed".to_string();
-              item.last_error = Some(format!("failed to persist sent state: {}", e));
-              let _ = state.outbox_store.update_item_async(&account_id, item.clone()).await;
-              emit_outbox_item_updated(&item);
+              // State remains "sent" in memory; item may be lost on restart but won't be resent.
             }
           }
         }
