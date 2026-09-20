@@ -87,6 +87,14 @@ import {
   IconSettings,
   IconSparkle,
 } from "./navIcons";
+import {
+  ContextMenu,
+  useContextMenu,
+  MenuEditor,
+  getMenuByObjectType,
+  updateMenu,
+  type MenuItem as ContextMenuItem,
+} from "./components/ContextMenu";
 
 export type Panel =
   | "threads"
@@ -415,6 +423,9 @@ export default function App() {
   const [newDmOpen, setNewDmOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [productImagesReal, setProductImages] = useState<Record<string, string>>({});
+  const contextMenu = useContextMenu();
+  const [menuEditorOpen, setMenuEditorOpen] = useState(false);
+  const [editingMenu, setEditingMenu] = useState<string | null>(null);
 
   // Dev-only design data. Real state always wins; fixtures fill in only while a
   // list is genuinely empty, and USE_FIXTURES is false in any release build.
@@ -1838,6 +1849,36 @@ export default function App() {
     setSettingsTab("account");
   };
 
+  const getThreadContextMenu = (threadId: string): ContextMenuItem[] => {
+    const menu = getMenuByObjectType("thread");
+    if (!menu) return [];
+    return menu.items.map((item) => ({
+      id: item.id,
+      label: item.label,
+      danger: item.danger,
+      action: () => {
+        switch (item.actionType) {
+          case "exportThread":
+            void onExportThread();
+            break;
+          case "copyId":
+            navigator.clipboard.writeText(threadId);
+            setStatus("Copied thread ID");
+            break;
+          case "deleteThread":
+            if (window.confirm("Delete this thread?")) {
+              setSelectedId(null);
+              setStatus("Thread deleted (local only)");
+            }
+            break;
+          case "divider":
+            break;
+        }
+      },
+    }));
+  };
+
+
   const onUnlock = async () => {
     const id = unlockId || session?.accounts[0]?.id;
     if (!id) {
@@ -2260,6 +2301,21 @@ export default function App() {
                 onClick={() => {
                   setSelectedId(t.id);
                   setPanel("threads");
+                }}
+                onContextMenu={(e) => {
+                  const items = getThreadContextMenu(t.id);
+                  const menu = getMenuByObjectType("thread");
+                  contextMenu.openContextMenu(
+                    e,
+                    [
+                      ...items,
+                      { id: "divider", label: "", action: () => {}, divider: true },
+                    ],
+                    t.id,
+                  );
+                  if (menu) {
+                    setEditingMenu(menu.id);
+                  }
                 }}
               >
                 <span className="avatar-dot" style={avatarTint(t.id)} aria-hidden>
@@ -3841,6 +3897,51 @@ export default function App() {
           </aside>
         ))}
       <ShortcutsHelp open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+      <ContextMenu
+        position={contextMenu.position}
+        items={contextMenu.items}
+        onClose={contextMenu.closeContextMenu}
+        onEditMenu={() => {
+          if (editingMenu) {
+            const menu = getMenuByObjectType(
+              editingMenu.includes("thread")
+                ? "thread"
+                : editingMenu.includes("order")
+                  ? "order"
+                  : editingMenu.includes("product")
+                    ? "product"
+                    : "contact",
+            );
+            if (menu) {
+              setMenuEditorOpen(true);
+            }
+          }
+        }}
+      />
+
+      {menuEditorOpen && editingMenu && (
+        <MenuEditor
+          menu={getMenuByObjectType(
+            editingMenu.includes("thread")
+              ? "thread"
+              : editingMenu.includes("order")
+                ? "order"
+                : editingMenu.includes("product")
+                  ? "product"
+                  : "contact",
+          ) || { id: "", name: "", objectType: "", items: [] }}
+          onSave={(menu) => {
+            updateMenu(menu);
+            setMenuEditorOpen(false);
+            setStatus("Menu updated");
+          }}
+          onClose={() => {
+            setMenuEditorOpen(false);
+            setEditingMenu(null);
+          }}
+        />
+      )}
     </div>
   );
 }
