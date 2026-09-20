@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use base64::Engine;
 use uuid::Uuid;
+use sha2::{Sha256, Digest};
 
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Mutex as AsyncMutex;
@@ -2549,6 +2550,22 @@ struct AutoReplyAuditEntry {
   /// "sent" | "draft_only" | "blocked"
   outcome: String,
   reason: Option<String>,
+  /// Actor that triggered this event (always "system" for auto-reply)
+  #[serde(default)]
+  actor: Option<String>,
+}
+
+fn redact_draft(full_draft: &str) -> String {
+  let mut hasher = Sha256::new();
+  hasher.update(full_draft.as_bytes());
+  let hash = format!("{:x}", hasher.finalize());
+  let hash_short = &hash[..16.min(hash.len())];
+  let summary = if full_draft.len() > 50 {
+    format!("{}... [#{}]", &full_draft[..50], hash_short)
+  } else {
+    format!("{} [#{}]", full_draft, hash_short)
+  };
+  summary
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -3440,6 +3457,14 @@ fn delete_contact_meta(state: &AppState, contact_id: String) -> Value {
   match state.contact_store.delete(&account_id, cid) {
     Ok(changed) => {
       if changed {
+        state.commerce_audit.record(
+          "contact_deleted",
+          &format!("Contact {} deleted", contact_id),
+          None,
+          None,
+          None,
+          now_ms(),
+        );
       }
       ok(json!(changed))
     }
@@ -3591,6 +3616,14 @@ fn delete_group_meta(state: &AppState, group_id: String) -> Value {
   match state.group_store.delete(&account_id, gid) {
     Ok(changed) => {
       if changed {
+        state.commerce_audit.record(
+          "group_deleted",
+          &format!("Group {} deleted", group_id),
+          None,
+          None,
+          None,
+          now_ms(),
+        );
       }
       ok(json!(changed))
     }
@@ -4563,10 +4596,11 @@ fn trigger_agent_draft(state: AppState, agent: AgentModeConfig, ts: ThreadState,
               account_id: account_id.clone(),
               thread_id: tid.clone(),
               message_id: mid.clone(),
-              draft: draft.clone(),
+              draft: redact_draft(&draft),
               created_at: now_ms(),
               outcome: outcome.to_string(),
               reason,
+              actor: Some("system".to_string()),
             };
             state_for_auto.auto_reply.append_audit(entry.clone());
             emit_auto_reply_audit(&entry);
@@ -4577,10 +4611,11 @@ fn trigger_agent_draft(state: AppState, agent: AgentModeConfig, ts: ThreadState,
               account_id: account_id.clone(),
               thread_id: tid.clone(),
               message_id: mid.clone(),
-              draft: draft.clone(),
+              draft: redact_draft(&draft),
               created_at: now_ms(),
               outcome: "draft_only".to_string(),
               reason: Some(reason),
+              actor: Some("system".to_string()),
             };
             state_for_auto.auto_reply.append_audit(entry.clone());
             emit_auto_reply_audit(&entry);
@@ -5020,6 +5055,14 @@ fn set_auto_reply_settings(state: &AppState, settings: AutoReplySettings) -> Val
   match state.auto_reply.set_settings(settings) {
     Ok(s) => {
       emit_event("auto-reply://settings", s.clone());
+      state.commerce_audit.record(
+        "auto_reply_settings_updated",
+        "Auto-reply settings modified",
+        None,
+        None,
+        None,
+        now_ms(),
+      );
       ok_t(s)
     }
     Err(e) => err(e),
@@ -5414,6 +5457,14 @@ fn set_ivr_settings(state: &AppState, settings: IvrSettings) -> Value {
   match state.ivr.set_settings(settings) {
     Ok(s) => {
       emit_event("ivr://settings", s.clone());
+      state.commerce_audit.record(
+        "ivr_settings_updated",
+        "IVR settings modified",
+        None,
+        None,
+        None,
+        now_ms(),
+      );
       ok_t(s)
     }
     Err(e) => err(e),
@@ -5441,6 +5492,14 @@ fn reset_ivr_menus(state: &AppState) -> Value {
   match state.ivr.reset_menus_to_demo() {
     Ok(m) => {
       emit_event("ivr://menus", m.clone());
+      state.commerce_audit.record(
+        "ivr_menus_reset",
+        "IVR menus reset to default",
+        None,
+        None,
+        None,
+        now_ms(),
+      );
       ok_t(m)
     }
     Err(e) => err(e),
@@ -5578,6 +5637,16 @@ fn delete_product(state: &AppState, id: String) -> Value {
   match state.commerce.delete_product(id.trim()) {
     Ok(deleted) => {
       emit_event("commerce://products", state.commerce.list_products());
+      if deleted {
+        state.commerce_audit.record(
+          "product_deleted",
+          &format!("Product {} deleted", id),
+          None,
+          Some(id.clone()),
+          None,
+          now_ms(),
+        );
+      }
       ok(json!({ "deleted": deleted }))
     }
     Err(e) => err(e),

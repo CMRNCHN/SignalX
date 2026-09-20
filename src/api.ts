@@ -197,6 +197,7 @@ export interface AutoReplyAuditEntry {
   created_at: number;
   outcome: string;
   reason?: string | null;
+  actor?: string | null;
 }
 
 export interface SimpleAuditEntry {
@@ -205,6 +206,7 @@ export interface SimpleAuditEntry {
   created_at: number;
   summary: string;
   outcome: string;
+  actor?: string | null;
 }
 
 export interface ThreadAutoReplyStatus {
@@ -324,6 +326,7 @@ export interface CommerceAuditEvent {
   product_id?: string | null;
   thread_id?: string | null;
   created_at: number;
+  actor?: string | null;
 }
 
 export interface SalesStatusRow {
