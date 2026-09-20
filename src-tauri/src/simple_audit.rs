@@ -12,6 +12,9 @@ pub struct SimpleAuditEntry {
   pub created_at: i64,
   pub summary: String,
   pub outcome: String,
+  /// Actor that triggered this event: "participant", "automatic", "manual", etc.
+  #[serde(default)]
+  pub actor: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -68,12 +71,17 @@ impl SimpleAuditStore {
   }
 
   pub fn record(&self, thread_id: &str, summary: &str, outcome: &str, now: i64) {
+    self.record_with_actor(thread_id, summary, outcome, now, None);
+  }
+
+  pub fn record_with_actor(&self, thread_id: &str, summary: &str, outcome: &str, now: i64, actor: Option<&str>) {
     let ev = SimpleAuditEntry {
       id: Uuid::new_v4().to_string(),
       thread_id: thread_id.to_string(),
       created_at: now,
       summary: summary.to_string(),
       outcome: outcome.to_string(),
+      actor: actor.map(|s| s.to_string()),
     };
     {
       let mut list = self.entries.lock().unwrap();

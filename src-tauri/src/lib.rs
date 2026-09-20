@@ -2550,6 +2550,9 @@ struct AutoReplyAuditEntry {
   /// "sent" | "draft_only" | "blocked"
   outcome: String,
   reason: Option<String>,
+  /// Actor that triggered this event (always "system" for auto-reply)
+  #[serde(default)]
+  actor: Option<String>,
 }
 
 fn redact_draft(full_draft: &str) -> String {
@@ -4597,6 +4600,7 @@ fn trigger_agent_draft(state: AppState, agent: AgentModeConfig, ts: ThreadState,
               created_at: now_ms(),
               outcome: outcome.to_string(),
               reason,
+              actor: Some("system".to_string()),
             };
             state_for_auto.auto_reply.append_audit(entry.clone());
             emit_auto_reply_audit(&entry);
@@ -4611,6 +4615,7 @@ fn trigger_agent_draft(state: AppState, agent: AgentModeConfig, ts: ThreadState,
               created_at: now_ms(),
               outcome: "draft_only".to_string(),
               reason: Some(reason),
+              actor: Some("system".to_string()),
             };
             state_for_auto.auto_reply.append_audit(entry.clone());
             emit_auto_reply_audit(&entry);
