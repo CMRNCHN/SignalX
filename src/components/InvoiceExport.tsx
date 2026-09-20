@@ -75,8 +75,6 @@ export function InvoiceExport() {
   return (
     <div className="invoice-export">
       <div className="invoice-form">
-        <h2>Invoice Export</h2>
-
         <div className="form-section">
           <h3>Header Info</h3>
           <div className="form-group">
@@ -94,7 +92,7 @@ export function InvoiceExport() {
             </div>
             <div className="form-group">
               <label>Date</label>
-              <input value={date} onChange={e => setDate(e.target.value)} />
+              <input value={date} onChange={e => setDate(e.target.value)} placeholder="MM/DD" title="Format: MM/DD" />
             </div>
           </div>
         </div>

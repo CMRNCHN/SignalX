@@ -337,22 +337,20 @@ export function ProfileRail(props: Props) {
         <div className="profile-section-title">Contact</div>
         {!group && (
           <div className="profile-toggles">
-            <label className="toggle compact">
-              <input
-                type="checkbox"
-                checked={!!contact?.favorite}
-                onChange={(e) => onToggleFavorite(e.target.checked)}
-              />
+            <button
+              type="button"
+              className={contact?.favorite ? "chip active" : "chip"}
+              onClick={() => onToggleFavorite(!contact?.favorite)}
+            >
               Favorite
-            </label>
-            <label className="toggle compact">
-              <input
-                type="checkbox"
-                checked={!!contact?.muted}
-                onChange={(e) => onToggleMute(e.target.checked)}
-              />
+            </button>
+            <button
+              type="button"
+              className={contact?.muted ? "chip active" : "chip"}
+              onClick={() => onToggleMute(!contact?.muted)}
+            >
               Muted
-            </label>
+            </button>
           </div>
         )}
         {customer ? (
@@ -408,7 +406,9 @@ export function ProfileRail(props: Props) {
         <div className="profile-section-title">Quick actions</div>
         {actionsBusy && <p className="hint tight">Suggesting…</p>}
         <div className="profile-chips">
-          {actions.map((a, i) => (
+          {actions
+            .filter((a) => !(a.kind === "link_customer" && !customer && !group))
+            .map((a, i) => (
             <button
               key={`${a.kind}-${i}`}
               type="button"

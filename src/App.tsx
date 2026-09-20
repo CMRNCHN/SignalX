@@ -2994,8 +2994,8 @@ export default function App() {
         <section className="thread-col wide">
           <header className="col-head">
             <div>
-              <div>Export</div>
-              <div className="col-head-sub">Generate formatted invoices for Signal</div>
+              <div>Invoice Export</div>
+              <div className="col-head-sub">Format and send via Signal</div>
             </div>
           </header>
           <InvoiceExport />
@@ -3912,8 +3912,9 @@ export default function App() {
                       void onSend();
                     }
                   }}
-                  placeholder="Write a message… (Enter to send, Shift+Enter for newline)"
+                  placeholder="Write a message…"
                   rows={3}
+                  title="Enter to send, Shift+Enter for newline"
                 />
                 <button
                   type="button"

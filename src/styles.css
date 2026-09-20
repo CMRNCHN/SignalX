@@ -840,7 +840,7 @@ input[type="radio"] {
 .thread-row.active {
   background: var(--surface-3);
   border-color: var(--border-strong);
-  box-shadow: var(--edge-hi), var(--shadow-md), inset 2px 0 0 var(--accent);
+  box-shadow: var(--edge-hi), var(--shadow-md), inset 3px 0 0 var(--accent);
 }
 
 .avatar-dot {
@@ -1505,7 +1505,8 @@ input[type="radio"] {
 }
 
 .bubble {
-  max-width: min(640px, 85%);
+  max-width: 65%;
+  min-width: 48px;
   padding: 10px 14px;
   border-radius: var(--radius);
   border: 1px solid transparent;
@@ -1563,6 +1564,7 @@ input[type="radio"] {
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.4;
+  font-size: 15px;
 }
 
 .bubble-err {

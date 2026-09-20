@@ -875,7 +875,7 @@ export function PeopleScreen({
                   className={selected.favorite ? "chip active" : "chip"}
                   onClick={() => void patchPerson(selected, { favorite: !selected.favorite })}
                 >
-                  Favourite
+                  Favorite
                 </button>
                 <button
                   type="button"
