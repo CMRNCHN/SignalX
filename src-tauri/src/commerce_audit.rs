@@ -92,7 +92,9 @@ impl CommerceAuditStore {
         list.drain(0..drain);
       }
     }
-    let _ = self.persist();
+    if let Err(e) = self.persist() {
+      eprintln!("CommerceAuditStore: failed to persist: {}", e);
+    }
   }
 
   pub fn list(&self, limit: usize) -> Vec<CommerceAuditEvent> {

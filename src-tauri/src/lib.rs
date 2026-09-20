@@ -2444,7 +2444,8 @@ fn normalize_incoming_message(
 
 fn normalize_outgoing_message(my_number: &str, thread_id: &str, recipient: &str, content: &str) -> (Message, Vec<String>) {
   let ts = now_ms();
-  let id = format!("outgoing-{}-{}", recipient, ts);
+  let uuid = uuid::Uuid::new_v4().simple();
+  let id = format!("outgoing-{}-{}-{}", recipient, ts, uuid);
   let msg = Message {
     id,
     thread_id: thread_id.to_string(),
@@ -4772,7 +4773,10 @@ fn ensure_outbox_worker(state: AppState, account_id: String) {
       if !state.session.is_current(my_gen) {
         item.state = "queued".to_string();
         item.last_error = Some("session switched".to_string());
-        let _ = state.outbox_store.update_item_async(&account_id, item).await;
+        // Use sync update to ensure revert completes before breaking
+        if let Err(e) = state.outbox_store.update_item(&account_id, item) {
+          eprintln!("OUTBOX: failed to revert sending→queued on session switch: {}", e);
+        }
         break;
       }
 
@@ -4879,28 +4883,45 @@ fn ensure_outbox_worker(state: AppState, account_id: String) {
         Ok(_) => {
           item.state = "sent".to_string();
           item.last_error = None;
-          let _ = state.outbox_store.update_item_async(&account_id, item.clone()).await;
-          if let Ok(summary) = state.outbox_store.summary_async(&account_id).await {
-            emit_outbox_updated(&account_id, Some(&item.thread_id), summary);
-          }
-          emit_outbox_item_updated(&item);
+          match state.outbox_store.update_item_async(&account_id, item.clone()).await {
+            Ok(_) => {
+              if let Ok(summary) = state.outbox_store.summary_async(&account_id).await {
+                emit_outbox_updated(&account_id, Some(&item.thread_id), summary);
+              }
+              emit_outbox_item_updated(&item);
 
-          // Persist + emit normalized message (canonical flow).
-          let ts = state.account_manager.get_or_create(&account_id);
-          let (msg, participants) = normalize_outgoing_message(&my_number, &item.thread_id, &raw_recipient, &item.content);
-          let ts2 = ts.clone();
-          let msg2 = msg.clone();
-          let participants2 = participants.clone();
-          let _ = tokio::task::spawn_blocking(move || {
-            ts2.add_message(msg2, participants2);
-          })
-          .await;
-          emit_message_new(&account_id, &msg);
+              // Persist + emit normalized message (canonical flow).
+              let ts = state.account_manager.get_or_create(&account_id);
+              let (msg, participants) = normalize_outgoing_message(&my_number, &item.thread_id, &raw_recipient, &item.content);
+              let ts2 = ts.clone();
+              let msg2 = msg.clone();
+              let participants2 = participants.clone();
+              let _ = tokio::task::spawn_blocking(move || {
+                ts2.add_message(msg2, participants2);
+              })
+              .await;
+              emit_message_new(&account_id, &msg);
+            }
+            Err(e) => {
+              eprintln!("OUTBOX: failed to persist sent state for {}: {}", item.id, e);
+              item.state = "failed".to_string();
+              item.last_error = Some(format!("failed to persist sent state: {}", e));
+              let _ = state.outbox_store.update_item_async(&account_id, item.clone()).await;
+              emit_outbox_item_updated(&item);
+            }
+          }
         }
         Err(e) => {
           item.state = "failed".to_string();
           item.last_error = Some(e);
-          let _ = state.outbox_store.update_item_async(&account_id, item.clone()).await;
+          match state.outbox_store.update_item_async(&account_id, item.clone()).await {
+            Ok(_) => {
+              emit_outbox_item_updated(&item);
+            }
+            Err(persist_err) => {
+              eprintln!("OUTBOX: failed to persist failed state for {}: {}", item.id, persist_err);
+            }
+          }
           if let Ok(summary) = state.outbox_store.summary_async(&account_id).await {
             emit_outbox_updated(&account_id, Some(&item.thread_id), summary);
           }
@@ -7242,5 +7263,23 @@ mod foundation_tests {
     });
     assert!(roster.verify_unlock("not-a-member", "").unwrap_err().contains("unknown"));
     assert!(roster.verify_unlock("../escape", "").unwrap_err().contains("unknown"));
+  }
+
+  #[test]
+  fn outgoing_message_ids_are_unique_under_burst() {
+    let my_number = "+12025551212";
+    let thread_id = "dm:+13105551234";
+    let recipient = "+13105551234";
+
+    // Generate 50 message IDs to same recipient in rapid succession
+    let mut ids = std::collections::HashSet::new();
+    for i in 0..50 {
+      let content = format!("message {}", i);
+      let (msg, _) = normalize_outgoing_message(my_number, thread_id, recipient, &content);
+      ids.insert(msg.id);
+    }
+
+    // All 50 IDs must be distinct
+    assert_eq!(ids.len(), 50, "Message IDs must be unique under high-frequency sends to same recipient");
   }
 }

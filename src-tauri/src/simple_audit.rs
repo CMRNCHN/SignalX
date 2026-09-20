@@ -83,7 +83,9 @@ impl SimpleAuditStore {
         list.drain(0..drain);
       }
     }
-    let _ = self.persist();
+    if let Err(e) = self.persist() {
+      eprintln!("SimpleAuditStore: failed to persist: {}", e);
+    }
   }
 
   pub fn list(&self, limit: usize) -> Vec<SimpleAuditEntry> {

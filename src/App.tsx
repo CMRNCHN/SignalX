@@ -3742,7 +3742,7 @@ export default function App() {
               ).map((o) => (
                 <div key={o.id} className={`bubble out pending state-${o.state}`}>
                   <div className="bubble-meta">
-                    <span>{o.state}</span>
+                    <span>{o.state}{o.attempt_count > 0 ? ` (attempt ${o.attempt_count})` : ""}</span>
                     <span>{fmtTime(o.created_at)}</span>
                   </div>
                   <div className="bubble-body">{o.content}</div>
@@ -3800,7 +3800,7 @@ export default function App() {
                   value={composer}
                   onChange={(e) => setComposer(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+                    if (e.key === "Enter" && !e.shiftKey && !(e as any).isComposing) {
                       e.preventDefault();
                       void onSend();
                     }
