@@ -357,6 +357,7 @@ export default function App() {
   const [outbox, setOutbox] = useState<OutboxItem[]>([]);
   const [globalOutboxReal, setGlobalOutbox] = useState<OutboxItem[]>([]);
   const [outboxSummary, setOutboxSummary] = useState<OutboxSummary | null>(null);
+  const [selectedOutboxIds, setSelectedOutboxIds] = useState<Set<string>>(new Set());
   const [composer, setComposer] = useState("");
   const [attachFile, setAttachFile] = useState<File | null>(null);
   const [attachPreview, setAttachPreview] = useState<string | null>(null);
@@ -2910,7 +2911,44 @@ export default function App() {
             <button type="button" className="action-btn" onClick={() => void refreshGlobalOutbox()}>
               Refresh
             </button>
-            {globalOutbox.length > 0 && (
+            {selectedOutboxIds.size > 0 && (
+              <>
+                <span className="col-meta">{selectedOutboxIds.size} selected</span>
+                <button
+                  type="button"
+                  className="action-btn"
+                  onClick={() => {
+                    const failedIds = Array.from(selectedOutboxIds).filter(
+                      id => globalOutbox.find(o => o.id === id)?.state === "failed"
+                    );
+                    if (failedIds.length > 0) {
+                      void Promise.all(failedIds.map(id => onRetry(id))).then(() => {
+                        setSelectedOutboxIds(new Set());
+                        void refreshGlobalOutbox();
+                      });
+                    }
+                  }}
+                  disabled={globalOutbox.filter(o => selectedOutboxIds.has(o.id) && o.state === "failed").length === 0}
+                >
+                  Retry all
+                </button>
+                <button
+                  type="button"
+                  className="action-btn danger"
+                  onClick={() => {
+                    if (confirm(`Delete ${selectedOutboxIds.size} message${selectedOutboxIds.size === 1 ? "" : "s"}?`)) {
+                      void Promise.all(Array.from(selectedOutboxIds).map(id => onDeleteOutbox(id))).then(() => {
+                        setSelectedOutboxIds(new Set());
+                        void refreshGlobalOutbox();
+                      });
+                    }
+                  }}
+                >
+                  Clear selected
+                </button>
+              </>
+            )}
+            {globalOutbox.length > 0 && selectedOutboxIds.size === 0 && (
               <span className="col-meta">Last refreshed just now</span>
             )}
           </div>
@@ -2929,7 +2967,18 @@ export default function App() {
             )}
             {globalOutbox.map((o) => (
               <div key={o.id}>
-                <div className={`outbox-row state-${o.state}`}>
+                <div
+                  className={`outbox-row state-${o.state} ${selectedOutboxIds.has(o.id) ? "selected" : ""}`}
+                  onClick={(e) => {
+                    if ((e.target as HTMLElement).tagName !== "BUTTON") {
+                      const next = new Set(selectedOutboxIds);
+                      if (next.has(o.id)) next.delete(o.id);
+                      else next.add(o.id);
+                      setSelectedOutboxIds(next);
+                    }
+                  }}
+                  style={{ cursor: "pointer" }}
+                >
                   <div className="outbox-to">
                     <strong>{threadTitle(o.thread_id, contacts, groups, customers)}</strong>
                   </div>
