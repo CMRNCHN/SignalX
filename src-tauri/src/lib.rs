@@ -79,6 +79,34 @@ const DEFAULT_OLLAMA_TIMEOUT_SECS: u64 = 120;
 const OLLAMA_PROBE_TIMEOUT_SECS: u64 = 3;
 
 // --------------------
+// Input Validation (M9)
+// --------------------
+/// Validate that a string is not empty after trimming
+fn validate_nonempty(value: &str, field: &str) -> Result<String, String> {
+  let trimmed = value.trim();
+  if trimmed.is_empty() {
+    return Err(format!("{} cannot be empty", field));
+  }
+  Ok(trimmed.to_string())
+}
+
+/// Validate that a numeric value is in range
+fn validate_in_range(value: i64, min: i64, max: i64, field: &str) -> Result<(), String> {
+  if value < min || value > max {
+    return Err(format!("{} must be between {} and {}", field, min, max));
+  }
+  Ok(())
+}
+
+/// Validate that a value is one of allowed options
+fn validate_enum(value: &str, allowed: &[&str], field: &str) -> Result<(), String> {
+  if !allowed.contains(&value) {
+    return Err(format!("{} must be one of: {}", field, allowed.join(", ")));
+  }
+  Ok(())
+}
+
+// --------------------
 // API helpers
 // --------------------
 fn ok(data: Value) -> Value {
@@ -3437,6 +3465,17 @@ fn set_contact_meta(state: &AppState, contact_id: String, patch: ContactMetaPatc
   if cid.is_empty() {
     return err("contact_id cannot be empty".to_string());
   }
+  // M9: Validate patch fields
+  if let Some(Some(name)) = &patch.display_name {
+    if name.len() > 255 {
+      return err("display_name must be <= 255 chars".to_string());
+    }
+  }
+  if let Some(Some(alias)) = &patch.alias {
+    if alias.len() > 255 {
+      return err("alias must be <= 255 chars".to_string());
+    }
+  }
   match state.contact_store.upsert_patch(&account_id, cid, patch) {
     Ok(m) => {
       ok_t(m)
@@ -3595,6 +3634,17 @@ fn set_group_meta(state: &AppState, group_id: String, patch: GroupMetaPatch) -> 
   let gid = group_id.trim();
   if gid.is_empty() {
     return err("group_id cannot be empty".to_string());
+  }
+  // M9: Validate patch fields
+  if let Some(Some(name)) = &patch.display_name {
+    if name.len() > 255 {
+      return err("display_name must be <= 255 chars".to_string());
+    }
+  }
+  if let Some(notes) = &patch.notes {
+    if notes.len() > 2000 {
+      return err("notes must be <= 2000 chars".to_string());
+    }
   }
   match state.group_store.upsert_patch(&account_id, gid, patch) {
     Ok(m) => {

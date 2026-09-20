@@ -1,0 +1,147 @@
+<style>
+  :root{
+    --bg:#0b0b0e; --bg-lift:#131317; --bg-2:#18181b; --bg-3:#27272a;
+    --border:hsl(240 5% 19%); --border-strong:hsl(240 5% 34%);
+    --fg:#fafafa; --fg-dim:#a1a1aa; --fg-dimmer:#71717a;
+    --a-green:#4ade80; --a-amber:#f5b942; --a-teal:#2dd4bf; --a-purple:#a78bfa; --a-pink:#f472b6; --a-rose:#fb7185; --a-blue:#60a5fa;
+  }
+  .pd-canvas{ background:var(--bg); color:var(--fg); font-family:-apple-system,BlinkMacSystemFont,sans-serif; padding:28px; border:1px solid var(--border); border-radius:14px; max-width:800px; margin:0 auto; }
+  .pd-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:20px; }
+  .pd-title{ font-size:22px; font-weight:700; margin:0; }
+  .pd-sub{ font-size:13px; color:var(--fg-dim); margin-top:4px; }
+
+  .stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:10px; }
+  .tile{ background:var(--bg-2); border:1px solid var(--border); border-radius:12px; padding:14px; }
+  .tile .k{ font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--fg-dimmer); font-weight:600; }
+  .tile .v{ font-size:23px; font-weight:700; margin-top:5px; }
+  .tile .who{ font-size:11px; color:var(--fg-dim); margin-top:4px; }
+  .tile .qa{ display:inline-block; margin-top:9px; font-size:11px; font-weight:650; color:var(--fg); background:var(--bg-3); border:1px solid var(--border-strong); border-radius:999px; padding:4px 10px; }
+
+  .stats-caption{ font-size:11.5px; color:var(--fg-dimmer); margin:0 0 24px; }
+
+  .section-label{ font-size:12px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--fg-dimmer); margin:26px 0 12px; display:flex; align-items:center; gap:6px; }
+  .section-label .dot{ width:5px;height:5px;border-radius:50%; background:var(--a-purple); }
+
+  .pcard{ background:var(--bg-2); border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin-bottom:10px; display:flex; gap:12px; }
+  .pcard .av{ width:34px;height:34px;border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:#0b0b0e; }
+  .pcard .body{ flex:1; min-width:0; }
+  .pcard .kicker{ font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; margin-bottom:3px; }
+  .pcard .who{ font-size:13px; font-weight:650; margin-bottom:2px; }
+  .pcard .txt{ font-size:13px; color:var(--fg-dim); line-height:1.45; }
+  .pcard .txt b{ color:var(--fg); font-weight:600; }
+  .pcard .ask{ font-size:12.5px; color:var(--fg-dimmer); margin-top:8px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .btn{ border:1px solid var(--border-strong); background:var(--bg-3); color:var(--fg); font-size:12px; font-weight:600; padding:5px 12px; border-radius:999px; }
+  .btn.primary{ background:var(--fg); color:#0b0b0e; border-color:var(--fg); }
+  .btn.ghost{ background:transparent; }
+
+  .more{ text-align:center; font-size:12px; color:var(--fg-dimmer); margin-top:8px; }
+</style>
+
+<h2>People dashboard — v3, people-specific stats + broader pattern mix</h2>
+<p class="subtitle">Stat row replaced with customer-relationship segments instead of inbox metrics; each tile has a one-click action. Pattern cards now span several of the 10 categories, not just reorder cadence.</p>
+
+<div class="pd-canvas">
+  <div class="pd-head">
+    <div>
+      <p class="pd-title">People</p>
+      <p class="pd-sub">9 people · updated just now</p>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="tile">
+      <div class="k">New this week</div>
+      <div class="v">2</div>
+      <div class="who">Ana Reyes, Priya Anand</div>
+      <div class="qa">Message both →</div>
+    </div>
+    <div class="tile">
+      <div class="k">Haven't heard from</div>
+      <div class="v">3</div>
+      <div class="who">Quiet 14+ days, were active</div>
+      <div class="qa">Review list →</div>
+    </div>
+    <div class="tile">
+      <div class="k">Due to reorder</div>
+      <div class="v">2</div>
+      <div class="who">Past their usual pace</div>
+      <div class="qa">Send reminders →</div>
+    </div>
+    <div class="tile">
+      <div class="k">Needs follow-up</div>
+      <div class="v">1</div>
+      <div class="who">Shipped, no check-in</div>
+      <div class="qa">Draft check-in →</div>
+    </div>
+  </div>
+  <p class="stats-caption">Each tile is a live segment — click the count to filter the list, or the action to act on everyone in it at once.</p>
+
+  <p class="section-label"><span class="dot"></span>Patterns worth knowing</p>
+
+  <div class="pcard">
+    <div class="av" style="background:var(--a-teal)">DR</div>
+    <div class="body">
+      <div class="kicker" style="color:var(--a-teal)">Order pattern</div>
+      <div class="who">Dev Raman</div>
+      <div class="txt">Orders roughly <b>every 9 days</b> — it's been 11. Likely due.</div>
+      <div class="ask">
+        <span class="btn primary">Remind me next order</span>
+        <span class="btn ghost">No thanks</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="pcard">
+    <div class="av" style="background:var(--a-rose)">?</div>
+    <div class="body">
+      <div class="kicker" style="color:var(--a-rose)">Quality check</div>
+      <div class="who">Harvest Co-op</div>
+      <div class="txt">Asked <b>"can we push pickup to 9am?"</b> 6 hours ago — still unanswered.</div>
+      <div class="ask">
+        <span class="btn primary">Open thread</span>
+        <span class="btn ghost">Snooze</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="pcard">
+    <div class="av" style="background:var(--a-amber)">AR</div>
+    <div class="body">
+      <div class="kicker" style="color:var(--a-amber)">New customer</div>
+      <div class="who">Ana Reyes</div>
+      <div class="txt">First order shipped Sep 11, no check-in sent. New customers who get one <b>re-order 2x more often</b> here.</div>
+      <div class="ask">
+        <span class="btn primary">Draft check-in</span>
+        <span class="btn ghost">Skip</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="pcard">
+    <div class="av" style="background:var(--a-blue)">W</div>
+    <div class="body">
+      <div class="kicker" style="color:var(--a-blue)">Marketing segment</div>
+      <div class="who">#wholesale · 4 people</div>
+      <div class="txt">Tagged wholesale but haven't gotten <b>this month's restock flyer</b> — sent to retail already.</div>
+      <div class="ask">
+        <span class="btn primary">Send to segment</span>
+        <span class="btn ghost">Not now</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="pcard">
+    <div class="av" style="background:var(--a-purple)">SM</div>
+    <div class="body">
+      <div class="kicker" style="color:var(--a-purple)">Haven't heard from</div>
+      <div class="who">Saturday Market Crew</div>
+      <div class="txt">Active every week for 2 months, quiet since <b>Sep 10</b> (5 days). Muted — might be missing replies.</div>
+      <div class="ask">
+        <span class="btn primary">Send a nudge</span>
+        <span class="btn ghost">Leave it</span>
+      </div>
+    </div>
+  </div>
+
+  <p class="more">+ 4 more people with something worth a look</p>
+</div>
