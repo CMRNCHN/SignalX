@@ -1642,15 +1642,17 @@ input[type="radio"] {
   display: grid;
   grid-template-columns: auto 1fr auto;
   gap: 10px;
-  align-items: end;
+  align-items: center;
 }
 
 .composer textarea {
   resize: none;
   min-height: 64px;
+  max-height: 200px;
   background: transparent;
   border: 0;
   padding: 6px 8px;
+  overflow-y: auto;
 }
 
 .composer textarea:focus {

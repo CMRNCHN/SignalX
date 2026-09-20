@@ -73,7 +73,6 @@ import { AuditScreen } from "./components/Audit/AuditScreen";
 import { AttachmentPreview } from "./attachmentPreview";
 import { InvoiceExport } from "./components/InvoiceExport";
 import {
-  IconAccount,
   IconAudit,
   IconBolt,
   IconCatalog,
@@ -2072,7 +2071,7 @@ export default function App() {
           >
             <span className="nav-btn-label">
               <span className="nav-ico" aria-hidden>
-                <IconAccount />
+                <IconContacts />
               </span>
             </span>
           </button>

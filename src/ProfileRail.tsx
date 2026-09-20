@@ -356,7 +356,7 @@ export function ProfileRail(props: Props) {
           </div>
         )}
         {customer ? (
-          <p className="hint tight">Customer linked · {customer.display_name || customer.id.slice(0, 8)}</p>
+          <span className="status-pill status-ok">Linked</span>
         ) : !group ? (
           <button type="button" className="action-btn primary" onClick={onLinkCustomer}>
             Link as customer
