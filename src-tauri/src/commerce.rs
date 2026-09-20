@@ -17,7 +17,11 @@ fn default_measure_unit() -> String {
   "ea".to_string()
 }
 
-/// Optional pack/size you sell (e.g. “Half oz”, “100 g”).
+fn default_lifecycle() -> String {
+  "active".to_string()
+}
+
+/// Optional pack/size you sell (e.g. "Half oz", "100 g").
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SellOption {
   #[serde(default)]
@@ -849,6 +853,7 @@ impl CommerceStore {
             image_path: String::new(),
             sell_options: vec![],
             low_stock_threshold_milli: 0,
+            lifecycle: "active".to_string(),
             updated_at: now,
           }
         }

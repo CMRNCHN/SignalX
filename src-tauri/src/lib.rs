@@ -1132,6 +1132,9 @@ struct GroupMeta {
   /// Opt-in auto-reply for this group. Off by default; groups stay off unless explicitly enabled.
   #[serde(default)]
   auto_reply_enabled: bool,
+  /// Group lifecycle: "active" (default) or "archived" (soft-deleted).
+  #[serde(default = "default_lifecycle")]
+  lifecycle: String,
   updated_at: i64,
 }
 
