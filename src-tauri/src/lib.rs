@@ -22,6 +22,7 @@ mod uom;
 mod backup;
 mod session;
 mod simple_audit;
+mod validation;
 use ivr::{thread_allowed, IvrMenus, IvrSettings, IvrStore};
 use commerce::{format_catalog_list, CommerceStore, Customer, Product};
 use commerce_audit::CommerceAuditStore;
@@ -5675,10 +5676,31 @@ fn list_products(state: &AppState) -> Value {
   ok_t(state.commerce.list_products())
 }
 
-fn upsert_product(state: &AppState, product: Product) -> Value {
+fn upsert_product(state: &AppState, mut product: Product) -> Value {
   if let Some(v) = reject_if_import_locked(state) {
     return v;
   }
+
+  // Validate input
+  if let Err(e) = validation::validate_name(&product.name, "Product name") {
+    return err(e.0);
+  }
+  if let Err(e) = validation::validate_price(product.price_cents) {
+    return err(e.0);
+  }
+  if product.quantity_base_milli > 0 {
+    let qty_in_base = product.quantity_base_milli as f64 / 1000.0;
+    if let Err(e) = validation::validate_stock_quantity(qty_in_base) {
+      return err(e.0);
+    }
+  }
+
+  // Normalize SKU
+  match validation::validate_and_normalize_sku(&product.sku) {
+    Ok(normalized_sku) => product.sku = normalized_sku,
+    Err(e) => return err(e.0),
+  }
+
   match state.commerce.upsert_product(product.clone(), now_ms()) {
     Ok(p) => {
       let is_new = product.id.is_empty();
@@ -5918,6 +5940,11 @@ fn upsert_customer(state: &AppState, customer: Customer) -> Value {
   if let Some(v) = reject_if_import_locked(state) {
     return v;
   }
+
+  if let Err(e) = validation::validate_name(&customer.display_name, "Customer name") {
+    return err(e.0);
+  }
+
   match state.commerce.upsert_customer(customer.clone(), now_ms()) {
     Ok(c) => {
       let is_new = customer.id.is_empty();
