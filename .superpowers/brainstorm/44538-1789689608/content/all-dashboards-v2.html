@@ -1,0 +1,303 @@
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b0b0e; --bg-lift:#131317; --bg-2:#18181b; --bg-3:#27272a;
+    --border:hsl(240 5% 19%); --border-strong:hsl(240 5% 34%);
+    --fg:#fafafa; --fg-dim:#a1a1aa; --fg-dimmer:#71717a;
+    --urgent:#c96a5c; --urgent-soft:rgba(201,106,92,.14);
+    --sans: Inter, ui-sans-serif, system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, monospace;
+  }
+  body{ font-family:var(--sans); }
+  .page{ background:var(--bg); border:1px solid var(--border); border-radius:16px; padding:26px 26px 24px; margin-bottom:32px; max-width:820px; }
+  .page-head{ margin-bottom:18px; }
+  .page-title{ font:700 22px/1.2 var(--sans); color:var(--fg); margin:0; }
+  .page-sub{ font:400 13px/1.4 var(--sans); color:var(--fg-dim); margin-top:4px; }
+
+  .stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:10px; }
+  .tile{ background:var(--bg-2); border:1px solid var(--border); border-radius:12px; padding:13px 14px; }
+  .tile.urgent{ border-color:var(--urgent); background:linear-gradient(var(--urgent-soft), var(--urgent-soft)), var(--bg-2); }
+  .tile .top{ display:flex; align-items:center; gap:8px; margin-bottom:9px; }
+  .tile .top svg{ width:24px; height:24px; flex:none; overflow:visible; }
+  .tile.urgent .top svg{ stroke:var(--urgent); }
+  .tile .k{ font:600 10px/1.2 var(--mono); text-transform:uppercase; letter-spacing:.04em; color:var(--fg-dimmer); }
+  .tile.urgent .k{ color:var(--urgent); }
+  .tile .v{ font:700 22px/1 var(--sans); color:var(--fg); margin-bottom:3px; }
+  .tile .who{ font:400 10.5px/1.3 var(--sans); color:var(--fg-dim); }
+
+  .stats-caption{ font:400 11.5px/1.4 var(--sans); color:var(--fg-dimmer); margin:0 0 22px; }
+
+  .section-label{ font:700 12px/1.2 var(--sans); letter-spacing:.02em; color:var(--fg-dimmer); margin:0 0 12px; text-transform:uppercase; display:flex; align-items:center; gap:6px; }
+  .section-label .dot{ width:5px;height:5px;border-radius:50%; background:var(--fg-dim); }
+
+  .pcard{ background:var(--bg-2); border:1px solid var(--border); border-radius:12px; padding:13px 15px; margin-bottom:9px; display:flex; gap:12px; }
+  .pcard.urgent{ border-left:3px solid var(--urgent); }
+  .pcard .av{ width:32px;height:32px;border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; font:700 11px var(--sans); color:#0b0b0e; background:var(--fg-dim); }
+  .pcard .av.icon-av{ background:var(--bg-3); color:var(--fg); overflow:visible; }
+  .pcard.urgent .av.icon-av{ color:var(--urgent); }
+  .pcard .av.icon-av svg{ width:20px; height:20px; overflow:visible; }
+  .pcard .body{ flex:1; min-width:0; }
+  .pcard .kicker{ font:700 10px/1.2 var(--mono); letter-spacing:.03em; text-transform:uppercase; margin-bottom:3px; color:var(--fg-dimmer); }
+  .pcard.urgent .kicker{ color:var(--urgent); }
+  .pcard .who{ font:650 13px/1.2 var(--sans); margin-bottom:2px; color:var(--fg); }
+  .pcard .txt{ font:400 13px/1.45 var(--sans); color:var(--fg-dim); }
+  .pcard .txt b{ color:var(--fg); font-weight:600; }
+  .pcard .ask{ font:400 12.5px/1.3 var(--sans); color:var(--fg-dimmer); margin-top:8px; display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+
+  .shortcuts{ display:flex; gap:8px; margin-top:16px; }
+  .sbtn{ border:1px solid var(--border-strong); background:var(--bg-3); color:var(--fg); font:600 12px var(--sans); padding:7px 13px; border-radius:999px; }
+  .sbtn.primary{ background:var(--fg); color:#0b0b0e; border-color:var(--fg); }
+
+  .btn{ border:1px solid var(--border-strong); background:var(--bg-3); color:var(--fg); font:600 12px var(--sans); padding:5px 12px; border-radius:999px; }
+  .btn.primary{ background:var(--fg); color:#0b0b0e; border-color:var(--fg); }
+  .btn.urgent{ background:var(--urgent); color:#0b0b0e; border-color:var(--urgent); }
+  .btn.ghost{ background:transparent; }
+
+  svg.icon{ stroke:var(--fg); fill:none; }
+</style>
+
+<h2>All four dashboards — trimmed to 2 actions each, restrained urgent accent</h2>
+<p class="subtitle">Shortcuts row cut to one primary + one secondary per page (the rest either dropped or already covered by a card's own action). One warm, desaturated accent color (not a red/amber/green system) reserved only for genuinely time-critical items — the rest of the page stays exactly as monochrome as before.</p>
+
+<!-- ================= MESSAGES ================= -->
+<div class="page">
+  <div class="page-head">
+    <p class="page-title">Messages</p>
+    <p class="page-sub">14 threads · updated just now</p>
+  </div>
+
+  <div class="stats">
+    <div class="tile">
+      <div class="top"><svg class="icon echo" viewBox="0 0 64 64"><g class="core" stroke-width="2.6"><rect x="10" y="20" width="44" height="28" rx="4"/><path d="M10 22 L32 38 L54 22"/><circle cx="50" cy="16" r="5" fill="var(--fg)" stroke="none"/></g></svg><div class="k">Unread</div></div>
+      <div class="v">15</div><div class="who">across 6 threads</div>
+    </div>
+    <div class="tile urgent">
+      <div class="top"><svg class="icon echo" viewBox="0 0 64 64"><g class="core" stroke-width="2.4"><path d="M18 20 h24 a6 6 0 0 1 6 6 v10 a6 6 0 0 1 -6 6 h-10 l-6 6 v-6 h-8 a6 6 0 0 1 -6 -6 v-10 a6 6 0 0 1 6 -6 z"/><circle cx="46" cy="42" r="9"/><path d="M46 37 v5 l4 3"/></g></svg><div class="k">Needs reply</div></div>
+      <div class="v">4</div><div class="who">1 waiting over 6h</div>
+    </div>
+    <div class="tile">
+      <div class="top"><svg class="icon echo" viewBox="0 0 64 64"><g class="core" stroke-width="2.4"><path d="M14 20 h30 M14 30 h30 M14 40 h20"/><path d="M46 44 v-14 M40 36 L46 30 L52 36"/></g></svg><div class="k">Queued</div></div>
+      <div class="v">3</div><div class="who">not yet sent</div>
+    </div>
+    <div class="tile">
+      <div class="top"><svg class="icon echo" viewBox="0 0 64 64"><g class="core" stroke-width="2.4"><path d="M18 20 h24 a6 6 0 0 1 6 6 v10 a6 6 0 0 1 -6 6 h-10 l-6 6 v-6 h-8 a6 6 0 0 1 -6 -6 v-10 a6 6 0 0 1 6 -6 z"/><path d="M32 26 L25 39 L31 39 L27 50 L41 35 L34 35 Z" fill="var(--fg)" stroke="none"/></g></svg><div class="k">Auto-reply on</div></div>
+      <div class="v">2</div><div class="who">threads on autopilot</div>
+    </div>
+  </div>
+  <p class="stats-caption">Tap a tile to filter the thread list to that segment.</p>
+
+  <p class="section-label"><span class="dot"></span>Worth a look</p>
+  <div class="pcard urgent">
+    <div class="av">HC</div>
+    <div class="body">
+      <div class="kicker">Unanswered 6h+</div>
+      <div class="who">Harvest Co-op</div>
+      <div class="txt">Asked <b>"can we push pickup to 9am?"</b> — still open.</div>
+      <div class="ask"><span class="btn urgent">Open thread</span><span class="btn ghost">Snooze</span></div>
+    </div>
+  </div>
+  <div class="pcard">
+    <div class="av">MV</div>
+    <div class="body">
+      <div class="kicker">Stuck in outbox</div>
+      <div class="who">Marta Vieira</div>
+      <div class="txt">A reply has been <b>queued for 26 minutes</b> without sending.</div>
+      <div class="ask"><span class="btn primary">Review outbox</span><span class="btn ghost">Dismiss</span></div>
+    </div>
+  </div>
+
+  <div class="shortcuts">
+    <span class="sbtn primary">＋ New message</span>
+    <span class="sbtn">Open oldest unread</span>
+  </div>
+</div>
+
+<!-- ================= CATALOG ================= -->
+<div class="page">
+  <div class="page-head">
+    <p class="page-title">Catalog</p>
+    <p class="page-sub">18 products · updated just now</p>
+  </div>
+
+  <div class="stats">
+    <div class="tile">
+      <div class="top"><svg class="icon echo" viewBox="0 0 64 64"><g class="core" stroke-width="2.4"><path d="M14 26 L32 16 L50 26 L50 46 L32 56 L14 46 Z"/><path d="M14 26 L32 36 L50 26 M32 36 v20"/></g></svg><div class="k">Low stock</div></div>
+      <div class="v">3</div><div class="who">below reorder line</div>
+    </div>
+    <div class="tile">
+      <div class="top"><svg class="icon echo" viewBox="0 0 64 64"><g class="core" stroke-width="2.4"><circle cx="32" cy="26" r="12"/><path d="M32 19 L34.5 24.5 L40 25.2 L36 29 L37 34.5 L32 31.8 L27 34.5 L28 29 L24 25.2 L29.5 24.5 Z" fill="var(--fg)" stroke="none"/><path d="M24 36 L20 54 L30 46 Z M40 36 L44 54 L34 46 Z"/></g></svg><div class="k">Best seller</div></div>
+      <div class="v">Colombia Washed</div><div class="who">6.2kg sold this week</div>
+    </div>
+    <div class="tile">
+      <div class="top"><svg class="icon echo" viewBox="0 0 64 64"><g class="core" stroke-width="2.4"><path d="M16 24 h32 v28 h-32 z M16 24 L32 14 L48 24"/><circle cx="46" cy="16" r="7"/><path d="M46 13 v6 M43 16 h6"/></g></svg><div class="k">New this week</div></div>
+      <div class="v">2</div><div class="who">added to catalog</div>
+    </div>
+    <div class="tile urgent">
+      <div class="top"><svg class="icon echo" viewBox="0 0 64 64"><g class="core" stroke-width="2.2"><path d="M14 26 L32 16 L50 26 L50 46 L32 56 L14 46 Z" stroke-dasharray="3 3"/><path d="M22 22 L42 50 M42 22 L22 50" stroke-width="2.4"/></g></svg><div class="k">Out of stock</div></div>
+      <div class="v">1</div><div class="who">Ethiopia Natural — Guji</div>
+    </div>
+  </div>
+  <p class="stats-caption">Tap a tile to filter the product list to that segment.</p>
+
+  <p class="section-label"><span class="dot"></span>Worth a look</p>
+  <div class="pcard">
+    <div class="av icon-av"><svg class="icon echo" viewBox="0 0 64 64"><g class="core" stroke-width="3"><path d="M14 26 L32 16 L50 26 L50 46 L32 56 L14 46 Z"/></g></svg></div>
+    <div class="body">
+      <div class="kicker">Reorder soon</div>
+      <div class="who">Colombia Washed — Huila</div>
+      <div class="txt"><b>2.1kg left</b>, selling ~1.2kg/week — under 2 weeks of stock at current pace.</div>
+      <div class="ask"><span class="btn primary">Reorder from supplier</span><span class="btn ghost">Not now</span></div>
+    </div>
+  </div>
+  <div class="pcard urgent">
+    <div class="av icon-av"><svg class="icon echo" viewBox="0 0 64 64"><g class="core" stroke-width="3"><path d="M22 22 L42 50 M42 22 L22 50"/></g></svg></div>
+    <div class="body">
+      <div class="kicker">Out of stock</div>
+      <div class="who">Ethiopia Natural — Guji</div>
+      <div class="txt">Sold out — <b>3 pending orders</b> may be waiting on this.</div>
+      <div class="ask"><span class="btn urgent">Restock now</span><span class="btn ghost">Mark discontinued</span></div>
+    </div>
+  </div>
+
+  <div class="shortcuts">
+    <span class="sbtn primary">＋ Add product</span>
+    <span class="sbtn">Review low stock (3)</span>
+  </div>
+</div>
+
+<!-- ================= ORDERS ================= -->
+<div class="page">
+  <div class="page-head">
+    <p class="page-title">Orders</p>
+    <p class="page-sub">6 open · updated just now</p>
+  </div>
+
+  <div class="stats">
+    <div class="tile">
+      <div class="top"><svg class="icon echo" viewBox="0 0 64 64"><g class="core" stroke-width="2.4"><path d="M16 14 h32 v34 l-6,-6 l-6,6 l-6,-6 l-6,6 l-6,-6 l-6,6 z"/><path d="M22 24 h20 M22 32 h20 M22 40 h12"/></g></svg><div class="k">Open orders</div></div>
+      <div class="v">6</div><div class="who">not yet fulfilled</div>
+    </div>
+    <div class="tile urgent">
+      <div class="top"><svg class="icon echo" viewBox="0 0 64 64"><g class="core" stroke-width="2.4"><circle cx="26" cy="30" r="12"/><circle cx="38" cy="34" r="12" opacity=".55"/></g></svg><div class="k">Pending invoice</div></div>
+      <div class="v">3</div><div class="who">$212 total, oldest 9 days</div>
+    </div>
+    <div class="tile">
+      <div class="top"><svg class="icon echo" viewBox="0 0 64 64"><g class="core" stroke-width="2.4"><path d="M16 24 h32 v28 h-32 z"/><path d="M24 32 L30 40 L44 20"/></g></svg><div class="k">Fulfilled</div></div>
+      <div class="v">11</div><div class="who">this week</div>
+    </div>
+    <div class="tile">
+      <div class="top"><svg class="icon echo" viewBox="0 0 64 64"><g class="core" stroke-width="2.4"><path d="M14 50 v-10 M26 50 v-16 M38 50 v-22 M50 50 v-28"/></g></svg><div class="k">Revenue</div></div>
+      <div class="v">$1,340</div><div class="who">+18% vs last week</div>
+    </div>
+  </div>
+  <p class="stats-caption">Tap a tile to filter the order list to that segment.</p>
+
+  <p class="section-label"><span class="dot"></span>Worth a look</p>
+  <div class="pcard urgent">
+    <div class="av icon-av"><svg class="icon echo" viewBox="0 0 64 64"><g class="core" stroke-width="3"><circle cx="26" cy="30" r="12"/><circle cx="38" cy="34" r="12" opacity=".5"/></g></svg></div>
+    <div class="body">
+      <div class="kicker">9 days overdue</div>
+      <div class="who">Order #1042 — Dev Raman</div>
+      <div class="txt">Invoiced 9 days ago, still unpaid — past your usual 5-day follow-up window.</div>
+      <div class="ask"><span class="btn urgent">Send reminder</span><span class="btn ghost">Mark as reviewed</span></div>
+    </div>
+  </div>
+  <div class="pcard">
+    <div class="av icon-av"><svg class="icon echo" viewBox="0 0 64 64"><g class="core" stroke-width="3"><path d="M14 50 v-10 M26 50 v-16 M38 50 v-22 M50 50 v-28"/></g></svg></div>
+    <div class="body">
+      <div class="kicker">Trend</div>
+      <div class="who">Wholesale segment</div>
+      <div class="txt">Wholesale orders are <b>up 40%</b> this month vs last — worth a bulk-pricing push.</div>
+      <div class="ask"><span class="btn primary">Message #wholesale</span><span class="btn ghost">Not now</span></div>
+    </div>
+  </div>
+
+  <div class="shortcuts">
+    <span class="sbtn primary">＋ New order</span>
+    <span class="sbtn">Send overdue invoices (3)</span>
+  </div>
+</div>
+
+<!-- ================= PEOPLE ================= -->
+<div class="page">
+  <div class="page-head">
+    <p class="page-title">People</p>
+    <p class="page-sub">9 people · updated just now</p>
+  </div>
+
+  <div class="stats">
+    <div class="tile">
+      <div class="top"><svg class="icon echo" viewBox="0 0 64 64"><g class="core" stroke-width="2.4"><path d="M20 44 C20 34 44 34 44 44"/><circle cx="32" cy="22" r="7"/></g></svg><div class="k">New this week</div></div>
+      <div class="v">2</div><div class="who">Ana Reyes, Priya Anand</div>
+    </div>
+    <div class="tile">
+      <div class="top"><svg class="icon echo" viewBox="0 0 64 64"><g class="core" stroke-width="2.2"><path d="M18 20 h24 a6 6 0 0 1 6 6 v10 a6 6 0 0 1 -6 6 h-10 l-6 6 v-6 h-8 a6 6 0 0 1 -6 -6 v-10 a6 6 0 0 1 6 -6 z"/><path d="M14 18 L50 42"/></g></svg><div class="k">Haven't heard</div></div>
+      <div class="v">3</div><div class="who">no activity 14+ days</div>
+    </div>
+    <div class="tile">
+      <div class="top"><svg class="icon echo" viewBox="0 0 64 64"><g class="core" stroke-width="2.6"><path d="M42 22 A14 14 0 1 0 44 34"/><path d="M40 16 L42 22 L36 24 Z" fill="var(--fg)" stroke="none"/></g></svg><div class="k">Due to reorder</div></div>
+      <div class="v">2</div><div class="who">past their usual pace</div>
+    </div>
+    <div class="tile">
+      <div class="top"><svg class="icon echo" viewBox="0 0 64 64"><g class="core" stroke-width="2.4"><path d="M24 14 v36"/><path d="M24 14 L42 20 L24 26 Z"/><circle cx="24" cy="50" r="2" fill="var(--fg)" stroke="none"/></g></svg><div class="k">Needs follow-up</div></div>
+      <div class="v">1</div><div class="who">shipped, no check-in</div>
+    </div>
+  </div>
+  <p class="stats-caption">Tap a tile to filter the people list to that segment.</p>
+
+  <p class="section-label"><span class="dot"></span>Patterns worth knowing</p>
+  <div class="pcard">
+    <div class="av">DR</div>
+    <div class="body">
+      <div class="kicker">Order pattern</div>
+      <div class="who">Dev Raman</div>
+      <div class="txt">Orders roughly <b>every 9 days</b> — it's been 11 since the last one.</div>
+      <div class="ask"><span class="btn primary">Remind me next order</span><span class="btn ghost">No thanks</span></div>
+    </div>
+  </div>
+  <div class="pcard">
+    <div class="av">AR</div>
+    <div class="body">
+      <div class="kicker">New customer</div>
+      <div class="who">Ana Reyes</div>
+      <div class="txt">First order shipped Sep 11, no check-in sent. New customers who get one <b>re-order 2x more often</b> here.</div>
+      <div class="ask"><span class="btn primary">Draft check-in</span><span class="btn ghost">Skip</span></div>
+    </div>
+  </div>
+
+  <div class="shortcuts">
+    <span class="sbtn primary">＋ Add person</span>
+    <span class="sbtn">Review haven't-heard-from (3)</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  const FRAGS = [
+    {tag:'path', d:'M50 14 l4 3', attrs:{'stroke-width':'1.3', opacity:'.35'}},
+    {tag:'polygon', points:'9,50 12,50 10,54', attrs:{opacity:'.3', fill:'var(--fg)', stroke:'none'}},
+    {tag:'path', d:'M8 15 l5 1', attrs:{'stroke-width':'1.1', opacity:'.28'}},
+  ];
+  document.querySelectorAll('svg.echo').forEach(svg => {
+    const core = svg.querySelector('.core');
+    if (!core) return;
+    const echo = (rot, dx, dy, op) => {
+      const g = core.cloneNode(true);
+      g.removeAttribute('class');
+      g.setAttribute('transform', `rotate(${rot} 32 32) translate(${dx} ${dy})`);
+      g.setAttribute('opacity', op);
+      svg.insertBefore(g, core);
+    };
+    echo(-8, -3, -2, 0.28);
+    echo(6, 2, 2, 0.48);
+    FRAGS.forEach(f => {
+      const el = document.createElementNS('http://www.w3.org/2000/svg', f.tag);
+      if (f.d) el.setAttribute('d', f.d);
+      if (f.points) el.setAttribute('points', f.points);
+      Object.entries(f.attrs).forEach(([k,v]) => el.setAttribute(k, v));
+      svg.appendChild(el);
+    });
+  });
+})();
+</script>

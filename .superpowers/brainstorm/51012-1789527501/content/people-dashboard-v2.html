@@ -1,0 +1,102 @@
+<style>
+  :root{
+    --bg:#0b0b0e; --bg-lift:#131317; --bg-2:#18181b; --bg-3:#27272a;
+    --border:hsl(240 5% 19%); --border-strong:hsl(240 5% 34%);
+    --fg:#fafafa; --fg-dim:#a1a1aa; --fg-dimmer:#71717a;
+    --a-green:#4ade80; --a-amber:#f5b942; --a-teal:#2dd4bf; --a-purple:#a78bfa; --a-pink:#f472b6; --a-rose:#fb7185;
+  }
+  .pd-canvas{ background:var(--bg); color:var(--fg); font-family:-apple-system,BlinkMacSystemFont,sans-serif; padding:28px; border:1px solid var(--border); border-radius:14px; max-width:760px; margin:0 auto; }
+  .pd-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:20px; }
+  .pd-title{ font-size:22px; font-weight:700; margin:0; }
+  .pd-sub{ font-size:13px; color:var(--fg-dim); margin-top:4px; }
+
+  .stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:22px; }
+  .tile{ background:var(--bg-2); border:1px solid var(--border); border-radius:12px; padding:14px; position:relative; overflow:hidden; }
+  .tile .k{ font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--fg-dimmer); font-weight:600; }
+  .tile .v{ font-size:23px; font-weight:700; margin-top:5px; }
+  .tile .spark{ position:absolute; right:8px; bottom:8px; opacity:.5; }
+
+  .section-label{ font-size:12px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--fg-dimmer); margin:0 0 12px; display:flex; align-items:center; gap:6px; }
+  .section-label .dot{ width:5px;height:5px;border-radius:50%; background:var(--a-purple); }
+
+  .pcard{ background:var(--bg-2); border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin-bottom:10px; display:flex; gap:12px; }
+  .pcard .av{ width:34px;height:34px;border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:#0b0b0e; }
+  .pcard .body{ flex:1; min-width:0; }
+  .pcard .who{ font-size:13px; font-weight:650; margin-bottom:2px; }
+  .pcard .txt{ font-size:13px; color:var(--fg-dim); line-height:1.45; }
+  .pcard .txt b{ color:var(--fg); font-weight:600; }
+  .pcard .ask{ font-size:12.5px; color:var(--fg-dimmer); margin-top:8px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .btn{ border:1px solid var(--border-strong); background:var(--bg-3); color:var(--fg); font-size:12px; font-weight:600; padding:5px 12px; border-radius:999px; cursor:default; }
+  .btn.primary{ background:var(--fg); color:#0b0b0e; border-color:var(--fg); }
+  .btn.ghost{ background:transparent; }
+
+  .grain{ position:absolute; top:0; right:0; width:220px; height:220px; opacity:.5; pointer-events:none; }
+</style>
+
+<h2>People dashboard — v2, combining A + B</h2>
+<p class="subtitle">Stat tiles with sparklines (from A) up top, but the insight section is now person-centric with an actionable suggestion per pattern — no generic message/activity list. This is one screen, not options to pick between; react to it directly.</p>
+
+<div class="pd-canvas">
+  <div class="pd-head">
+    <div>
+      <p class="pd-title">People</p>
+      <p class="pd-sub">9 people · updated just now</p>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="tile"><div class="k">Unread</div><div class="v">15</div>
+      <svg class="spark" width="48" height="18" viewBox="0 0 48 18"><polyline points="0,14 8,11 16,12 24,5 32,8 40,4 48,6" fill="none" stroke="#4ade80" stroke-width="1.5"/></svg>
+    </div>
+    <div class="tile"><div class="k">Need attention</div><div class="v">2</div>
+      <svg class="spark" width="48" height="18" viewBox="0 0 48 18"><polyline points="0,5 8,8 16,4 24,10 32,7 40,13 48,15" fill="none" stroke="#fb7185" stroke-width="1.5"/></svg>
+    </div>
+    <div class="tile"><div class="k">Outstanding</div><div class="v">$107</div>
+      <svg class="spark" width="48" height="18" viewBox="0 0 48 18"><polyline points="0,13 8,12 16,9 24,9 32,6 40,7 48,4" fill="none" stroke="#f5b942" stroke-width="1.5"/></svg>
+    </div>
+    <div class="tile"><div class="k">Lifetime</div><div class="v">$370</div>
+      <svg class="spark" width="48" height="18" viewBox="0 0 48 18"><polyline points="0,16 8,13 16,13 24,9 32,8 40,4 48,2" fill="none" stroke="#a78bfa" stroke-width="1.5"/></svg>
+    </div>
+  </div>
+
+  <p class="section-label"><span class="dot"></span>Patterns worth knowing</p>
+
+  <div class="pcard">
+    <div class="av" style="background:var(--a-teal)">DR</div>
+    <div class="body">
+      <div class="who">Dev Raman</div>
+      <div class="txt">Is starting to form a pattern — orders roughly <b>every 9 days</b>, and it's been 11 since the last one.</div>
+      <div class="ask">
+        Want a reminder next time you're placing an order for him?
+        <span class="btn primary">Remind me</span>
+        <span class="btn ghost">No thanks</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="pcard">
+    <div class="av" style="background:var(--a-purple)">MV</div>
+    <div class="body">
+      <div class="who">Marta Vieira</div>
+      <div class="txt">3 unread messages, including a shipping question from earlier tonight. She's also your <b>highest lifetime value</b> contact.</div>
+      <div class="ask">
+        Want her flagged at the top of Messages until you reply?
+        <span class="btn primary">Pin thread</span>
+        <span class="btn ghost">Not now</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="pcard">
+    <div class="av" style="background:var(--a-amber)">AR</div>
+    <div class="body">
+      <div class="who">Ana Reyes</div>
+      <div class="txt">First order shipped Sep 11 — <b>no follow-up sent</b> since. New customers who get a check-in re-order 2x more often here.</div>
+      <div class="ask">
+        Draft a quick check-in message?
+        <span class="btn primary">Draft it</span>
+        <span class="btn ghost">Skip</span>
+      </div>
+    </div>
+  </div>
+</div>
