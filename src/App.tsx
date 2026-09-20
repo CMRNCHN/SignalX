@@ -69,6 +69,7 @@ import { useGlobalShortcuts } from "./useGlobalShortcuts";
 import { ShortcutsHelp } from "./components/ShortcutsHelp";
 import { AuditScreen } from "./components/Audit/AuditScreen";
 import { AttachmentPreview } from "./attachmentPreview";
+import { InvoiceExport } from "./components/InvoiceExport";
 import {
   IconAudit,
   IconBolt,
@@ -109,6 +110,7 @@ export type Panel =
   | "sales"
   | "outbox"
   | "audit"
+  | "invoice-export"
   | "settings";
 type SettingsTab = "account" | "ivr" | "auto" | "backup";
 
@@ -143,6 +145,7 @@ const NAV_GROUPS: NavItem[][] = [
     { id: "catalog", label: "Catalog", ico: <IconCatalog /> },
     { id: "orders", label: "Orders", ico: <IconOrders /> },
     { id: "sales", label: "Sales", ico: <IconAudit /> },
+    { id: "invoice-export", label: "Export", ico: <IconExport /> },
   ],
   [
     { id: "outbox", label: "Outbox", ico: <IconOutbox /> },
@@ -2901,6 +2904,18 @@ export default function App() {
         />
       )}
 
+      {panel === "invoice-export" && (
+        <section className="thread-col wide">
+          <header className="col-head">
+            <div>
+              <div>Export</div>
+              <div className="col-head-sub">Generate formatted invoices for Signal</div>
+            </div>
+          </header>
+          <InvoiceExport />
+        </section>
+      )}
+
       {panel === "settings" && (
         <section className="thread-col wide">
           <header className="col-head">
@@ -3785,7 +3800,7 @@ export default function App() {
                   value={composer}
                   onChange={(e) => setComposer(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
+                    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
                       e.preventDefault();
                       void onSend();
                     }
