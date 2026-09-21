@@ -72,9 +72,15 @@
   --input-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.55);
 
   --space-1: 4px;
+  --space-1-5: 6px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
+
+  /* Consistent animation system */
+  --transition-fast: 100ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-standard: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 200ms cubic-bezier(0.4, 0, 0.2, 1);
 
   --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -247,6 +253,7 @@ input[type="radio"] {
   border-radius: var(--radius-sm);
   padding: 8px 10px;
   outline: none;
+  transition: background-color var(--transition-standard), border-color var(--transition-standard), box-shadow var(--transition-standard);
 }
 
 .account-label {
@@ -294,10 +301,11 @@ input[type="radio"] {
   border: 0;
   color: var(--text);
   cursor: pointer;
+  transition: background-color var(--transition-standard);
 }
 
 .account-menu button:hover {
-  background: var(--surface-3);
+  background: var(--surface-2);
 }
 
 .lock-overlay {
@@ -430,6 +438,12 @@ input[type="radio"] {
   color: var(--text);
   cursor: pointer;
   text-align: left;
+  transition: background-color var(--transition-standard), border-color var(--transition-standard);
+}
+
+.lock-account:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
 }
 
 .lock-account.active {
@@ -456,10 +470,18 @@ input[type="radio"] {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  transition: background-color var(--transition-standard), border-color var(--transition-standard);
+  cursor: pointer;
+}
+
+.roster-row:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
 }
 
 .roster-row.active {
   border-color: var(--border-strong);
+  background: var(--surface-3);
 }
 
 .roster-pin-form,
@@ -479,7 +501,9 @@ input[type="radio"] {
 .search-box input:focus,
 .composer textarea:focus,
 .settings-body input:focus {
-  border-color: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.4);
+  background-color: var(--surface-3);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
 }
 
 .ai-pill {
@@ -489,6 +513,7 @@ input[type="radio"] {
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text-dim);
+  transition: background-color var(--transition-standard), border-color var(--transition-standard), color var(--transition-standard);
 }
 .ai-pill.ok {
   color: var(--text);
@@ -566,7 +591,7 @@ input[type="radio"] {
   pointer-events: none;
   opacity: 0;
   z-index: 30;
-  transition: opacity 0.1s;
+  transition: opacity var(--transition-fast);
 }
 
 .rail [data-label]:hover::after,
@@ -584,6 +609,7 @@ input[type="radio"] {
   background: transparent;
   color: var(--text-dim);
   flex-shrink: 0;
+  transition: background-color var(--transition-standard), color var(--transition-standard);
 }
 
 .nav-btn.active .nav-ico {
@@ -597,6 +623,7 @@ input[type="radio"] {
   border-color: var(--border-strong);
   font-weight: 500;
   box-shadow: var(--edge-hi), var(--shadow-sm);
+  transition: background-color var(--transition-standard), color var(--transition-standard), box-shadow var(--transition-standard);
 }
 
 .nav-count {

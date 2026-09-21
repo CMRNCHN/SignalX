@@ -1,0 +1,16 @@
+{
+  "name": "site-monitor",
+  "version": "1.0.0",
+  "description": "Local website monitoring with push notifications",
+  "main": "monitor.js",
+  "scripts": {
+    "setup": "node setup.js",
+    "start": "node monitor.js"
+  },
+  "dependencies": {
+    "playwright": "^1.40.0",
+    "cheerio": "^1.0.0-rc.12",
+    "node-cron": "^3.0.2",
+    "axios": "^1.6.0"
+  }
+}

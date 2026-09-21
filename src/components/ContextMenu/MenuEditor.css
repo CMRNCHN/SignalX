@@ -67,10 +67,16 @@
   font-size: 12px;
 }
 
+.menu-editor-input,
+.menu-editor-select {
+  transition: border-color var(--transition-standard), background-color var(--transition-standard);
+}
+
 .menu-editor-input:focus,
 .menu-editor-select:focus {
   outline: none;
   border-color: var(--text);
+  background-color: var(--surface-2);
 }
 
 .menu-editor-danger-checkbox {
@@ -93,7 +99,7 @@
   border-radius: var(--radius-xs);
   color: #ff6b6b;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color var(--transition-standard), border-color var(--transition-standard);
   min-width: 32px;
   display: flex;
   align-items: center;
@@ -123,7 +129,7 @@
   color: var(--text);
   cursor: pointer;
   font-weight: 500;
-  transition: all 0.15s ease;
+  transition: background-color var(--transition-standard), border-color var(--transition-standard);
 }
 
 .menu-editor-add-btn:hover:not(:disabled) {
@@ -148,7 +154,7 @@
   border-radius: var(--radius-xs);
   cursor: pointer;
   font-weight: 500;
-  transition: all 0.15s ease;
+  transition: background-color var(--transition-standard), border-color var(--transition-standard);
   background: var(--surface-1);
   color: var(--text);
 }

@@ -25,7 +25,7 @@
   text-align: left;
   color: var(--text);
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: background-color var(--transition-standard);
   white-space: nowrap;
   font-size: 13px;
 }
@@ -70,7 +70,7 @@
   border-radius: var(--radius-xs);
   color: var(--text-dim);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color var(--transition-standard), color var(--transition-standard), border-color var(--transition-standard);
   white-space: nowrap;
   font-size: 12px;
   font-weight: 500;
