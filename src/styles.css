@@ -1587,7 +1587,7 @@ input[type="radio"] {
   padding: 16px 20px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .bubble {
@@ -1678,6 +1678,21 @@ input[type="radio"] {
   border: 1px solid var(--border);
   font-size: 12px;
   padding: 4px 8px;
+  transition: background-color var(--transition-standard), border-color var(--transition-standard);
+  cursor: pointer;
+}
+
+.bubble-actions button:hover {
+  background-color: var(--surface-2);
+  border-color: var(--border-strong);
+}
+
+/* Subtle separator between message groups (sender change or time gap) */
+.msg-separator {
+  margin: 6px 0;
+  height: 1px;
+  background: var(--hairline);
+  opacity: 0.5;
 }
 
 .status-bar {
