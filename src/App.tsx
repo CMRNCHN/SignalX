@@ -3932,25 +3932,34 @@ export default function App() {
             )}
 
             <div className="msg-scroll">
-              {messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={isOutgoing(m) ? "bubble out" : "bubble in"}
-                >
-                  <div className="bubble-meta">
-                    <span>
-                      {isOutgoing(m)
-                        ? "You"
-                        : isGroupThread(selectedId)
-                          ? threadTitle(m.sender, contacts, groups, customers)
-                          : threadTitle(selectedId || m.sender, contacts, groups, customers)}
-                    </span>
-                    <span>{fmtTime(m.timestamp)}</span>
+              {messages.map((m, idx) => {
+                const prevMsg = idx > 0 ? messages[idx - 1] : null;
+                const senderChanged = prevMsg && (isOutgoing(m) !== isOutgoing(prevMsg) || m.sender !== prevMsg.sender);
+                const timeGap = prevMsg && (m.timestamp - prevMsg.timestamp) > 5 * 60 * 1000; // 5 minutes
+                const showSeparator = idx > 0 && (senderChanged || timeGap);
+
+                return (
+                  <div key={m.id}>
+                    {showSeparator && <div className="msg-separator" />}
+                    <div
+                      className={isOutgoing(m) ? "bubble out" : "bubble in"}
+                    >
+                      <div className="bubble-meta">
+                        <span>
+                          {isOutgoing(m)
+                            ? "You"
+                            : isGroupThread(selectedId)
+                              ? threadTitle(m.sender, contacts, groups, customers)
+                              : threadTitle(selectedId || m.sender, contacts, groups, customers)}
+                        </span>
+                        <span>{fmtTime(m.timestamp)}</span>
+                      </div>
+                      <div className="bubble-body">{m.content}</div>
+                      {m.attachment_path && <AttachmentPreview path={m.attachment_path} />}
+                    </div>
                   </div>
-                  <div className="bubble-body">{m.content}</div>
-                  {m.attachment_path && <AttachmentPreview path={m.attachment_path} />}
-                </div>
-              ))}
+                );
+              })}
               {(selectedId
                 ? globalOutbox.filter((o) => o.thread_id === selectedId)
                 : []
