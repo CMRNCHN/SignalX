@@ -914,8 +914,9 @@ input[type="radio"] {
   min-height: 56px;
   cursor: pointer;
   color: inherit;
-  transition: background 120ms ease, border-color 120ms ease,
-    box-shadow 120ms ease, transform 120ms ease;
+  transition: background var(--transition-standard), border-color var(--transition-standard),
+    box-shadow var(--transition-standard);
+  margin-bottom: 8px;
 }
 
 .thread-row:hover {
