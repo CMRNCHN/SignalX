@@ -50,8 +50,7 @@ import {
   fxSearchHits,
   fxThreads,
 } from "./devFixtures";
-import { DeviceLinkQr } from "./DeviceLinkQr";
-import { emptyMenus, IvrMenuComposer } from "./IvrMenuComposer";
+import { emptyMenus } from "./IvrMenuComposer";
 import { ProfileRail } from "./ProfileRail";
 import { Composer } from "./components/Inbox/Composer";
 import { ConvoHeader } from "./components/Inbox/ConvoHeader";
@@ -68,6 +67,11 @@ import { matchingMessages, matchingOrders, matchingPeople, matchingProducts, typ
 import { OrdersScreen, EMPTY_ORDER_FILTER, type OrderFilterState } from "./components/Orders/OrdersScreen";
 import { SalesScreen } from "./components/Sales/SalesScreen";
 import { OutboxScreen } from "./components/Outbox/OutboxScreen";
+import { AccountSettings } from "./components/Settings/AccountSettings";
+import { AutoReplySettings as AutoReplySettingsTab } from "./components/Settings/AutoReplySettings";
+import { BackupSettings } from "./components/Settings/BackupSettings";
+import { BuyerMenuSettings } from "./components/Settings/BuyerMenuSettings";
+import { SettingsScreen, type SettingsTab } from "./components/Settings/SettingsScreen";
 import { PanelResizer } from "./components/PanelResizer";
 import {
   avatarTint,
@@ -128,7 +132,6 @@ export type Panel =
   | "audit"
   | "invoice-export"
   | "settings";
-type SettingsTab = "account" | "ivr" | "auto" | "backup";
 
 type SellPackRow = {
   key: string;
@@ -313,8 +316,6 @@ export default function App() {
   const [addPin, setAddPin] = useState("");
   const [addLabel, setAddLabel] = useState("");
   const [rosterBusy, setRosterBusy] = useState(false);
-  const [changePinCurrent, setChangePinCurrent] = useState("");
-  const [changePinNew, setChangePinNew] = useState("");
   const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
   const [health, setHealth] = useState<ReceiveLoopState | null>(null);
   const [ai, setAi] = useState<AiStatus | null>(null);
@@ -2775,657 +2776,94 @@ export default function App() {
       )}
 
       {panel === "settings" && (
-        <section className="thread-col wide">
-          <header className="col-head">
-            <div>
-              <div>Settings</div>
-              <div className="col-head-sub">
-                {settingsTab === "account" && "Link Signal and check that messages are flowing"}
-                {settingsTab === "ivr" && "Let buyers text a number — you write the menu"}
-                {settingsTab === "auto" && "Optional AI replies — only for chats you allow"}
-                {settingsTab === "backup" && "Copy your catalog, orders, and chats to a file"}
-              </div>
-            </div>
-          </header>
-          <div className="work-tabs" role="tablist" aria-label="Settings sections">
-            {(
-              [
-                ["account", "Account"],
-                ["ivr", "Buyer menu"],
-                ["auto", "Auto-reply"],
-                ["backup", "Backup"],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={settingsTab === id}
-                className={settingsTab === id ? "work-tab active" : "work-tab"}
-                onClick={() => setSettingsTab(id)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className="settings-body wide-body">
-            {settingsTab === "account" && (
-              <>
-                <div className="settings-card">
-                  <div className="settings-card-head">
-                    <h3>Status</h3>
-                    <span
-                      className={`status-pill status-${
-                        setupNeeded
-                          ? "warn"
-                          : diagnostics?.signal_cli_usable
-                            ? "ok"
-                            : "danger"
-                      }`}
-                    >
-                      {setupNeeded
-                        ? "Needs link"
-                        : !canInvoke() || !diagnostics
-                          ? "Preview"
-                          : diagnostics.signal_cli_usable
-                            ? "Ready"
-                            : "signal-cli issue"}
-                    </span>
-                  </div>
-                  <dl className="diag-grid diag-grid-4">
-                    <div>
-                      <dt>Account</dt>
-                      <dd title={diagnostics?.number || undefined}>
-                        {diagnostics?.number || "Not set"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Receive</dt>
-                      <dd title={healthLabel(health)}>{healthLabel(health)}</dd>
-                    </div>
-                    <div>
-                      <dt>signal-cli</dt>
-                      <dd>
-                        {diagnostics?.signal_cli_usable
-                          ? diagnostics.signal_cli_version || "ok"
-                          : "broken"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>AI</dt>
-                      <dd>
-                        {ai?.configured
-                          ? ai.ollama_reachable
-                            ? ai.ollama_model || "ollama"
-                            : "unreachable"
-                          : "off"}
-                      </dd>
-                    </div>
-                  </dl>
-                  {diagnostics?.signal_cli_last_error && (
-                    <p className="hint tight warn-text">{diagnostics.signal_cli_last_error}</p>
-                  )}
-                  <details className="settings-details">
-                    <summary>Paths &amp; diagnostics</summary>
-                    <dl className="diag-list">
-                      <div>
-                        <dt>Config</dt>
-                        <dd>{diagnostics?.config_path || "—"}</dd>
-                      </div>
-                      <div>
-                        <dt>Env file</dt>
-                        <dd>{diagnostics?.env_path || "—"}</dd>
-                      </div>
-                      <div>
-                        <dt>signal-cli bin</dt>
-                        <dd>{diagnostics?.signal_cli_path || "—"}</dd>
-                      </div>
-                      <div>
-                        <dt>App data</dt>
-                        <dd>{diagnostics?.app_data_dir || "—"}</dd>
-                      </div>
-                    </dl>
-                  </details>
-                </div>
-
-                <div className="settings-card">
-                  <div className="settings-card-head">
-                    <h3>Device link</h3>
-                    <span
-                      className={`status-pill status-${
-                        linkStatus?.state === "success"
-                          ? "ok"
-                          : linkStatus?.state === "error"
-                            ? "danger"
-                            : linkBusy || linkStatus?.state === "waiting"
-                              ? "warn"
-                              : "muted"
-                      }`}
-                    >
-                      {linkBusy || linkStatus?.state === "waiting"
-                        ? "WAITING"
-                        : linkStatus?.state === "success"
-                          ? "LINKED"
-                          : linkStatus?.state === "error"
-                            ? "FAILED"
-                            : linkStatus?.state === "cancelled"
-                              ? "CANCELLED"
-                              : "IDLE"}
-                    </span>
-                  </div>
-                  <p className="hint tight">
-                    Link this Mac to your Signal phone. After it says Linked, add the number to the
-                    roster with a PIN — do not relaunch to switch identities.
-                  </p>
-                  <div className="row-actions">
-                    <button
-                      type="button"
-                      className="action-btn primary"
-                      disabled={linkBusy || !diagnostics?.signal_cli_usable}
-                      onClick={() => void startDeviceLink()}
-                    >
-                      Start linking
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost-btn"
-                      disabled={!linkBusy}
-                      onClick={() => void cancelDeviceLink()}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                  {linkUri && (
-                    <div className="device-link-panel">
-                      <DeviceLinkQr uri={linkUri} />
-                      <div className="device-link-uri">
-                        <code className="device-link-uri-text" title={linkUri}>
-                          {linkUri}
-                        </code>
-                        <button type="button" className="action-btn" onClick={() => void copyLinkUri()}>
-                          {linkCopied ? "Copied" : "Copy"}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {linkStatus?.message && (
-                    <p
-                      className={`hint tight ${
-                        linkStatus.state === "error" ? "warn-text" : ""
-                      }`}
-                    >
-                      {linkStatus.message}
-                    </p>
-                  )}
-                  {!diagnostics?.config_path && (
-                    <p className="hint tight warn-text">
-                      Set <code>SIGNALX_SIGNALCLI_CONFIG</code> in <code>.signalx.env</code> before
-                      linking.
-                    </p>
-                  )}
-                </div>
-
-                <div className="settings-card">
-                  <div className="settings-card-head">
-                    <h3>Roster</h3>
-                  </div>
-                  <p className="hint tight">
-                    Each number is a separate shop (catalog, orders, IVR). Only one session is live.
-                    Switching stops receive and the outbox for the previous number.
-                  </p>
-                  <ul className="roster-list">
-                    {(session?.accounts ?? []).map((a) => (
-                      <li key={a.id} className={a.is_active ? "roster-row active" : "roster-row"}>
-                        <div>
-                          <strong>{a.label || a.e164}</strong>
-                          <span className="hint tight">
-                            {" "}
-                            ••••{a.last4}
-                            {a.has_pin ? " · PIN" : " · no PIN"}
-                            {a.is_active ? " · live" : ""}
-                          </span>
-                        </div>
-                        {a.is_active && (
-                          <form
-                            className="roster-pin-form"
-                            onSubmit={(e) => {
-                              e.preventDefault();
-                              void (async () => {
-                                const res = await api.setAccountPin(
-                                  a.id,
-                                  changePinCurrent,
-                                  changePinNew,
-                                );
-                                if (!res.success) {
-                                  setStatus(res.error);
-                                  return;
-                                }
-                                applySession(res.data);
-                                setChangePinCurrent("");
-                                setChangePinNew("");
-                                setStatus("PIN updated");
-                              })();
-                            }}
-                          >
-                            <input
-                              type="password"
-                              placeholder="Current PIN (blank if none)"
-                              value={changePinCurrent}
-                              onChange={(e) => setChangePinCurrent(e.target.value)}
-                            />
-                            <input
-                              type="password"
-                              placeholder="New PIN"
-                              value={changePinNew}
-                              onChange={(e) => setChangePinNew(e.target.value)}
-                              required
-                            />
-                            <button type="submit" className="ghost-btn">
-                              Set PIN
-                            </button>
-                          </form>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                  {(session?.linked_unseen ?? []).length > 0 && (
-                    <p className="hint tight">
-                      Linked in signal-cli but not in roster:{" "}
-                      {session?.linked_unseen.join(", ")}. Add below.
-                    </p>
-                  )}
-                  <form
-                    className="roster-add"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void onAddAccount(addNumber, addPin, addLabel);
-                    }}
-                  >
-                    <input
-                      placeholder="+15551234567"
-                      value={addNumber}
-                      onChange={(e) => setAddNumber(e.target.value)}
-                      required
-                    />
-                    <input
-                      placeholder="Label (optional)"
-                      value={addLabel}
-                      onChange={(e) => setAddLabel(e.target.value)}
-                    />
-                    <input
-                      type="password"
-                      placeholder="PIN (4+ chars)"
-                      value={addPin}
-                      onChange={(e) => setAddPin(e.target.value)}
-                      required
-                    />
-                    <button type="submit" className="action-btn primary" disabled={rosterBusy}>
-                      Add to roster
-                    </button>
-                  </form>
-                </div>
-              </>
-            )}
-
-            {settingsTab === "backup" && (
-              <>
-              <div className="settings-card">
-                <div className="settings-card-head">
-                  <h3>Backup &amp; migrate</h3>
-                </div>
-                <p className="hint tight">
-                  Bundles cover your catalog, customers, orders, buyer menu, chats, and outbox —
-                  not your Signal login. Re-link Signal on a new computer. Leave the password blank
-                  for an unencrypted zip.
-                </p>
-                <label className="field-stack">
-                  <span className="field-label">Optional password</span>
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    value={backupPassword}
-                    onChange={(e) => setBackupPassword(e.target.value)}
-                    placeholder="Blank = unencrypted"
-                    disabled={backupBusy || restartRequired}
-                  />
-                </label>
-                <div className="backup-actions">
-                  <button
-                    type="button"
-                    className="action-btn primary"
-                    disabled={backupBusy || restartRequired}
-                    onClick={() => void onExportDataBundle()}
-                  >
-                    {backupBusy ? "Working…" : "Export data bundle"}
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-btn"
-                    disabled={backupBusy}
-                    onClick={() =>
-                      void api.exportAccount("json").then((r) => {
-                        if (r.success) setStatus("Chat (messages) exported");
-                        else setStatus(r.error);
-                      })
-                    }
-                  >
-                    Export chat only
-                  </button>
-                </div>
-                <div className="backup-import">
-                  <div className="profile-section-title">Import</div>
-                  <div className="profile-toggles">
-                    <label className="toggle compact">
-                      <input
-                        type="radio"
-                        name="import-mode"
-                        checked={importMode === "replace"}
-                        disabled={restartRequired}
-                        onChange={() => setImportMode("replace")}
-                      />
-                      Replace
-                    </label>
-                    <label className="toggle compact">
-                      <input
-                        type="radio"
-                        name="import-mode"
-                        checked={importMode === "merge"}
-                        disabled={restartRequired}
-                        onChange={() => setImportMode("merge")}
-                      />
-                      Merge
-                    </label>
-                  </div>
-                  <label className="field-stack">
-                    <span className="field-label">Choose .zip bundle</span>
-                    <input
-                      type="file"
-                      accept=".zip,application/zip"
-                      disabled={backupBusy || restartRequired}
-                      onChange={(e) => {
-                        const f = e.target.files?.[0] ?? null;
-                        e.target.value = "";
-                        void onImportDataBundleFile(f);
-                      }}
-                    />
-                  </label>
-                </div>
-                {restartRequired && (
-                  <div className="restart-gate">
-                    <p>
-                      Restart SignalX to apply imported data. Writes stay locked until you quit and
-                      reopen.
-                    </p>
-                    <button type="button" className="action-btn primary" onClick={() => void quitForRestart()}>
-                      Quit now
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="settings-card">
-                <div className="settings-card-head">
-                  <h3>What’s in a bundle</h3>
-                </div>
-                <p className="hint tight">
-                  Catalog, people records, orders, buyer menu, chats, and outbox. Signal login stays
-                  on the device — re-link after you move.
-                </p>
-              </div>
-              </>
-            )}
-
-            {settingsTab === "auto" && (
-              <>
-              <div className="settings-card">
-                <div className="settings-card-head">
-                  <h3>Auto-reply</h3>
-                  <span className={`status-pill status-${autoSettings?.enabled ? "warn" : "muted"}`}>
-                    {autoSettings?.enabled ? "ON" : "OFF"}
-                  </span>
-                </div>
-                <p className="hint tight">
-                  Optional AI drafts that can send on their own. Keep this off unless you trust it —
-                  and only for chats you approve. Groups stay off unless you turn them on one by one.
-                </p>
-                {autoSettings && (
-                  <>
-                    <label className="toggle">
-                      <input
-                        type="checkbox"
-                        checked={autoSettings.enabled}
-                        onChange={(e) => void saveAutoSettings({ enabled: e.target.checked })}
-                      />
-                      Turn on auto-reply for this account
-                    </label>
-                    <div className="settings-section-label">Safety limits</div>
-                    <div className="settings-grid">
-                      <label className="field-stack">
-                        <span className="field-label">Max replies per chat / hour</span>
-                        <input
-                          type="number"
-                          min={1}
-                          value={autoSettings.max_per_thread_per_hour}
-                          onChange={(e) =>
-                            void saveAutoSettings({
-                              max_per_thread_per_hour: Number(e.target.value) || 1,
-                            })
-                          }
-                        />
-                      </label>
-                      <label className="field-stack">
-                        <span className="field-label">Max global / window</span>
-                        <input
-                          type="number"
-                          min={1}
-                          value={autoSettings.max_per_window}
-                          onChange={(e) =>
-                            void saveAutoSettings({ max_per_window: Number(e.target.value) || 1 })
-                          }
-                        />
-                      </label>
-                      <label className="field-stack">
-                        <span className="field-label">Quiet start (0–23)</span>
-                        <input
-                          type="number"
-                          min={0}
-                          max={23}
-                          placeholder="off"
-                          value={autoSettings.quiet_hours_start ?? ""}
-                          onChange={(e) =>
-                            void saveAutoSettings({
-                              quiet_hours_start: e.target.value === "" ? null : Number(e.target.value),
-                            })
-                          }
-                        />
-                      </label>
-                      <label className="field-stack">
-                        <span className="field-label">Quiet end</span>
-                        <input
-                          type="number"
-                          min={0}
-                          max={23}
-                          placeholder="off"
-                          value={autoSettings.quiet_hours_end ?? ""}
-                          onChange={(e) =>
-                            void saveAutoSettings({
-                              quiet_hours_end: e.target.value === "" ? null : Number(e.target.value),
-                            })
-                          }
-                        />
-                      </label>
-                    </div>
-                    <div className="allowlist-head">
-                      <span className="field-label">
-                        Allowed chats ({autoSettings.allowlist.length})
-                      </span>
-                      <button
-                        type="button"
-                        className="ghost-btn"
-                        onClick={() => void addToAllowlist("auto", selectedId)}
-                      >
-                        Add current chat
-                      </button>
-                    </div>
-                    {autoSettings.allowlist.length === 0 ? (
-                      <p className="hint tight">Empty — nobody can auto-send.</p>
-                    ) : (
-                      <ul className="allowlist-list">
-                        {autoSettings.allowlist.map((tid) => (
-                          <li key={tid}>
-                            <div>
-                              <div className="thread-name">{threadTitle(tid, contacts, groups, customers)}</div>
-                              <div className="convo-sub">{tid}</div>
-                            </div>
-                            <button
-                              type="button"
-                              className="ghost-btn"
-                              onClick={() => void removeFromAllowlist("auto", tid)}
-                            >
-                              Remove
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </>
-                )}
-              </div>
-              <div className="settings-card">
-                <div className="settings-card-head">
-                  <h3>Recent log</h3>
-                  <button type="button" className="ghost-btn" onClick={() => setPanel("audit")}>
-                    Open log
-                  </button>
-                </div>
-                {audit.length === 0 ? (
-                  <p className="hint tight">No auto-reply activity yet.</p>
-                ) : (
-                  <ul className="settings-log">
-                    {audit.slice(0, 5).map((e) => (
-                      <li key={e.id}>
-                        <span className={`outcome outcome-${e.outcome.toLowerCase().replace(/\s+/g, "_")}`}>
-                          {e.outcome}
-                        </span>
-                        <span>
-                          {threadTitle(e.thread_id, contacts, groups, customers)}
-                          {e.reason ? ` — ${e.reason}` : ""}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </>
-            )}
-
-            {settingsTab === "ivr" && (
-              <>
-                <div className="settings-card">
-                  <div className="settings-card-head">
-                    <h3>Buyer text menu</h3>
-                    <span className={`status-pill status-${ivrSettings?.enabled ? "ok" : "muted"}`}>
-                      {ivrSettings?.enabled ? "ON" : "OFF"}
-                    </span>
-                  </div>
-                  <p className="hint tight">
-                    When it’s on, buyers can text a number (1 for products, 2 to order, and so on)
-                    and SignalX answers for you. Turn it on here, then turn it on for each chat you
-                    want. Group chats are never automated.
-                  </p>
-                  {ivrSettings && (
-                    <>
-                      <label className="toggle">
-                        <input
-                          type="checkbox"
-                          checked={ivrSettings.enabled}
-                          onChange={(e) => void saveIvrSettings({ enabled: e.target.checked })}
-                        />
-                        Turn on buyer menus for this account
-                      </label>
-                      <label className="toggle">
-                        <input
-                          type="checkbox"
-                          checked={ivrSettings.require_allowlist}
-                          onChange={(e) =>
-                            void saveIvrSettings({ require_allowlist: e.target.checked })
-                          }
-                        />
-                        Only chats I approve (recommended)
-                      </label>
-                      <label className="toggle">
-                        <input
-                          type="checkbox"
-                          checked={!!ivrSettings.hide_zero_stock}
-                          onChange={(e) =>
-                            void saveIvrSettings({ hide_zero_stock: e.target.checked })
-                          }
-                        />
-                        Don’t show products that are out of stock
-                      </label>
-                      <div className="allowlist-head">
-                        <span className="field-label">
-                          Approved chats ({ivrSettings.allowlist.length})
-                        </span>
-                        <button
-                          type="button"
-                          className="ghost-btn"
-                          onClick={() => void addToAllowlist("ivr", selectedId)}
-                        >
-                          Add this chat
-                        </button>
-                      </div>
-                      {ivrSettings.allowlist.length === 0 ? (
-                        <p className="hint tight">
-                          None yet — open a 1:1 chat and turn on the buyer menu there, or add it
-                          here.
-                        </p>
-                      ) : (
-                        <ul className="allowlist-list">
-                          {ivrSettings.allowlist.map((tid) => (
-                            <li key={tid}>
-                              <div>
-                                <div className="thread-name">{threadTitle(tid, contacts, groups, customers)}</div>
-                                <div className="convo-sub">{tid}</div>
-                              </div>
-                              <button
-                                type="button"
-                                className="ghost-btn"
-                                onClick={() => void removeFromAllowlist("ivr", tid)}
-                              >
-                                Remove
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                <div className="settings-card">
-                  <div className="settings-card-head">
-                    <h3>Build the menu</h3>
-                  </div>
-                  <p className="hint tight">
-                    Switch between a visual map of the conversation and a plain text script. Edit a
-                    screen, test it on the phone pad, then save.
-                  </p>
-                  <IvrMenuComposer
-                    menus={ivrMenusDraft}
-                    busy={ivrMenusBusy}
-                    error={ivrMenusError}
-                    previewSteps={ivrPreviewSteps}
-                    onChange={setIvrMenusDraft}
-                    onSave={() => void saveIvrMenusDraft()}
-                    onReload={() => void loadIvrMenusEditor()}
-                    onResetDemo={() => void resetIvrMenusDemo()}
-                    onPreview={(inputs) => void previewIvrPath(inputs)}
-                  />
-                </div>
-              </>
-            )}
-          </div>
-        </section>
+        <SettingsScreen tab={settingsTab} onTabChange={setSettingsTab}>
+          {settingsTab === "account" && (
+            <AccountSettings
+              setupNeeded={setupNeeded}
+              diagnostics={diagnostics}
+              receiveLabel={healthLabel(health)}
+              ai={ai}
+              linkBusy={linkBusy}
+              linkStatus={linkStatus}
+              linkUri={linkUri}
+              linkCopied={linkCopied}
+              onStartLink={() => void startDeviceLink()}
+              onCancelLink={() => void cancelDeviceLink()}
+              onCopyLinkUri={() => void copyLinkUri()}
+              session={session}
+              onSetPin={async (accountId, currentPin, newPin) => {
+                const res = await api.setAccountPin(accountId, currentPin, newPin);
+                if (!res.success) {
+                  setStatus(res.error);
+                  return false;
+                }
+                applySession(res.data);
+                setStatus("PIN updated");
+                return true;
+              }}
+              addNumber={addNumber}
+              onAddNumberChange={setAddNumber}
+              addLabel={addLabel}
+              onAddLabelChange={setAddLabel}
+              addPin={addPin}
+              onAddPinChange={setAddPin}
+              rosterBusy={rosterBusy}
+              onAddAccount={() => void onAddAccount(addNumber, addPin, addLabel)}
+            />
+          )}
+          {settingsTab === "backup" && (
+            <BackupSettings
+              password={backupPassword}
+              onPasswordChange={setBackupPassword}
+              busy={backupBusy}
+              restartRequired={restartRequired}
+              importMode={importMode}
+              onImportModeChange={setImportMode}
+              onExportBundle={() => void onExportDataBundle()}
+              onExportChatOnly={() =>
+                void api.exportAccount("json").then((r) => {
+                  if (r.success) setStatus("Chat (messages) exported");
+                  else setStatus(r.error);
+                })
+              }
+              onImportFile={(f) => void onImportDataBundleFile(f)}
+              onQuitForRestart={() => void quitForRestart()}
+            />
+          )}
+          {settingsTab === "auto" && (
+            <AutoReplySettingsTab
+              settings={autoSettings}
+              onSave={(patch) => void saveAutoSettings(patch)}
+              onAllowCurrentChat={() => void addToAllowlist("auto", selectedId)}
+              onRemoveFromAllowlist={(tid) => void removeFromAllowlist("auto", tid)}
+              audit={audit}
+              onOpenLog={() => setPanel("audit")}
+              contacts={contacts}
+              groups={groups}
+              customers={customers}
+            />
+          )}
+          {settingsTab === "ivr" && (
+            <BuyerMenuSettings
+              settings={ivrSettings}
+              onSave={(patch) => void saveIvrSettings(patch)}
+              onAllowCurrentChat={() => void addToAllowlist("ivr", selectedId)}
+              onRemoveFromAllowlist={(tid) => void removeFromAllowlist("ivr", tid)}
+              contacts={contacts}
+              groups={groups}
+              customers={customers}
+              menus={ivrMenusDraft}
+              menusBusy={ivrMenusBusy}
+              menusError={ivrMenusError}
+              previewSteps={ivrPreviewSteps}
+              onMenusChange={setIvrMenusDraft}
+              onSaveMenus={() => void saveIvrMenusDraft()}
+              onReloadMenus={() => void loadIvrMenusEditor()}
+              onResetDemo={() => void resetIvrMenusDemo()}
+              onPreview={(inputs) => void previewIvrPath(inputs)}
+            />
+          )}
+        </SettingsScreen>
       )}
 
       {(panel === "audit" ||
