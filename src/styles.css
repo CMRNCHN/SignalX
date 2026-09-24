@@ -219,13 +219,6 @@ input[type="radio"] {
   border-right: 0;
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: var(--space-2);
-  padding: var(--space-1) var(--space-1) var(--space-2);
-}
 
 .brand-mark {
   font-family: var(--font-sans);
@@ -236,22 +229,6 @@ input[type="radio"] {
   color: var(--text);
 }
 
-.health {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  box-shadow: none;
-}
-.health-green {
-  background: #e4e4e7;
-}
-.health-yellow {
-  background: var(--text-faint);
-}
-.health-red {
-  background: #3f3f46;
-  box-shadow: inset 0 0 0 1px var(--text-faint);
-}
 
 .field-label {
   font-size: 11px;
@@ -3304,32 +3281,9 @@ button.audit-thread.linkish:hover {
 /* Icon-only rail: the same AI/Auto/IVR state as small dots instead of text
    pills, each carrying its explanation as a hover tooltip (see the generic
    `.rail [data-label]` rule above). */
-.rail-status-chips {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--space-1-5);
-  padding: 2px 2px var(--space-1-5);
-}
 
-.rail-chip-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  box-shadow: var(--edge-hi);
-}
 
-.rail-chip-dot.ok {
-  background: var(--text-dim);
-  border-color: var(--border-strong);
-}
 
-.rail-chip-dot.danger {
-  background: var(--text);
-  border-color: var(--border-strong);
-}
 
 /* Icon-only search: the input pops out to the right of the trigger instead
    of living inline, so it never needs more than the 68px rail track. */

@@ -79,8 +79,10 @@ export function IconSearch(p: SvgProps) {
 export function IconAccount(p: SvgProps) {
   return (
     <IconShell {...p}>
-      <circle cx="12" cy="8" r="4" />
-      <path d="M5.5 20c0-3.866 2.686-7 6-7 3.314 0 6 3.134 6 7" />
+      <circle cx="10" cy="8" r="4.5" />
+      <path d="M2.5 20.5a7.5 7.5 0 0 1 15 0" />
+      <path d="M16.5 3.6a4.5 4.5 0 0 1 0 8.8" />
+      <path d="M19.5 14.2c1.3 1.3 2 3.4 2 6.3" />
     </IconShell>
   );
 }

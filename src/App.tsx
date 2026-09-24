@@ -199,19 +199,6 @@ function needsDeviceSetup(
 const HEALTH_OK_MS = 30_000;
 const HEALTH_STALE_MS = 120_000;
 
-function healthTone(s: ReceiveLoopState | null): "green" | "yellow" | "red" {
-  if (!s) return "yellow";
-  if (s.cooldown_until && s.cooldown_until > Date.now()) return "red";
-  if (s.last_receive_error) return s.consecutive_failures > 3 ? "red" : "yellow";
-  if (s.last_receive_ok_at) {
-    const age = Date.now() - s.last_receive_ok_at;
-    if (age <= HEALTH_OK_MS) return "green";
-    if (age <= HEALTH_STALE_MS) return "yellow";
-    return "red";
-  }
-  return "yellow";
-}
-
 function healthLabel(s: ReceiveLoopState | null): string {
   if (!s) return "Connecting…";
   if (s.cooldown_until && s.cooldown_until > Date.now()) return "Self-heal cooldown";
@@ -1714,7 +1701,6 @@ export default function App() {
     }
   }, [panel, settingsTab]);
 
-  const tone = healthTone(health);
   const title = selectedId ? threadTitle(selectedId, contacts, groups, customers) : "SignalX";
   // Product thumbnails arrive as base64 over the API, one call each, so fetch
   // them lazily for the catalog grid and keep what we've already resolved.
@@ -2062,16 +2048,12 @@ export default function App() {
         </div>
       )}
       <aside className="rail">
-        <div className="brand" data-label={`SignalX — ${healthLabel(health)}`}>
-          <span className={`health health-${tone}`} aria-hidden />
-        </div>
-
         <div className="account-switch">
           <button
             type="button"
             className="nav-btn"
-            data-label={session?.locked ? "Locked — click to unlock" : accountNumber ?? "Not configured"}
-            aria-label="Account"
+            data-label={`${session?.locked ? "Locked — click to unlock" : accountNumber ?? "Not configured"} · ${healthLabel(health)}`}
+            aria-label="Switch account"
             aria-expanded={accountMenuOpen}
             onClick={() => setAccountMenuOpen((o) => !o)}
           >
@@ -2123,25 +2105,6 @@ export default function App() {
             </span>
           </button>
         )}
-
-        <div className="rail-status-chips" aria-label="System status">
-          <span
-            className={`rail-chip-dot ${ai?.configured && ai.ollama_reachable ? "ok" : "warn"}`}
-            data-label={`AI: ${
-              ai?.configured
-                ? ai.ollama_reachable
-                  ? ai.ollama_model || "ollama"
-                  : "unreachable"
-                : "not configured"
-            }`}
-          />
-          {autoSettings?.enabled && (
-            <span className="rail-chip-dot danger" data-label="Auto-reply on" />
-          )}
-          {ivrSettings?.enabled && (
-            <span className="rail-chip-dot ok" data-label="Buyer menu on" />
-          )}
-        </div>
 
         <div className="rail-search-wrap">
           <button
