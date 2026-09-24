@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta property="og:image" content="https://via.placeholder.com/300x200?text=Thumbnail">
+  <title>AirPlay Test Page</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, system-ui, sans-serif; background: #000; color: #fff; padding: 12px; }
+    h1 { font-size: 18px; margin: 20px 0 12px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+    .preview { background: #111; border-radius: 8px; overflow: hidden; }
+    .preview video { width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block; }
+    .preview-info { padding: 8px; font-size: 12px; }
+    .main-player { margin: 20px 0; background: #000; border-radius: 8px; overflow: hidden; }
+    .main-player video { width: 100%; aspect-ratio: 16/9; object-fit: cover; }
+    .error-log {
+      position: fixed; top: 0; right: 0; bottom: 0; width: 100%; max-width: 500px;
+      background: rgba(0, 0, 0, 0.98); color: #0f0; padding: 12px;
+      overflow-y: auto; font-size: 11px; font-family: 'Courier New', monospace;
+      border-left: 3px solid #f00; z-index: 99999; display: none;
+      white-space: pre-wrap; word-break: break-all; line-height: 1.4;
+    }
+    .error-log.show { display: block; }
+    .error-log-toggle {
+      position: fixed; bottom: 20px; right: 20px; padding: 10px 14px;
+      background: #f00; color: #fff; border: 0; border-radius: 20px;
+      font-weight: 700; z-index: 99998; font-size: 12px; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>Main Video</h1>
+  <div class="main-player">
+    <video id="mainVideo" controls playsinline muted>
+      <source src="https://commondatastorage.googleapis.com/gtv-videos-library/sample/BigBuckBunny.mp4" type="video/mp4">
+    </video>
+  </div>
+
+  <h1>Preview Thumbnails (for AirPlay)</h1>
+  <div class="grid">
+    <article class="preview">
+      <video muted playsinline>
+        <source src="https://commondatastorage.googleapis.com/gtv-videos-library/sample/ElephantsDream.mp4" type="video/mp4">
+      </video>
+      <div class="preview-info">Preview 1</div>
+    </article>
+    <article class="preview">
+      <video muted playsinline>
+        <source src="https://commondatastorage.googleapis.com/gtv-videos-library/sample/ForBiggerBlazes.mp4" type="video/mp4">
+      </video>
+      <div class="preview-info">Preview 2</div>
+    </article>
+    <article class="preview">
+      <video muted playsinline>
+        <source src="https://commondatastorage.googleapis.com/gtv-videos-library/sample/ForBiggerEscapes.mp4" type="video/mp4">
+      </video>
+      <div class="preview-info">Preview 3</div>
+    </article>
+    <article class="preview">
+      <video muted playsinline>
+        <source src="https://commondatastorage.googleapis.com/gtv-videos-library/sample/ForBiggerJoyrides.mp4" type="video/mp4">
+      </video>
+      <div class="preview-info">Preview 4</div>
+    </article>
+  </div>
+
+  <button class="error-log-toggle" id="toggleLog">📋 Console (0)</button>
+  <div class="error-log" id="errorLog"></div>
+
+  <script>
+    const errorLog = document.getElementById('errorLog');
+    const toggleBtn = document.getElementById('toggleLog');
+    let errorCount = 0;
+
+    function addLog(type, args) {
+      errorCount++;
+      toggleBtn.textContent = `📋 Console (${errorCount})`;
+      const ts = new Date().toLocaleTimeString();
+      const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 1) : String(a)).join(' ');
+      errorLog.textContent += `[${ts}] [${type}]\n${msg}\n\n`;
+      errorLog.scrollTop = errorLog.scrollHeight;
+    }
+
+    const origLog = console.log, origWarn = console.warn, origError = console.error;
+    console.log = function(...args) { origLog(...args); addLog('LOG', args); };
+    console.warn = function(...args) { origWarn(...args); addLog('WARN', args); };
+    console.error = function(...args) { origError(...args); addLog('ERROR', args); };
+    window.addEventListener('error', (e) => addLog('UNCAUGHT', [e.message, e.filename + ':' + e.lineno]));
+    toggleBtn.addEventListener('click', () => {
+      errorLog.classList.toggle('show');
+      toggleBtn.textContent = errorLog.classList.contains('show') ? '📋 Hide Console' : `📋 Console (${errorCount})`;
+    });
+    console.log('[TEST] Error logger ready');
+  </script>
+
+  <script>
+(function () {
+  'use strict';
+  console.log('[TVT] Script starting...');
+
+  const SETTINGS_DEFAULTS = {
+    soundMain: true,
+    soundPreviews: true,
+    volume: 0.01,
+    lockVolume: true,
+    airPlay: true,
+    nativeControls: true,
+  };
+
+  function loadSettings() {
+    return SETTINGS_DEFAULTS;
+  }
+
+  function isProbablyPreview(video) {
+    const r = video.getBoundingClientRect();
+    const small = r.width > 0 && r.width < 280;
+    const inThumb = !!video.closest('[class*="thumb"], [class*="preview"]');
+    return inThumb || (small && (video.muted || video.hasAttribute('muted')));
+  }
+
+  function isMainVideo(video) {
+    if (video.matches('#mainVideo') || video.closest('#mainVideo')) {
+      return !isProbablyPreview(video);
+    }
+    const r = video.getBoundingClientRect();
+    return r.width >= 280 && r.height >= 160 && !isProbablyPreview(video);
+  }
+
+  function enhanceVideo(video) {
+    // FORCE re-enhancement for testing (remove this line in production)
+    delete video.dataset.tvtEnhanced;
+
+    const already = video.dataset.tvtEnhanced === '1';
+    console.log(`[TVT] enhanceVideo called (already enhanced=${already})`);
+    if (already) return;
+    video.dataset.tvtEnhanced = '1';
+
+    try {
+      const s = loadSettings();
+      const isMain = isMainVideo(video);
+
+      console.log(`[TVT] ✓ ENHANCING (main=${isMain}):`, {
+        width: Math.round(video.getBoundingClientRect().width),
+        height: Math.round(video.getBoundingClientRect().height),
+        wasMuted: video.muted
+      });
+
+      if (s.nativeControls) {
+        video.controls = true;
+        video.setAttribute('controls', '');
+        console.log(`[TVT]   - controls set`);
+      }
+
+      video.setAttribute('playsinline', '');
+      video.playsInline = true;
+      console.log(`[TVT]   - playsinline set`);
+
+      if (s.airPlay) {
+        video.disableRemotePlayback = false;
+        video.removeAttribute('disableremoteplayback');
+        video.removeAttribute('disableRemotePlayback');
+        video.setAttribute('x-webkit-airplay', 'allow');
+        console.log(`[TVT]   ✓ AirPlay enabled`);
+      }
+
+      console.log(`[TVT]   - unmuting (was ${video.muted})`);
+      video.muted = false;
+      video.defaultMuted = false;
+      video.removeAttribute('muted');
+
+      if (isMain && s.soundMain) {
+        video.volume = 0.01;
+        console.log(`[TVT]   - volume set`);
+      }
+
+      console.log(`[TVT] ✓✓ ENHANCED COMPLETE:`, {
+        'x-webkit-airplay': video.getAttribute('x-webkit-airplay'),
+        muted: video.muted,
+        volume: video.volume
+      });
+    } catch (e) {
+      console.error('[TVT] ✗ Error:', e.message, e.stack);
+    }
+  }
+
+  function enhanceVideos() {
+    const videos = document.querySelectorAll('video');
+    console.log(`[TVT] Found ${videos.length} videos, enhancing...`);
+    videos.forEach(enhanceVideo);
+  }
+
+  function ensureFab() {
+    if (document.getElementById('tvt-ios-fab')) return;
+    const fab = document.createElement('div');
+    fab.id = 'tvt-ios-fab';
+    fab.style.cssText = 'position:fixed;right:12px;bottom:80px;z-index:2147483646;display:flex;flex-direction:column;gap:8px';
+
+    const btn = document.createElement('button');
+    btn.textContent = '✓ TVT Ready';
+    btn.style.cssText = 'border:0;border-radius:20px;padding:10px 12px;background:#4a4;color:#fff;font-weight:600;font-size:12px;cursor:pointer';
+    btn.onclick = () => console.log('[TVT] Button tapped');
+    fab.appendChild(btn);
+    document.documentElement.appendChild(fab);
+    console.log('[TVT] ✓ FAB created');
+  }
+
+  function start() {
+    try {
+      console.log('[TVT] === INIT START ===');
+      enhanceVideos();
+      ensureFab();
+
+      const obs = new MutationObserver(() => {
+        clearTimeout(obs.timeout);
+        obs.timeout = setTimeout(enhanceVideos, 1000);
+      });
+      obs.observe(document.documentElement, { childList: true, subtree: true });
+      console.log('[TVT] ✓ Observer attached');
+
+      setInterval(enhanceVideos, 15000);
+      console.log('[TVT] ✓ Interval set (15s)');
+      console.log('[TVT] === INIT COMPLETE ===');
+    } catch (err) {
+      console.error('[TVT] === INIT FAILED ===', err.message);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start);
+  } else {
+    start();
+  }
+})();
+  </script>
+</body>
+</html>

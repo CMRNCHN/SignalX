@@ -600,8 +600,8 @@ input[type="radio"] {
 }
 
 .nav-ico {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: var(--radius-sm);
   display: inline-flex;
   align-items: center;
@@ -609,7 +609,12 @@ input[type="radio"] {
   background: transparent;
   color: var(--text-dim);
   flex-shrink: 0;
-  transition: background-color var(--transition-standard), color var(--transition-standard);
+  transition: background-color var(--transition-standard), color var(--transition-standard), transform var(--transition-standard);
+}
+
+.nav-ico svg {
+  stroke-width: 1.5;
+  filter: drop-shadow(0 0 0.5px rgba(255, 255, 255, 0.1));
 }
 
 .nav-btn.active .nav-ico {
@@ -627,14 +632,7 @@ input[type="radio"] {
 }
 
 .nav-count {
-  font-size: 11px;
-  font-weight: 500;
-  min-width: 1.4em;
-  text-align: center;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--surface-2);
-  color: var(--text);
+  display: none;
 }
 
 .nav-btn,
@@ -2181,7 +2179,6 @@ button.audit-thread.linkish:hover {
 
 .profile-section {
   padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -6521,4 +6518,284 @@ button.dash-tile:hover {
 
 .page-notice-btn.ghost {
   background: transparent;
+}
+
+/* Feedback button and modal */
+.feedback-button {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--accent-cta);
+  color: var(--cta-fg);
+  border: 0;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-float);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+  z-index: 40;
+}
+
+.feedback-button:hover {
+  transform: scale(1.1);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
+}
+
+.feedback-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: fadeIn 150ms ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.feedback-modal {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  max-width: 480px;
+  width: 100%;
+  box-shadow: var(--shadow-float);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: slideUp 200ms ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.feedback-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.feedback-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.feedback-close {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.feedback-close:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.feedback-textarea {
+  width: 100%;
+  min-height: 120px;
+  max-height: 300px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.feedback-textarea:focus {
+  border-color: var(--accent-cta);
+  box-shadow: 0 0 0 2px rgba(250, 250, 250, 0.1);
+}
+
+.feedback-textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.feedback-footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.feedback-cancel,
+.feedback-submit {
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.feedback-cancel {
+  background: transparent;
+  color: var(--text);
+}
+
+.feedback-cancel:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+
+.feedback-submit {
+  background: var(--accent-cta);
+  color: var(--cta-fg);
+  border: 0;
+}
+
+.feedback-submit:hover:not(:disabled) {
+  background: var(--accent-cta-hover);
+}
+
+.feedback-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.feedback-status {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  animation: slideDown 150ms ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.feedback-status.success {
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+  border: 1px solid #22c55e;
+}
+
+.feedback-status.error {
+  background: rgba(220, 38, 38, 0.1);
+  color: #dc2626;
+  border: 1px solid #dc2626;
+}
+
+/* Search overlay modal */
+.search-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 60px;
+  animation: fadeIn 150ms ease;
+}
+
+.search-overlay-modal {
+  width: min(720px, 90vw);
+  max-height: 70vh;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-float);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideDown 200ms ease;
+}
+
+.search-overlay-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.search-overlay-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 16px;
+  outline: none;
+  font-family: inherit;
+}
+
+.search-overlay-input::placeholder {
+  color: var(--text-dim);
+}
+
+.search-overlay-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.search-overlay-close:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.search-overlay-content {
+  flex: 1;
+  overflow: auto;
+  padding: 0;
 }

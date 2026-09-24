@@ -55,6 +55,7 @@ import { emptyMenus, IvrMenuComposer } from "./IvrMenuComposer";
 import { ProfileRail } from "./ProfileRail";
 import { CatalogScreen } from "./components/Catalog/CatalogScreen";
 import { SearchScreen } from "./components/Search/SearchScreen";
+import { SearchOverlay } from "./components/SearchOverlay";
 import { PeopleScreen } from "./components/People/PeopleScreen";
 import { buildDirectory } from "./components/People/people";
 import { PageDashboard, PageNoticeBar } from "./components/Dashboard/PageDashboard";
@@ -72,6 +73,8 @@ import { ShortcutsHelp } from "./components/ShortcutsHelp";
 import { AuditScreen } from "./components/Audit/AuditScreen";
 import { AttachmentPreview } from "./attachmentPreview";
 import { InvoiceExport } from "./components/InvoiceExport";
+import { FeedbackButton } from "./components/FeedbackButton";
+import { saveFeedback } from "./feedbackUtils";
 import {
   IconAccount,
   IconAudit,
@@ -2396,7 +2399,12 @@ export default function App() {
         </section>
       )}
 
-      {panel === "search" && (
+      <SearchOverlay
+        isOpen={panel === "search"}
+        query={searchLiveQ}
+        onQueryChange={setSearchLiveQ}
+        onClose={() => setPanel("threads")}
+      >
         <SearchScreen
           query={searchLiveQ}
           scope={searchScope}
@@ -2439,7 +2447,7 @@ export default function App() {
             setPanel("orders");
           }}
         />
-      )}
+      </SearchOverlay>
 
       {panel === "people" && (
           <PeopleScreen
@@ -4182,6 +4190,16 @@ export default function App() {
           }}
         />
       )}
+      <FeedbackButton
+        onSubmit={async (feedback) => {
+          await saveFeedback({
+            timestamp: new Date().toISOString(),
+            feedback,
+            userAgent: navigator.userAgent,
+            url: window.location.href,
+          });
+        }}
+      />
     </div>
   );
 }

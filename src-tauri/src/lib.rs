@@ -6435,6 +6435,46 @@ fn sales_summary(
 }
 
 // --------------------
+// Feedback storage
+// --------------------
+fn save_feedback_impl(
+  feedback: String,
+  timestamp: String,
+  user_agent: String,
+  url: String,
+) -> Result<(), String> {
+  let feedback_dir = std::env::var("HOME")
+    .ok()
+    .and_then(|home| Some(PathBuf::from(home).join(".signalx_feedback")))
+    .ok_or_else(|| "Could not determine home directory".to_string())?;
+
+  std::fs::create_dir_all(&feedback_dir)
+    .map_err(|e| format!("Failed to create feedback directory: {}", e))?;
+
+  let filename = format!(
+    "feedback-{}.json",
+    std::time::SystemTime::now()
+      .duration_since(std::time::UNIX_EPOCH)
+      .map(|d| d.as_millis())
+      .unwrap_or(0)
+  );
+
+  let entry = json!({
+    "timestamp": timestamp,
+    "feedback": feedback,
+    "userAgent": user_agent,
+    "url": url,
+  });
+
+  let filepath = feedback_dir.join(filename);
+  std::fs::write(&filepath, serde_json::to_string_pretty(&entry).unwrap_or_default())
+    .map_err(|e| format!("Failed to write feedback: {}", e))?;
+
+  eprintln!("Feedback saved to: {:?}", filepath);
+  Ok(())
+}
+
+// --------------------
 // Tauri command wrappers
 // --------------------
 #[tauri::command]
@@ -7157,6 +7197,18 @@ fn cmd_rename_account(state: State<'_, AppState>, id: String, label: String) -> 
 fn cmd_remove_from_roster(state: State<'_, AppState>, id: String, pin: String) -> Value {
   remove_from_roster(&state, id, pin)
 }
+#[tauri::command]
+fn cmd_save_feedback(
+  feedback: String,
+  timestamp: String,
+  user_agent: String,
+  url: String,
+) -> Value {
+  match save_feedback_impl(feedback, timestamp, user_agent, url) {
+    Ok(()) => ok(json!({})),
+    Err(e) => err(e),
+  }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -7284,6 +7336,7 @@ pub fn run() {
       cmd_set_account_pin,
       cmd_rename_account,
       cmd_remove_from_roster,
+      cmd_save_feedback,
     ])
     .run(tauri::generate_context!())
     .expect("error while running SignalX");
