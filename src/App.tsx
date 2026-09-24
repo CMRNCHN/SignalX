@@ -53,6 +53,10 @@ import {
 import { DeviceLinkQr } from "./DeviceLinkQr";
 import { emptyMenus, IvrMenuComposer } from "./IvrMenuComposer";
 import { ProfileRail } from "./ProfileRail";
+import { Composer } from "./components/Inbox/Composer";
+import { ConvoHeader } from "./components/Inbox/ConvoHeader";
+import { MessageList } from "./components/Inbox/MessageList";
+import { EMPTY_THREAD_FILTER, ThreadList, type ThreadFilter } from "./components/Inbox/ThreadList";
 import { CatalogScreen } from "./components/Catalog/CatalogScreen";
 import { SearchScreen } from "./components/Search/SearchScreen";
 import { SearchOverlay } from "./components/SearchOverlay";
@@ -64,23 +68,29 @@ import { matchingMessages, matchingOrders, matchingPeople, matchingProducts, typ
 import { OrdersScreen, EMPTY_ORDER_FILTER, type OrderFilterState } from "./components/Orders/OrdersScreen";
 import { SalesScreen } from "./components/Sales/SalesScreen";
 import { PanelResizer } from "./components/PanelResizer";
-import { formatPhone, formatQty, isGroupThread, stockQtyFromMilli, threadTitle } from "./format";
+import {
+  avatarTint,
+  fmtTime,
+  formatPhone,
+  formatQty,
+  initials,
+  isGroupThread,
+  stockQtyFromMilli,
+  threadTitle,
+} from "./format";
 import { canInvoke, isTauriRuntime } from "./runtime";
 import { usePanelWidths, type PanelLayout } from "./usePanelWidths";
 import { useEscapeLayer } from "./overlayEscape";
 import { useGlobalShortcuts } from "./useGlobalShortcuts";
 import { ShortcutsHelp } from "./components/ShortcutsHelp";
 import { AuditScreen } from "./components/Audit/AuditScreen";
-import { AttachmentPreview } from "./attachmentPreview";
 import { InvoiceExport } from "./components/InvoiceExport";
 import { FeedbackButton } from "./components/FeedbackButton";
 import { saveFeedback } from "./feedbackUtils";
 import {
   IconAccount,
   IconAudit,
-  IconBolt,
   IconCatalog,
-  IconCompose,
   IconContacts,
   IconImage,
   IconLink,
@@ -91,10 +101,7 @@ import {
   IconSearch,
   IconX,
   IconExport,
-  IconMenuList,
-  IconReply,
   IconSettings,
-  IconSparkle,
 } from "./navIcons";
 import {
   ContextMenu,
@@ -163,25 +170,7 @@ const NAV_GROUPS: NavItem[][] = [
 ];
 
 
-function initials(label: string): string {
-  const parts = label.replace(/^\+/, "").trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
-}
 
-/** Stable per-identity avatar tint. Low saturation so it reads as a tinted
- *  grey rather than a colour accent, but distinct enough to tell rows apart. */
-function avatarTint(seed: string) {
-  let h = 0;
-  for (let i = 0; i < seed.length; i += 1) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  const hue = h % 360;
-  return {
-    background: `hsl(${hue} 16% 30%)`,
-    color: `hsl(${hue} 38% 84%)`,
-    boxShadow: `inset 0 0 0 1px hsl(${hue} 20% 42%)`,
-  };
-}
 
 function needsDeviceSetup(
   diagnostics: Diagnostics | null,
@@ -212,15 +201,6 @@ function healthLabel(s: ReceiveLoopState | null): string {
   return "Waiting for first receive";
 }
 
-function fmtTime(ts: number): string {
-  if (!ts) return "";
-  const d = new Date(ts);
-  const now = new Date();
-  if (d.toDateString() === now.toDateString()) {
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  }
-  return d.toLocaleDateString([], { month: "short", day: "numeric" });
-}
 
 function isEnvelopeNoiseContent(content: string): boolean {
   const t = content.trim();
@@ -229,10 +209,6 @@ function isEnvelopeNoiseContent(content: string): boolean {
   return t.includes('"envelope"') && t.includes('"source"');
 }
 
-function isOutgoing(m: Message): boolean {
-  const d = String(m.direction).toLowerCase();
-  return d === "outgoing" || d.includes("out");
-}
 
 function money(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
@@ -486,11 +462,7 @@ export default function App() {
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupPassword, setBackupPassword] = useState("");
   const [restartRequired, setRestartRequired] = useState(false);
-  const [threadFilter, setThreadFilter] = useState({
-    kind: "all" as "all" | "dm" | "group",
-    unread: false,
-    pending: false,
-  });
+  const [threadFilter, setThreadFilter] = useState<ThreadFilter>(EMPTY_THREAD_FILTER);
   const [orderFilter, setOrderFilter] = useState<OrderFilterState>(EMPTY_ORDER_FILTER);
   const bottomRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<string | null>(null);
@@ -2223,127 +2195,41 @@ export default function App() {
       </aside>
 
       {panel === "threads" && (
-        <section className="thread-col">
-          <header className="col-head">
-            Messages
-            <button
-              type="button"
-              className={newDmOpen ? "icon-btn active" : "icon-btn"}
-              aria-label="New message"
-              aria-pressed={newDmOpen}
-              title="New message"
-              onClick={() => setNewDmOpen((v) => !v)}
-            >
-              <IconCompose />
-            </button>
-          </header>
-          {newDmOpen && (
-            <div className="compose-strip">
-              <input
-                autoFocus
-                placeholder="+15551234567"
-                value={newDmPhone}
-                onChange={(e) => {
-                  setNewDmPhone(e.target.value);
-                  setNewDmError(null);
-                }}
-                onKeyDown={(e) => e.key === "Enter" && void openNewDm()}
-                aria-invalid={!!newDmError}
-              />
-              <button type="button" className="action-btn primary" onClick={() => void openNewDm()}>
-                Start
-              </button>
-              {newDmError && <span className="warn-text">{newDmError}</span>}
-            </div>
-          )}
-          <div className="filter-strip">
-            <div className="chip-row">
-              {(["all", "dm", "group"] as const).map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  className={threadFilter.kind === k ? "chip active" : "chip"}
-                  onClick={() => setThreadFilter((f) => ({ ...f, kind: k }))}
-                >
-                  {k === "all" ? "All" : k === "dm" ? "Direct" : "Groups"}
-                </button>
-              ))}
-              <span className="chip-sep" aria-hidden />
-              <button
-                type="button"
-                className={threadFilter.unread ? "chip active" : "chip"}
-                aria-pressed={threadFilter.unread}
-                onClick={() => setThreadFilter((f) => ({ ...f, unread: !f.unread }))}
-              >
-                Unread
-              </button>
-              <button
-                type="button"
-                className={threadFilter.pending ? "chip active" : "chip"}
-                aria-pressed={threadFilter.pending}
-                onClick={() => setThreadFilter((f) => ({ ...f, pending: !f.pending }))}
-              >
-                Pending
-              </button>
-              <span className="chip-count">
-                {filteredThreads.length}/{threads.length}
-              </span>
-            </div>
-          </div>
-          <div className="thread-list">
-            {threads.length === 0 && (
-              <p className="empty">No threads yet — open a chat above or wait for Signal traffic.</p>
-            )}
-            {threads.length > 0 && filteredThreads.length === 0 && (
-              <p className="empty">No threads match these filters.</p>
-            )}
-            {filteredThreads.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                className={selectedId === t.id ? "thread-row active p-3 gap-3" : "thread-row p-3 gap-3"}
-                onClick={() => {
-                  setSelectedId(t.id);
-                  setPanel("threads");
-                }}
-                onContextMenu={(e) => {
-                  const items = getThreadContextMenu(t.id);
-                  const menu = getMenuByObjectType("thread");
-                  contextMenu.openContextMenu(
-                    e,
-                    [
-                      ...items,
-                      { id: "divider", label: "", action: () => {}, divider: true },
-                    ],
-                    t.id,
-                  );
-                  if (menu) {
-                    setEditingMenu(menu.id);
-                  }
-                }}
-              >
-                <span className="avatar-dot" style={avatarTint(t.id)} aria-hidden>
-                  {initials(threadTitle(t.id, contacts, groups, customers))}
-                </span>
-                <div className="thread-row-body">
-                  <div className="thread-row-top">
-                    <span className="thread-name">{threadTitle(t.id, contacts, groups, customers)}</span>
-                    <span className="thread-time">{fmtTime(t.last_message_timestamp)}</span>
-                  </div>
-                  <div className="thread-row-meta">
-                    {t.last_preview ? (
-                      <span className="snippet">{t.last_preview}</span>
-                    ) : (
-                      <span className="snippet muted">No messages yet</span>
-                    )}
-                    {t.unread_count > 0 && <span className="badge">{t.unread_count}</span>}
-                    {t.outbox_count > 0 && <span className="badge muted">{t.outbox_count} pending</span>}
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </section>
+        <ThreadList
+          threads={threads}
+          filteredThreads={filteredThreads}
+          selectedId={selectedId}
+          contacts={contacts}
+          groups={groups}
+          customers={customers}
+          filter={threadFilter}
+          onFilterChange={setThreadFilter}
+          newDmOpen={newDmOpen}
+          onToggleNewDm={() => setNewDmOpen((v) => !v)}
+          newDmPhone={newDmPhone}
+          onNewDmPhoneChange={(value) => {
+            setNewDmPhone(value);
+            setNewDmError(null);
+          }}
+          newDmError={newDmError}
+          onStartNewDm={() => void openNewDm()}
+          onSelectThread={(id) => {
+            setSelectedId(id);
+            setPanel("threads");
+          }}
+          onThreadContextMenu={(e, id) => {
+            const items = getThreadContextMenu(id);
+            const menu = getMenuByObjectType("thread");
+            contextMenu.openContextMenu(
+              e,
+              [...items, { id: "divider", label: "", action: () => {}, divider: true }],
+              id,
+            );
+            if (menu) {
+              setEditingMenu(menu.id);
+            }
+          }}
+        />
       )}
 
       <SearchOverlay
@@ -3790,102 +3676,22 @@ export default function App() {
           />
         ) : (
           <>
-            <header className="convo-head">
-              <div className="convo-head-id">
-                <h2>{title}</h2>
-                <div className="convo-sub">
-                  {isGroupThread(selectedId) ? "Group" : formatPhone(selectedId)}
-                </div>
-              </div>
-              <div className="convo-actions">
-                {threadAuto?.effective && (
-                  <span className="auto-thread-badge">Auto-reply ON</span>
-                )}
-                {threadIvr?.effective && (
-                  <span className="auto-thread-badge">Buyer menu ON</span>
-                )}
-                {threadIvr?.handed_off && (
-                  <span className="auto-thread-badge warn">Waiting on you</span>
-                )}
-                {ivrHint && (
-                  <span className="auto-thread-badge warn" title={ivrHint}>
-                    {ivrHint}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  className={threadIvr?.enabled ? "act-btn active" : "act-btn"}
-                  aria-pressed={!!threadIvr?.enabled}
-                  disabled={isGroupThread(selectedId)}
-                  title="Buyer menu"
-                  onClick={() => void toggleThreadIvr(!threadIvr?.enabled)}
-                >
-                  <IconMenuList />
-                  <span>Buyer menu</span>
-                </button>
-                {threadIvr?.handed_off && (
-                  <button type="button" className="ghost-btn" onClick={() => void resumeIvrBot()}>
-                    Resume menu
-                  </button>
-                )}
-                {!threadIvr?.enabled && ivrSettings?.enabled && !isGroupThread(selectedId) && (
-                  <span className="convo-sub inline-hint">Turn on to let this chat use the menu</span>
-                )}
-                <button
-                  type="button"
-                  className={threadAuto?.opted_in ? "act-btn active" : "act-btn"}
-                  aria-pressed={!!threadAuto?.opted_in}
-                  title="Opt this chat in to auto-reply"
-                  onClick={() => void toggleThreadAuto(!threadAuto?.opted_in)}
-                >
-                  <IconBolt />
-                  <span>Auto-reply</span>
-                </button>
-                <span className="act-sep" aria-hidden />
-                <details className="act-more">
-                  <summary className="act-btn">More</summary>
-                  <div className="act-more-pop">
-                <button
-                  type="button"
-                  className="act-btn"
-                  disabled={aiBusy || !ai?.configured}
-                  title={
-                    ai?.configured
-                      ? "Summarize this conversation"
-                      : "AI not configured — enable Ollama in Settings."
-                  }
-                  onClick={() => void onSummarize()}
-                >
-                  <IconSparkle />
-                  <span>Summarize</span>
-                </button>
-                <button
-                  type="button"
-                  className="act-btn"
-                  disabled={aiBusy || !ai?.configured}
-                  title={
-                    ai?.configured
-                      ? "Draft a reply"
-                      : "AI not configured — enable Ollama in Settings."
-                  }
-                  onClick={() => void onDraft()}
-                >
-                  <IconReply />
-                  <span>Draft</span>
-                </button>
-                <button
-                  type="button"
-                  className="act-btn"
-                  title="Export this thread"
-                  onClick={() => void onExportThread()}
-                >
-                  <IconExport />
-                  <span>Export</span>
-                </button>
-                  </div>
-                </details>
-              </div>
-            </header>
+            <ConvoHeader
+              threadId={selectedId}
+              title={title}
+              threadAuto={threadAuto}
+              threadIvr={threadIvr}
+              ivrSettings={ivrSettings}
+              ivrHint={ivrHint}
+              ai={ai}
+              aiBusy={aiBusy}
+              onToggleIvr={(next) => void toggleThreadIvr(next)}
+              onResumeIvr={() => void resumeIvrBot()}
+              onToggleAuto={(next) => void toggleThreadAuto(next)}
+              onSummarize={() => void onSummarize()}
+              onDraft={() => void onDraft()}
+              onExport={() => void onExportThread()}
+            />
 
             {summaryText && (
               <div className="summary-box">
@@ -3899,118 +3705,32 @@ export default function App() {
               </div>
             )}
 
-            <div className="msg-scroll">
-              {messages.map((m, idx) => {
-                const prevMsg = idx > 0 ? messages[idx - 1] : null;
-                const senderChanged = prevMsg && (isOutgoing(m) !== isOutgoing(prevMsg) || m.sender !== prevMsg.sender);
-                const timeGap = prevMsg && (m.timestamp - prevMsg.timestamp) > 5 * 60 * 1000; // 5 minutes
-                const showSeparator = idx > 0 && (senderChanged || timeGap);
+            <MessageList
+              threadId={selectedId}
+              messages={messages}
+              pending={globalOutbox.filter((o) => o.thread_id === selectedId)}
+              contacts={contacts}
+              groups={groups}
+              customers={customers}
+              bottomRef={bottomRef}
+              onRetry={(id) => void onRetry(id)}
+              onDiscard={(id) => void onDeleteOutbox(id)}
+            />
 
-                return (
-                  <div key={m.id}>
-                    {showSeparator && <div className="msg-separator" />}
-                    <div
-                      className={isOutgoing(m) ? "bubble out" : "bubble in"}
-                    >
-                      <div className="bubble-meta">
-                        <span>
-                          {isOutgoing(m)
-                            ? "You"
-                            : isGroupThread(selectedId)
-                              ? threadTitle(m.sender, contacts, groups, customers)
-                              : threadTitle(selectedId || m.sender, contacts, groups, customers)}
-                        </span>
-                        <span>{fmtTime(m.timestamp)}</span>
-                      </div>
-                      <div className="bubble-body">{m.content}</div>
-                      {m.attachment_path && <AttachmentPreview path={m.attachment_path} />}
-                    </div>
-                  </div>
-                );
-              })}
-              {(selectedId
-                ? globalOutbox.filter((o) => o.thread_id === selectedId)
-                : []
-              ).map((o) => (
-                <div key={o.id} className={`bubble out pending state-${o.state}`}>
-                  <div className="bubble-meta">
-                    <span>{o.state}{o.attempt_count > 0 ? ` (attempt ${o.attempt_count})` : ""}</span>
-                    <span>{fmtTime(o.created_at)}</span>
-                  </div>
-                  <div className="bubble-body">{o.content}</div>
-                  {o.attachment_path && <AttachmentPreview path={o.attachment_path} />}
-                  {o.last_error && <div className="bubble-err">{o.last_error}</div>}
-                  <div className="bubble-actions">
-                    {o.state === "failed" && (
-                      <button type="button" onClick={() => void onRetry(o.id)}>
-                        Retry
-                      </button>
-                    )}
-                    <button type="button" onClick={() => void onDeleteOutbox(o.id)}>
-                      Discard
-                    </button>
-                  </div>
-                </div>
-              ))}
-              <div ref={bottomRef} />
-            </div>
-
-            <div className="composer">
-              {attachPreview && (
-                <div className="attach-chip">
-                  <img src={attachPreview} alt="" />
-                  <span>{attachFile?.name || "Attachment"}</span>
-                  <button
-                    type="button"
-                    className="ghost-btn"
-                    onClick={() => {
-                      setAttachFile(null);
-                      if (attachPreview) URL.revokeObjectURL(attachPreview);
-                      setAttachPreview(null);
-                    }}
-                  >
-                    Remove
-                  </button>
-                </div>
-              )}
-              <div className="composer-row">
-                <label className="attach-btn" title="Attach image or file">
-                  <IconImage />
-                  <input
-                    type="file"
-                    accept="image/*,.pdf,.txt,.csv"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0] || null;
-                      setAttachFile(file);
-                      if (attachPreview) URL.revokeObjectURL(attachPreview);
-                      setAttachPreview(file ? URL.createObjectURL(file) : null);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-                <textarea
-                  value={composer}
-                  onChange={(e) => setComposer(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey && !(e as any).isComposing) {
-                      e.preventDefault();
-                      void onSend();
-                    }
-                  }}
-                  placeholder="Write a message…"
-                  rows={3}
-                  title="Enter to send, Shift+Enter for newline"
-                />
-                <button
-                  type="button"
-                  className="send-btn"
-                  disabled={sending || restartRequired || (!composer.trim() && !attachFile)}
-                  onClick={() => void onSend()}
-                >
-                  {sending ? "…" : "Send"}
-                </button>
-              </div>
-            </div>
+            <Composer
+              value={composer}
+              onChange={setComposer}
+              attachFile={attachFile}
+              attachPreview={attachPreview}
+              onAttach={(file) => {
+                setAttachFile(file);
+                if (attachPreview) URL.revokeObjectURL(attachPreview);
+                setAttachPreview(file ? URL.createObjectURL(file) : null);
+              }}
+              sending={sending}
+              blocked={restartRequired}
+              onSend={() => void onSend()}
+            />
           </>
         )}
       </main>

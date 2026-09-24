@@ -1,7 +1,7 @@
 /** Display form for a phone number: drop the +1 country code and group the
  *  digits, so operators read a name-shaped token instead of an E.164 string.
  *  Anything that isn't a US number (or isn't a number at all) passes through. */
-import type { ContactMeta, Customer, GroupMeta } from "./api";
+import type { ContactMeta, Customer, GroupMeta, Message } from "./api";
 
 /** Canonical grams / ml / each factors — keep aligned with `src-tauri/src/uom.rs`. */
 const UNIT_CANON: Record<string, number> = {
@@ -99,4 +99,39 @@ export function threadTitle(
   const named = (c?.display_name || c?.alias || "").trim();
   if (named) return named;
   return formatPhone(raw || id);
+}
+
+export function initials(label: string): string {
+  const parts = label.replace(/^\+/, "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+/** Stable per-identity avatar tint. Low saturation so it reads as a tinted
+ *  grey rather than a colour accent, but distinct enough to tell rows apart. */
+export function avatarTint(seed: string) {
+  let h = 0;
+  for (let i = 0; i < seed.length; i += 1) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  const hue = h % 360;
+  return {
+    background: `hsl(${hue} 16% 30%)`,
+    color: `hsl(${hue} 38% 84%)`,
+    boxShadow: `inset 0 0 0 1px hsl(${hue} 20% 42%)`,
+  };
+}
+
+export function fmtTime(ts: number): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) {
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+export function isOutgoing(m: Message): boolean {
+  const d = String(m.direction).toLowerCase();
+  return d === "outgoing" || d.includes("out");
 }
