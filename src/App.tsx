@@ -2090,22 +2090,6 @@ export default function App() {
           )}
         </div>
 
-        {setupNeeded && (
-          <button
-            type="button"
-            className="nav-btn"
-            data-label="Link this Mac to start receiving Signal messages"
-            aria-label="Link this Mac to start receiving Signal messages"
-            onClick={openDeviceLinkSetup}
-          >
-            <span className="nav-btn-label">
-              <span className="nav-ico" aria-hidden>
-                <IconLink />
-              </span>
-            </span>
-          </button>
-        )}
-
         <div className="rail-search-wrap">
           <button
             type="button"
@@ -3789,6 +3773,19 @@ export default function App() {
                 goOrders: () => setPanel("orders"),
                 goPeople: () => setPanel("people"),
               },
+              setupNeeded
+                ? [
+                    {
+                      key: "setup-link",
+                      icon: <IconLink />,
+                      kicker: "Setup needed",
+                      title: "Link this Mac",
+                      body: "Signal messages won't arrive until this Mac is linked to your phone.",
+                      primary: { label: "Link now", onClick: openDeviceLinkSetup },
+                      urgent: true,
+                    },
+                  ]
+                : [],
             )}
           />
         ) : (

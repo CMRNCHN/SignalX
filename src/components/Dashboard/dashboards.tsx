@@ -496,6 +496,8 @@ export function homeDashboard(
     goOrders: () => void;
     goPeople: () => void;
   },
+  /** App-level items (e.g. setup still needed) that outrank every page's top card. */
+  alerts: DashboardCard[] = [],
 ): DashboardData {
   const pick = (d: DashboardData, key: string, onClick: () => void): DashboardStat | null => {
     const s = d.stats.find((x) => x.urgent) ?? d.stats[0];
@@ -510,6 +512,7 @@ export function homeDashboard(
   ].filter((s): s is DashboardStat => s !== null);
 
   const cards = [
+    ...alerts,
     pages.messages.cards[0],
     pages.catalog.cards[0],
     pages.orders.cards[0],
