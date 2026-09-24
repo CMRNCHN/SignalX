@@ -67,6 +67,7 @@ import { catalogDashboard, homeDashboard, messagesDashboard, ordersDashboard, pe
 import { matchingMessages, matchingOrders, matchingPeople, matchingProducts, type SearchScope } from "./globalSearch";
 import { OrdersScreen, EMPTY_ORDER_FILTER, type OrderFilterState } from "./components/Orders/OrdersScreen";
 import { SalesScreen } from "./components/Sales/SalesScreen";
+import { OutboxScreen } from "./components/Outbox/OutboxScreen";
 import { PanelResizer } from "./components/PanelResizer";
 import {
   avatarTint,
@@ -323,8 +324,6 @@ export default function App() {
   const [outbox, setOutbox] = useState<OutboxItem[]>([]);
   const [globalOutboxReal, setGlobalOutbox] = useState<OutboxItem[]>([]);
   const [outboxSummary, setOutboxSummary] = useState<OutboxSummary | null>(null);
-  const [selectedOutboxIds, setSelectedOutboxIds] = useState<Set<string>>(new Set());
-  const [outboxSort, setOutboxSort] = useState<{ column: string; asc: boolean }>({ column: "created_at", asc: false });
   const [composer, setComposer] = useState("");
   const [attachFile, setAttachFile] = useState<File | null>(null);
   const [attachPreview, setAttachPreview] = useState<string | null>(null);
@@ -2732,196 +2731,20 @@ export default function App() {
       )}
 
       {panel === "outbox" && (
-        <section className="thread-col wide">
-          <header className="col-head">
-            <div>
-              <div>Outbox</div>
-              <div className="col-head-sub">
-                {(() => {
-                  const queued = globalOutbox.filter((o) => o.state === "queued").length;
-                  const sending = globalOutbox.filter((o) => o.state === "sending").length;
-                  const failed = globalOutbox.filter((o) => o.state === "failed").length;
-                  if (queued + sending + failed === 0 && outboxSummary) {
-                    return `${outboxSummary.queued} queued · ${outboxSummary.sending} sending · ${outboxSummary.failed} failed`;
-                  }
-                  return `${queued} queued · ${sending} sending · ${failed} failed`;
-                })()}
-              </div>
-            </div>
-          </header>
-          <div className="filter-strip">
-            <button type="button" className="action-btn" onClick={() => void refreshGlobalOutbox()}>
-              Refresh
-            </button>
-            {selectedOutboxIds.size > 0 && (
-              <>
-                <span className="col-meta">{selectedOutboxIds.size} selected</span>
-                <button
-                  type="button"
-                  className="action-btn"
-                  onClick={() => {
-                    const failedIds = Array.from(selectedOutboxIds).filter(
-                      id => globalOutbox.find(o => o.id === id)?.state === "failed"
-                    );
-                    if (failedIds.length > 0) {
-                      void Promise.all(failedIds.map(id => onRetry(id))).then(() => {
-                        setSelectedOutboxIds(new Set());
-                        void refreshGlobalOutbox();
-                      });
-                    }
-                  }}
-                  disabled={globalOutbox.filter(o => selectedOutboxIds.has(o.id) && o.state === "failed").length === 0}
-                >
-                  Retry all
-                </button>
-                <button
-                  type="button"
-                  className="action-btn danger"
-                  onClick={() => {
-                    if (confirm(`Delete ${selectedOutboxIds.size} message${selectedOutboxIds.size === 1 ? "" : "s"}?`)) {
-                      void Promise.all(Array.from(selectedOutboxIds).map(id => onDeleteOutbox(id))).then(() => {
-                        setSelectedOutboxIds(new Set());
-                        void refreshGlobalOutbox();
-                      });
-                    }
-                  }}
-                >
-                  Clear selected
-                </button>
-              </>
-            )}
-            {globalOutbox.length > 0 && selectedOutboxIds.size === 0 && (
-              <span className="col-meta">Last refreshed just now</span>
-            )}
-          </div>
-          <div className="outbox-table">
-            {globalOutbox.length === 0 && (
-              <p className="empty">Outbox clear — nothing queued or failed.</p>
-            )}
-            {globalOutbox.length > 0 && (
-              <div className="outbox-head">
-                <span
-                  onClick={() => {
-                    setOutboxSort(s => ({ column: "thread_id", asc: s.column === "thread_id" ? !s.asc : false }));
-                  }}
-                  title="Click to sort"
-                >
-                  To {outboxSort.column === "thread_id" && (outboxSort.asc ? "▲" : "▼")}
-                </span>
-                <span>Preview</span>
-                <span
-                  onClick={() => {
-                    setOutboxSort(s => ({ column: "state", asc: s.column === "state" ? !s.asc : false }));
-                  }}
-                  title="Click to sort"
-                >
-                  Status {outboxSort.column === "state" && (outboxSort.asc ? "▲" : "▼")}
-                </span>
-                <span
-                  onClick={() => {
-                    setOutboxSort(s => ({ column: "attempt_count", asc: s.column === "attempt_count" ? !s.asc : false }));
-                  }}
-                  title="Click to sort"
-                >
-                  Attempts {outboxSort.column === "attempt_count" && (outboxSort.asc ? "▲" : "▼")}
-                </span>
-                <span>Actions</span>
-              </div>
-            )}
-            {(() => {
-              const sorted = [...globalOutbox].sort((a, b) => {
-                let cmp = 0;
-                switch (outboxSort.column) {
-                  case "thread_id":
-                    cmp = threadTitle(a.thread_id, contacts, groups, customers).localeCompare(
-                      threadTitle(b.thread_id, contacts, groups, customers)
-                    );
-                    break;
-                  case "state":
-                    cmp = a.state.localeCompare(b.state);
-                    break;
-                  case "attempt_count":
-                    cmp = (a.attempt_count || 0) - (b.attempt_count || 0);
-                    break;
-                  default:
-                    cmp = b.created_at - a.created_at;
-                }
-                return outboxSort.asc ? cmp : -cmp;
-              });
-              return sorted.map((o) => (
-              <div key={o.id}>
-                <div
-                  className={`outbox-row state-${o.state} ${selectedOutboxIds.has(o.id) ? "selected" : ""}`}
-                  onClick={(e) => {
-                    if ((e.target as HTMLElement).tagName !== "BUTTON") {
-                      const next = new Set(selectedOutboxIds);
-                      if (next.has(o.id)) next.delete(o.id);
-                      else next.add(o.id);
-                      setSelectedOutboxIds(next);
-                    }
-                  }}
-                  style={{ cursor: "pointer" }}
-                >
-                  <div className="outbox-to">
-                    <strong>{threadTitle(o.thread_id, contacts, groups, customers)}</strong>
-                  </div>
-                  <div className="outbox-preview">
-                    {o.attachment_path && <span className="attach-chip">📎</span>}
-                    {o.content.slice(0, 100) || (o.attachment_path ? "(attachment)" : "(empty)")}
-                    {o.content.length > 100 ? "…" : ""}
-                  </div>
-                  <span
-                    className={`status-pill status-${
-                      o.state === "failed" ? "danger" : o.state === "sending" ? "warn" : "muted"
-                    }`}
-                  >
-                    {o.state}
-                  </span>
-                  <span className="outbox-attempts">
-                    {o.attempt_count > 0 ? `${o.attempt_count} attempt${o.attempt_count === 1 ? "" : "s"}` : "—"}
-                  </span>
-                  <div className="row-actions">
-                    {o.state === "failed" && (
-                      <button type="button" className="action-btn primary" onClick={() => void onRetry(o.id).then(() => refreshGlobalOutbox())}>
-                        Retry
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="ghost-btn"
-                      onClick={() => {
-                        if (confirm("Delete this message from the outbox?")) {
-                          void onDeleteOutbox(o.id).then(() => refreshGlobalOutbox());
-                        }
-                      }}
-                    >
-                      Discard
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost-btn"
-                      onClick={() => {
-                        setSelectedId(o.thread_id);
-                        setPanel("threads");
-                      }}
-                    >
-                      Open
-                    </button>
-                  </div>
-                </div>
-                {o.last_error && (
-                  <div className="outbox-error">
-                    <span className="error-icon">⚠️</span>
-                    <div>
-                      <div className="error-message">This number isn't on Signal</div>
-                      <div className="error-detail">{o.last_error}</div>
-                    </div>
-                  </div>
-                )}
-              </div>
-              ));})()}
-          </div>
-        </section>
+        <OutboxScreen
+          items={globalOutbox}
+          summary={outboxSummary}
+          contacts={contacts}
+          groups={groups}
+          customers={customers}
+          onRefresh={refreshGlobalOutbox}
+          onRetry={onRetry}
+          onDelete={onDeleteOutbox}
+          onOpenThread={(threadId) => {
+            setSelectedId(threadId);
+            setPanel("threads");
+          }}
+        />
       )}
 
       {panel === "audit" && (
