@@ -576,51 +576,84 @@ export function OrdersScreen(props: OrdersScreenProps) {
                 setSelectedId(open.thread_id);
                 setPanel("threads");
               }}
+              hideActions={true}
             />
           ) : (
-            <div className="orders-empty">
-              <div className="orders-rollup">
-                <div>
-                  <dt>Orders</dt>
-                  <dd>{rollup.count}</dd>
-                </div>
-                <div>
-                  <dt>
-                    Open
-                    <WhyTip why="Totals of orders that are confirmed or invoiced — committed but not yet paid." />
-                  </dt>
-                  <dd>{money(rollup.openCents)}</dd>
-                </div>
-                <div>
-                  <dt>
-                    Collected
-                    <WhyTip why="Totals of orders marked paid or fulfilled. Cancelled orders are excluded." />
-                  </dt>
-                  <dd>{money(rollup.paidCents)}</dd>
-                </div>
-                <div>
-                  <dt>Drafts</dt>
-                  <dd>{rollup.drafts}</dd>
+            <div className="orders-empty-minimal">
+              <span className="orders-empty-ico" aria-hidden>
+                <IconBag />
+              </span>
+              <h2>{orders.length ? "Pick an order" : "No orders yet"}</h2>
+            </div>
+          )}
+        </div>
+
+        <div className="orders-actions-pane">
+          {!composing && open ? (
+            <>
+              <div>
+                <h3 className="pane-section-title">Actions</h3>
+                <div className="order-action-buttons">
+                  <OrderActionButtons
+                    order={open}
+                    status={open.status.toLowerCase()}
+                    sendQuote={sendQuote}
+                    sendInvoice={sendInvoice}
+                    confirmDraftOrder={confirmDraftOrder}
+                    editDraftFirstLineQty={editDraftFirstLineQty}
+                    setOrderLifecycle={setOrderLifecycle}
+                    duplicateAsDraft={async (id) => {
+                      const created = await duplicateAsDraft(id);
+                      if (created && typeof created === "object" && created && "id" in created) {
+                        setOpenId((created as { id: string }).id);
+                        setComposing(false);
+                      }
+                    }}
+                    openChat={() => {
+                      setSelectedId(open.thread_id);
+                      setPanel("threads");
+                    }}
+                  />
                 </div>
               </div>
-              <div className="orders-empty-inner">
-                <span className="orders-empty-ico" aria-hidden>
-                  <IconBag />
-                </span>
-                <h2>{orders.length ? "Pick an order" : "No orders yet"}</h2>
-                <p>
-                  {orders.length
-                    ? "Choose one on the left to see its lines, where it is in the lifecycle, and what to do next."
-                    : "Place an order against a DM thread and it will appear here."}
-                </p>
-                <button
-                  type="button"
-                  className="action-btn primary"
-                  onClick={startCompose}
-                  disabled={!canOrder}
-                >
-                  New order
-                </button>
+              <div>
+                <h3 className="pane-section-title">Summary</h3>
+                <OrderSummary
+                  order={open}
+                  siblings={orders.filter(
+                    (o) => o.thread_id === open.thread_id && o.id !== open.id,
+                  )}
+                  money={money}
+                />
+              </div>
+            </>
+          ) : composing ? (
+            <div style={{ padding: "16px", textAlign: "center", color: "var(--text-dim)" }}>
+              Compose in center panel
+            </div>
+          ) : (
+            <div className="orders-rollup">
+              <div>
+                <dt>Orders</dt>
+                <dd>{rollup.count}</dd>
+              </div>
+              <div>
+                <dt>
+                  Open
+                  <WhyTip why="Totals of orders that are confirmed or invoiced — committed but not yet paid." />
+                </dt>
+                <dd>{money(rollup.openCents)}</dd>
+              </div>
+              <div>
+                <dt>
+                  Collected
+                  <WhyTip why="Totals of orders marked paid or fulfilled. Cancelled orders are excluded." />
+                </dt>
+                <dd>{money(rollup.paidCents)}</dd>
+              </div>
+              <div>
+                <dt>Drafts</dt>
+                <dd>{rollup.drafts}</dd>
               </div>
             </div>
           )}
@@ -671,6 +704,7 @@ type OrderDetailProps = {
   setOrderLifecycle: (id: string, status: string) => Promise<void>;
   duplicateAsDraft: (id: string) => Promise<void>;
   openChat: () => void;
+  hideActions?: boolean;
 };
 
 function OrderDetail({
@@ -692,6 +726,7 @@ function OrderDetail({
   setOrderLifecycle,
   duplicateAsDraft,
   openChat,
+  hideActions,
 }: OrderDetailProps) {
   const status = order.status.toLowerCase();
   const cancelled = status === "cancelled" || status === "canceled";
@@ -789,82 +824,32 @@ function OrderDetail({
         </table>
       </section>
 
-      <footer className="order-actions">
-        {/* One primary action per state, so the next step is obvious instead of
-            being one of six equally-weighted buttons. */}
-        {status === "draft" ? (
-          <>
-            <button
-              type="button"
-              className="action-btn primary"
-              onClick={() => void sendQuote(order.id)}
-              title="Queue quote text via outbox"
-            >
-              Send quote
-            </button>
-            <button
-              type="button"
-              className="ghost-btn"
-              onClick={() => void confirmDraftOrder(order.id)}
-            >
-              Confirm
-            </button>
-            <button
-              type="button"
-              className="ghost-btn"
-              onClick={() => void editDraftFirstLineQty(order)}
-            >
-              Edit lines
-            </button>
-          </>
-        ) : (
-          <>
-            {!cancelled && (
-              <button
-                type="button"
-                className="action-btn primary"
-                onClick={() => void sendInvoice(order.id)}
-                title="Queue invoice text to this chat via outbox"
-              >
-                Send invoice
+        {!hideActions && (
+        <footer className="order-actions">
+          {status === "draft" ? (
+            <>
+              <button className="action-btn primary" onClick={() => void sendQuote(order.id)} title="Queue quote text via outbox">
+                Send quote
               </button>
-            )}
-            {!cancelled && status !== "paid" && (
-              <button
-                type="button"
-                className="ghost-btn"
-                onClick={() => void setOrderLifecycle(order.id, "paid")}
-              >
-                Mark paid
+              <button className="ghost-btn" onClick={() => void confirmDraftOrder(order.id)}>
+                Confirm
               </button>
-            )}
-            {!cancelled && status !== "fulfilled" && (
-              <button
-                type="button"
-                className="ghost-btn"
-                onClick={() => void setOrderLifecycle(order.id, "fulfilled")}
-              >
-                Mark fulfilled
+              <button className="ghost-btn" onClick={() => void editDraftFirstLineQty(order)}>
+                Edit lines
               </button>
-            )}
-          </>
+            </>
+          ) : (
+            <>
+              {!cancelled && <button className="action-btn primary" onClick={() => void sendInvoice(order.id)} title="Queue invoice text via outbox">Send invoice</button>}
+              {!cancelled && status !== "paid" && <button className="ghost-btn" onClick={() => void setOrderLifecycle(order.id, "paid")}>Mark paid</button>}
+              {!cancelled && status !== "fulfilled" && <button className="ghost-btn" onClick={() => void setOrderLifecycle(order.id, "fulfilled")}>Mark fulfilled</button>}
+            </>
+          )}
+          <button className="ghost-btn" onClick={() => void duplicateAsDraft(order.id)}>Duplicate as draft</button>
+          <button className="ghost-btn" onClick={openChat}>Open chat</button>
+          {!cancelled && <button className="ghost-btn danger-text order-cancel" onClick={() => void setOrderLifecycle(order.id, "cancelled")}>Cancel order</button>}
+        </footer>
         )}
-        <button type="button" className="ghost-btn" onClick={() => void duplicateAsDraft(order.id)}>
-          Duplicate as draft
-        </button>
-        <button type="button" className="ghost-btn" onClick={openChat}>
-          Open chat
-        </button>
-        {!cancelled && (
-          <button
-            type="button"
-            className="ghost-btn danger-text order-cancel"
-            onClick={() => void setOrderLifecycle(order.id, "cancelled")}
-          >
-            Cancel order
-          </button>
-        )}
-      </footer>
         </div>
 
         <aside className="order-detail-side">
@@ -918,6 +903,135 @@ function OrderDetail({
             )}
           </section>
         </aside>
+      </div>
+    </div>
+  );
+}
+
+function OrderActionButtons({
+  order,
+  status,
+  sendQuote,
+  sendInvoice,
+  confirmDraftOrder,
+  editDraftFirstLineQty,
+  setOrderLifecycle,
+  duplicateAsDraft,
+  openChat,
+}: {
+  order: Order;
+  status: string;
+  sendQuote: (id: string) => Promise<void>;
+  sendInvoice: (id: string) => Promise<void>;
+  confirmDraftOrder: (id: string) => Promise<void>;
+  editDraftFirstLineQty: (o: Order) => Promise<void>;
+  setOrderLifecycle: (id: string, status: string) => Promise<void>;
+  duplicateAsDraft: (id: string) => Promise<void>;
+  openChat: () => void;
+}) {
+  const cancelled = status === "cancelled" || status === "canceled";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+      {status === "draft" ? (
+        <>
+          <button
+            type="button"
+            className="action-btn primary"
+            onClick={() => void sendQuote(order.id)}
+            title="Queue quote text via outbox"
+          >
+            Send quote
+          </button>
+          <button
+            type="button"
+            className="action-btn"
+            onClick={() => void confirmDraftOrder(order.id)}
+          >
+            Confirm
+          </button>
+          <button
+            type="button"
+            className="action-btn"
+            onClick={() => void editDraftFirstLineQty(order)}
+          >
+            Edit lines
+          </button>
+        </>
+      ) : (
+        <>
+          {!cancelled && (
+            <button
+              type="button"
+              className="action-btn primary"
+              onClick={() => void sendInvoice(order.id)}
+              title="Queue invoice text to this chat via outbox"
+            >
+              Send invoice
+            </button>
+          )}
+          {!cancelled && status !== "paid" && (
+            <button
+              type="button"
+              className="action-btn"
+              onClick={() => void setOrderLifecycle(order.id, "paid")}
+            >
+              Mark paid
+            </button>
+          )}
+          {!cancelled && status !== "fulfilled" && (
+            <button
+              type="button"
+              className="action-btn"
+              onClick={() => void setOrderLifecycle(order.id, "fulfilled")}
+            >
+              Mark fulfilled
+            </button>
+          )}
+        </>
+      )}
+      <button type="button" className="action-btn" onClick={() => void duplicateAsDraft(order.id)}>
+        Duplicate as draft
+      </button>
+      <button type="button" className="action-btn" onClick={openChat}>
+        Open chat
+      </button>
+      {!cancelled && (
+        <button
+          type="button"
+          className="action-btn danger"
+          onClick={() => void setOrderLifecycle(order.id, "cancelled")}
+        >
+          Cancel order
+        </button>
+      )}
+    </div>
+  );
+}
+
+function OrderSummary({
+  order,
+  siblings,
+  money,
+}: {
+  order: Order;
+  siblings: Order[];
+  money: (c: number) => string;
+}) {
+  const history = [order, ...siblings];
+  const lifetime = history
+    .filter((o) => !/^cancel/.test(o.status.toLowerCase()))
+    .reduce((sum, o) => sum + o.total_cents, 0);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "13px" }}>
+      <div style={{ paddingBottom: "12px", borderBottom: "1px solid var(--border)" }}>
+        <div style={{ color: "var(--text-dim)", fontSize: "11px", marginBottom: "4px" }}>This order</div>
+        <div style={{ fontSize: "16px", fontWeight: "600" }}>{money(order.total_cents)}</div>
+      </div>
+      <div>
+        <div style={{ color: "var(--text-dim)", fontSize: "11px", marginBottom: "4px" }}>Lifetime from this contact</div>
+        <div style={{ fontSize: "15px", fontWeight: "500" }}>{money(lifetime)}</div>
       </div>
     </div>
   );
