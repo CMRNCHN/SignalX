@@ -5618,13 +5618,19 @@ body.is-resizing * {
 
 @container panel (max-width: 900px) {
   .orders-layout {
+    grid-template-columns: minmax(200px, 240px) minmax(0, 1fr) minmax(200px, 240px);
+  }
+  .orders-rollup {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container panel (max-width: 600px) {
+  .orders-layout {
     grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
   }
   .orders-actions-pane {
     display: none;
-  }
-  .orders-rollup {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
