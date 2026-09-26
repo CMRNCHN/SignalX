@@ -16,6 +16,12 @@
 // @match        *://*.xnxx.com/*
 // @match        *://*.spankbang.com/*
 // @match        *://*.youporngay.com/*
+// @match        *://*.boyfriendtv.com/*
+// @match        *://*.boyfriend.tv/*
+// @match        *://*.x.com/*
+// @match        *://*.xnxx.com/*
+// @match        *://*.faphouse.com/*
+// @match        *://*.youporngay.com/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
