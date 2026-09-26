@@ -5525,6 +5525,25 @@ body.is-resizing * {
   color: var(--text);
 }
 
+.orders-empty-minimal {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  color: var(--text-dim);
+}
+
+.orders-empty-minimal h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
 .orders-empty-inner {
   margin: auto;
   padding: var(--space-8);
@@ -5588,12 +5607,36 @@ body.is-resizing * {
   font-size: 14px;
 }
 
-@container panel (max-width: 1000px) {
+@container panel (max-width: 1200px) {
   .orders-layout {
-    grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+    grid-template-columns: minmax(260px, 280px) minmax(0, 1fr) minmax(240px, 280px);
   }
   .orders-rollup {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container panel (max-width: 900px) {
+  .orders-layout {
+    grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  }
+  .orders-actions-pane {
+    display: none;
+  }
+  .orders-rollup {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@container panel (max-width: 320px) {
+  .orders-actions-pane .orders-rollup {
+    grid-template-columns: 1fr;
+  }
+  .orders-actions-pane .orders-rollup dt {
+    font-size: 9px;
+  }
+  .orders-actions-pane .orders-rollup dd {
+    font-size: 14px;
   }
 }
 
